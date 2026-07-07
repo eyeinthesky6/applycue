@@ -1,6 +1,49 @@
 import { describe, expect, it } from "vitest";
 import type { JobRecord, UserPreferences, UserProfile } from "@applycue/core";
-import { buildRelaxPlan, rankJob } from "./index.js";
+import { buildRelaxPlan, fuseRankedLists, rankJob } from "./index.js";
+
+describe("fuseRankedLists", () => {
+  it("combines different ranked signals without comparing raw score scales", () => {
+    const fused = fuseRankedLists(
+      [
+        { id: "title", items: ["job-a", "job-b", "job-c"] },
+        { id: "semantic", items: ["job-b", "job-a", "job-d"] },
+        { id: "source-trust", items: ["job-d", "job-a", "job-b"], weight: 0.5 }
+      ],
+      { rankConstant: 60 }
+    );
+
+    expect(fused.map((item) => item.id)).toEqual(["job-a", "job-b", "job-d", "job-c"]);
+    expect(fused[0]?.contributions.map((item) => item.listId)).toEqual(["title", "semantic", "source-trust"]);
+    expect(fused[0]?.score).toBeGreaterThan(fused[1]?.score ?? 0);
+  });
+
+  it("counts a candidate only once per source list", () => {
+    const fused = fuseRankedLists(
+      [
+        { id: "title", items: ["job-a", "job-a", "job-b"] },
+        { id: "recency", items: ["job-b"] }
+      ],
+      { rankConstant: 10 }
+    );
+
+    expect(fused.find((item) => item.id === "job-a")?.contributions).toHaveLength(1);
+    expect(fused.find((item) => item.id === "job-a")?.contributions[0]?.rank).toBe(1);
+    expect(fused[0]?.id).toBe("job-b");
+  });
+
+  it("supports a top-N result limit", () => {
+    const fused = fuseRankedLists(
+      [
+        { id: "title", items: ["job-a", "job-b", "job-c"] },
+        { id: "semantic", items: ["job-c", "job-b", "job-a"] }
+      ],
+      { limit: 2 }
+    );
+
+    expect(fused).toHaveLength(2);
+  });
+});
 
 describe("rankJob", () => {
   const basePreferences: UserPreferences = {

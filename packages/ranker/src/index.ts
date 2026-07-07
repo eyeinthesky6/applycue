@@ -1,5 +1,69 @@
 import type { ExperienceRange, GateResult, JobRecord, RankedJob, RankComponent, RelaxStep, Seniority, UserProfile } from "@applycue/core";
 
+export interface RankedCandidateList<TId extends string = string> {
+  id: string;
+  items: readonly TId[];
+  weight?: number;
+}
+
+export interface FusedRankContribution {
+  contribution: number;
+  listId: string;
+  rank: number;
+}
+
+export interface FusedRankedCandidate<TId extends string = string> {
+  id: TId;
+  score: number;
+  contributions: FusedRankContribution[];
+}
+
+export interface ReciprocalRankFusionOptions {
+  limit?: number;
+  rankConstant?: number;
+}
+
+export function fuseRankedLists<TId extends string>(
+  lists: readonly RankedCandidateList<TId>[],
+  options: ReciprocalRankFusionOptions = {}
+): FusedRankedCandidate<TId>[] {
+  const rankConstant = options.rankConstant ?? 60;
+  if (rankConstant <= 0) throw new Error("rankConstant must be greater than zero.");
+
+  const fused = new Map<TId, FusedRankedCandidate<TId>>();
+  for (const list of lists) {
+    const weight = list.weight ?? 1;
+    if (weight <= 0) continue;
+    const seenInList = new Set<TId>();
+
+    list.items.forEach((id, index) => {
+      if (seenInList.has(id)) return;
+      seenInList.add(id);
+      const rank = index + 1;
+      const contribution = roundFusionScore(weight / (rankConstant + rank));
+      const existing = fused.get(id) ?? {
+        id,
+        score: 0,
+        contributions: []
+      };
+      existing.score = roundFusionScore(existing.score + contribution);
+      existing.contributions.push({
+        contribution,
+        listId: list.id,
+        rank
+      });
+      fused.set(id, existing);
+    });
+  }
+
+  const sorted = [...fused.values()].sort((left, right) => {
+    if (right.score !== left.score) return right.score - left.score;
+    return bestRank(left) - bestRank(right) || left.id.localeCompare(right.id);
+  });
+
+  return typeof options.limit === "number" ? sorted.slice(0, options.limit) : sorted;
+}
+
 export function evaluateHardGates(job: JobRecord, profile: UserProfile): GateResult[] {
   const prefs = profile.preferences;
   const jobLocation = job.location;
@@ -574,6 +638,14 @@ function locationScore(job: JobRecord, profile: UserProfile): number {
 
 function roundScore(value: number): number {
   return Math.max(0, Math.min(1, Math.round(value * 100) / 100));
+}
+
+function roundFusionScore(value: number): number {
+  return Math.max(0, Math.round(value * 10000) / 10000);
+}
+
+function bestRank(candidate: FusedRankedCandidate): number {
+  return Math.min(...candidate.contributions.map((contribution) => contribution.rank));
 }
 
 const COUNTRY_ALIASES: Record<string, string[]> = {
