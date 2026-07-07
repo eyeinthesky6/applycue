@@ -130,6 +130,9 @@ importers:
       '@applycue/core':
         specifier: workspace:*
         version: link:../core
+      minisearch:
+        specifier: ^7.2.0
+        version: 7.2.0
 
   packages/tracker:
     dependencies:
@@ -456,6 +459,9 @@ packages:
 
   minimalistic-assert@1.0.1:
     resolution: {integrity: sha512-UtJcAD4yEaGtjPezWuO9wC4nwUnVH/8/Im3yEHQP4b67cXlD/Qr9hdITCU1xDbSEXg2XKNaP8jsReV7vQd00/A==}
+
+  minisearch@7.2.0:
+    resolution: {integrity: sha512-dqT2XBYUOZOiC5t2HRnwADjhNS2cecp9u+TJRiJ1Qp/f5qjkeT5APcGPjHw+bz89Ms8Jp+cG4AlE+QZ/QnDglg==}
 
   nanoid@3.3.15:
     resolution: {integrity: sha512-y7Wygv/7mEOvxTuEQDB8StXdMRBWf1kR/tlhAzBRUFkB2jfcLOAxO/SHmOO2zgz1pVgK29/kyupn059/bCHdjA==}
@@ -921,6 +927,8 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.5.5
 
   minimalistic-assert@1.0.1: {}
+
+  minisearch@7.2.0: {}
 
   nanoid@3.3.15: {}
 

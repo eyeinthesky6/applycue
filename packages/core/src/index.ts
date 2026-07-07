@@ -394,7 +394,9 @@ export interface ProgressSnapshot {
   cvQuality?: ProgressCvQualitySummary;
   jobDecisions?: ProgressJobDecisionItem[];
   livePreflight?: ProgressLivePreflightSummary;
+  pendingQuestionItems?: PendingQuestion[];
   scanHistory?: ProgressScanHistorySummary;
+  sourceScorecards?: ProgressSourceScorecardSummary;
   sourceOutcomes?: ProgressSourceOutcomeSummary;
   sourceQuality?: ProgressSourceQualitySummary;
 }
@@ -443,6 +445,39 @@ export interface ProgressSourceQualitySummary {
     location: number;
     content: number;
   };
+}
+
+export interface ProgressSourceScorecardSummary {
+  fetchedJobs: number;
+  keptJobs: number;
+  filteredJobs: number;
+  preparedApplications: number;
+  submitted: number;
+  replies: number;
+  interviews: number;
+  offers: number;
+  rejections: number;
+  positiveOutcomes: number;
+  sources: ProgressSourceScorecardItem[];
+}
+
+export interface ProgressSourceScorecardItem {
+  sourceId: ApplyCueId;
+  sourceName: string;
+  sourceKind: JobSource["kind"];
+  fetchedJobs: number;
+  keptJobs: number;
+  filteredJobs: number;
+  preparedApplications: number;
+  submitted: number;
+  replies: number;
+  interviews: number;
+  offers: number;
+  rejections: number;
+  positiveOutcomes: number;
+  precision: number;
+  yield: number;
+  lastOutcomeAt?: string;
 }
 
 export interface ProgressLivePreflightSummary {
@@ -931,6 +966,8 @@ export interface RunManifest {
   notes: string[];
   cvQuality?: ProgressCvQualitySummary;
   scanHistory?: ProgressScanHistorySummary;
+  pendingQuestions?: PendingQuestion[];
+  sourceScorecards?: ProgressSourceScorecardSummary;
   sourceOutcomes?: ProgressSourceOutcomeSummary;
   sourceQuality?: ProgressSourceQualitySummary;
 }

@@ -1,4 +1,15 @@
-import type { ExperienceRange, GateResult, JobRecord, RankedJob, RankComponent, RelaxStep, Seniority, UserProfile } from "@applycue/core";
+import MiniSearch from "minisearch";
+import type {
+  ExperienceRange,
+  GateResult,
+  JobRecord,
+  PendingQuestion,
+  RankedJob,
+  RankComponent,
+  RelaxStep,
+  Seniority,
+  UserProfile
+} from "@applycue/core";
 
 export interface RankedCandidateList<TId extends string = string> {
   id: string;
@@ -21,6 +32,20 @@ export interface FusedRankedCandidate<TId extends string = string> {
 export interface ReciprocalRankFusionOptions {
   limit?: number;
   rankConstant?: number;
+}
+
+export interface AmbiguityPromptOptions {
+  createdAt?: string;
+  limit?: number;
+}
+
+interface LexicalJobDocument {
+  id: string;
+  title: string;
+  company: string;
+  description: string;
+  location: string;
+  sourceName: string;
 }
 
 export function fuseRankedLists<TId extends string>(
@@ -84,6 +109,11 @@ export function rankJobs(jobs: readonly JobRecord[], profile: UserProfile): Rank
         weight: 1
       },
       {
+        id: "lexical-retrieval",
+        items: rankedByLexicalRetrieval(jobs, profile),
+        weight: 0.75
+      },
+      {
         id: "source-confidence",
         items: rankedBy(ranked, (item) => componentScore(item, "source-confidence")).map((item) => item.job.id),
         weight: 0.35
@@ -104,6 +134,32 @@ export function rankJobs(jobs: readonly JobRecord[], profile: UserProfile): Rank
     if (right.priority !== left.priority) return right.priority - left.priority;
     return left.job.id.localeCompare(right.job.id);
   });
+}
+
+export function buildAmbiguityPrompts(
+  rankedJobs: readonly RankedJob[],
+  profile: UserProfile,
+  options: AmbiguityPromptOptions = {}
+): PendingQuestion[] {
+  const limit = Math.max(0, Math.floor(options.limit ?? 5));
+  if (limit === 0) return [];
+
+  const createdAt = options.createdAt ?? new Date().toISOString();
+  const prompts: PendingQuestion[] = [];
+  const seen = new Set<string>();
+
+  for (const rankedJob of rankedJobs) {
+    if (prompts.length >= limit) break;
+    if (!gatePassed(rankedJob, "role-family")) continue;
+    if (componentScore(rankedJob, "role-objective-fit") < 0.5) continue;
+
+    const prompt = buildAmbiguityPromptForJob(rankedJob, profile, createdAt);
+    if (!prompt || seen.has(prompt.id)) continue;
+    seen.add(prompt.id);
+    prompts.push(prompt);
+  }
+
+  return prompts;
 }
 
 export function evaluateHardGates(job: JobRecord, profile: UserProfile): GateResult[] {
@@ -397,6 +453,54 @@ function rankedBy(ranked: RankedJob[], score: (item: RankedJob) => number): Rank
   });
 }
 
+function rankedByLexicalRetrieval(jobs: readonly JobRecord[], profile: UserProfile): string[] {
+  const query = buildLexicalRetrievalQuery(profile);
+  if (jobs.length === 0 || !query) return [];
+
+  const index = new MiniSearch<LexicalJobDocument>({
+    idField: "id",
+    fields: ["title", "description", "company", "location", "sourceName"],
+    storeFields: ["id"]
+  });
+  index.addAll(jobs.map(toLexicalJobDocument));
+
+  return index
+    .search(query, {
+      boost: {
+        title: 4,
+        description: 1.5,
+        company: 0.4,
+        location: 0.3,
+        sourceName: 0.2
+      },
+      combineWith: "OR",
+      fuzzy: 0.15,
+      prefix: true
+    })
+    .map((result) => String(result.id));
+}
+
+function buildLexicalRetrievalQuery(profile: UserProfile): string {
+  return uniqueNormalizedTerms([
+    ...profile.preferences.targetRoleTerms,
+    ...profile.preferences.targetIndustries,
+    ...profile.preferences.requiredKeywords,
+    ...profile.preferences.niceToHaveKeywords,
+    ...profile.proofBank.flatMap((proof) => proof.tags)
+  ]).join(" ");
+}
+
+function toLexicalJobDocument(job: JobRecord): LexicalJobDocument {
+  return {
+    id: job.id,
+    title: job.title,
+    company: job.company,
+    description: job.description,
+    location: job.location ?? "",
+    sourceName: job.source.name
+  };
+}
+
 function componentScore(rankedJob: RankedJob, componentId: string): number {
   return rankedJob.components.find((component) => component.id === componentId)?.score ?? 0;
 }
@@ -404,6 +508,123 @@ function componentScore(rankedJob: RankedJob, componentId: string): number {
 function discoveredAtScore(job: JobRecord): number {
   const timestamp = Date.parse(job.discoveredAt);
   return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function buildAmbiguityPromptForJob(
+  rankedJob: RankedJob,
+  profile: UserProfile,
+  createdAt: string
+): PendingQuestion | undefined {
+  const failedGateIds = new Set(rankedJob.gates.filter((gate) => !gate.passed).map((gate) => gate.id));
+  const job = rankedJob.job;
+  const baseReason = `${job.company} - ${job.title} matched the role family, but a reusable policy gate is ambiguous.`;
+
+  if (failedGateIds.has("seniority") && isPotentialCompanyGradeAmbiguity(job, profile)) {
+    return {
+      id: ambiguityQuestionId("seniority", job),
+      question: `Should ${job.title} at ${job.company} count as one of your target seniority levels for future decisions, or should similar titles stay blocked?`,
+      reason: `${baseReason} Company title ladders can differ by employer size, so this should become a saved preference if you approve it.`,
+      blocksPipeline: false,
+      createdAt
+    };
+  }
+
+  if (failedGateIds.has("work-authorization")) {
+    const locationTarget = locationPolicyTarget(job.location);
+    if (!locationTarget) return undefined;
+    return {
+      id: policyQuestionId("work-authorization", locationTarget),
+      question: `Should roles in ${locationTarget} be allowed for your future searches and applications?`,
+      reason: `${baseReason} Location or work authorization needs an approved rule before the agent widens this area.`,
+      blocksPipeline: false,
+      createdAt
+    };
+  }
+
+  if (failedGateIds.has("work-mode")) {
+    return {
+      id: policyQuestionId("work-mode", job.workMode),
+      question: `Should ${job.workMode} roles like ${job.title} at ${job.company} be allowed for future applications?`,
+      reason: `${baseReason} Work mode is a user preference and should be stored before the agent changes it.`,
+      blocksPipeline: false,
+      createdAt
+    };
+  }
+
+  if (failedGateIds.has("employment-type") && job.employmentType && job.employmentType !== "unknown") {
+    return {
+      id: policyQuestionId("employment-type", job.employmentType),
+      question: `Should ${job.employmentType.replaceAll("_", " ")} roles be included for this search?`,
+      reason: `${baseReason} Employment type is currently outside the saved preference set.`,
+      blocksPipeline: false,
+      createdAt
+    };
+  }
+
+  if (failedGateIds.has("company-stage") && job.companyStage && job.companyStage !== "unknown") {
+    return {
+      id: policyQuestionId("company-stage", job.companyStage),
+      question: `Should ${job.companyStage.replaceAll("_", " ")} companies like ${job.company} be included for future decisions?`,
+      reason: `${baseReason} Company stage is currently outside the saved preference set.`,
+      blocksPipeline: false,
+      createdAt
+    };
+  }
+
+  return undefined;
+}
+
+function gatePassed(rankedJob: RankedJob, gateId: string): boolean {
+  return rankedJob.gates.find((gate) => gate.id === gateId)?.passed === true;
+}
+
+function isPotentialCompanyGradeAmbiguity(job: JobRecord, profile: UserProfile): boolean {
+  const preferredHigherSeniority = profile.preferences.acceptableSeniorities.some((seniority) =>
+    ["director", "vp", "c_level", "founder"].includes(seniority)
+  );
+  const titleMayBeUnderstated = Boolean(job.seniority && ["manager", "senior", "lead"].includes(job.seniority));
+  const companyMayLiftSeniority = job.companyMarketGrade === "global_enterprise" || job.companyMarketGrade === "enterprise";
+  return preferredHigherSeniority && titleMayBeUnderstated && companyMayLiftSeniority;
+}
+
+function ambiguityQuestionId(kind: string, job: JobRecord): string {
+  return `question-${slugifyIdentifier(`${kind}-${job.source.id}-${job.company}-${job.title}-${job.location ?? ""}`)}`;
+}
+
+function policyQuestionId(kind: string, value: string): string {
+  return `question-${slugifyIdentifier(`${kind}-${value}`)}`;
+}
+
+function locationPolicyTarget(location: string | undefined): string | undefined {
+  if (!location) return undefined;
+  const cleaned = normalizeWhitespace(location.replace(/[\u00b7|]/g, ",").replace(/,+/g, ","));
+  const normalized = cleaned.toLowerCase();
+  if (!normalized) return undefined;
+  if (["remote", "flexible remote", "flexible / remote", "worldwide", "anywhere"].includes(normalized)) {
+    return undefined;
+  }
+  return cleaned.length > 96 ? `${cleaned.slice(0, 93)}...` : cleaned;
+}
+
+function uniqueNormalizedTerms(values: readonly string[]): string[] {
+  const terms: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    terms.push(normalized);
+  }
+  return terms;
+}
+
+function slugifyIdentifier(value: string): string {
+  const slug = value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return slug.slice(0, 96) || "unknown";
+}
+
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").replace(/\s+,/g, ",").replace(/,\s*/g, ", ").trim();
 }
 
 function decisionRank(rankedJob: RankedJob): number {

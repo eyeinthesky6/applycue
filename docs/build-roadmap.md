@@ -336,6 +336,8 @@ target title anchor -> can enter today's preparation queue
 adjacent-only, description-only, or wrong-family role match -> skip unless the user explicitly targets it
 broad remote region that includes the user's authorized region -> do not hard-block at discovery/ranking time
 decision bucket -> fused ordering by backend priority, role fit, proof fit, source confidence, and recency
+local lexical retrieval -> extra fused list using boosted title/JD/source text
+reusable ambiguity prompts -> saved-question handoff for policy edge cases
 ```
 
 This keeps weak matches from filling application slots while still allowing explicit role pivots and plausible remote roles to remain reviewable. Default source generation also keeps adjacent-only terms out of active search queries and title positives; separate exploration lanes must be approved through user config.
@@ -347,6 +349,8 @@ hard gates -> source-quality filter -> rankJobs fused ordering -> local lexical 
 ```
 
 The first fused-ordering slice is implemented in `packages/ranker`. It must keep `apply -> review -> watch -> skip` ahead of any fused rank, so newer jobs, trusted sources, or future embedding matches cannot bypass hard user policy.
+
+The local lexical retrieval and first ambiguity prompt slices are also implemented. MiniSearch adds a boosted title/JD candidate list into `rankJobs`, and `buildAmbiguityPrompts` emits reusable policy questions for company-grade seniority, location/work authorization, work mode, employment type, and company-stage ambiguity. These prompts must be answered into editable user config; agents must not patch source code for one job.
 
 Dashboard parity improvement now in place:
 
@@ -394,9 +398,12 @@ Career OS parity / outcome-learning improvement now in place:
 
 ```text
 applications + scan history + outcome events -> source learning -> dashboard and chat summary
+fetched/kept/filtered jobs + outcomes -> source scorecards -> future source budget choices
 ```
 
 Career OS analyzes tracker/report outcomes to find patterns. ApplyCue now keeps the first version in structured contracts: outcome events live in `data/local/outcomes.jsonl`, the engine records them through `pnpm record-outcome`, and each run summarizes which sources are producing replies, interviews, offers, or rejections. This should later influence source weights and search expansion, but it does not expose raw scores as the product UI.
+
+Source scorecards now add the missing upstream view: fetched jobs, kept jobs, filtered jobs, prepared applications, precision, yield, and positive outcomes by source. Use this for backend source allocation and agent diagnostics, not as a user-facing worth score.
 
 Generated CVs in the manifest must stay full CVs, not extracts: contact, summary, skills, experience, selected impact, awards, education, DOCX/HTML/Markdown artifacts, and no empty employer headings.
 
@@ -428,9 +435,12 @@ Build order:
 12. Reverse ATS directory scan over public Greenhouse, Lever, and Ashby directories. Done.
 13. Workable, SmartRecruiters, BambooHR, Breezy, Recruitee, Pinpoint, Workday, Personio, and Rippling company ATS adapters. Done.
 14. The Muse no-key public jobs API adapter. Done.
-15. Crawl4AI adapter for public pages with no API.
-16. Browser-visible extraction for login-backed sources.
-17. Key-required APIs such as Adzuna only with user-owned credentials.
+15. Local lexical retrieval list in rank fusion. Done.
+16. Source scorecards in manifest, dashboard, and chat summary. Done.
+17. Reusable ambiguity prompts in manifest, dashboard, and chat summary. Done.
+18. Crawl4AI adapter for public pages with no API.
+19. Browser-visible extraction for login-backed sources.
+20. Key-required APIs such as Adzuna only with user-owned credentials.
 
 See `docs/prebuilt-providers-and-libraries.md`.
 

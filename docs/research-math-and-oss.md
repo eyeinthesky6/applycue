@@ -332,13 +332,13 @@ Owner: `packages/ranker`.
 
 `rankJobs` keeps `apply -> review -> watch -> skip` order first, then uses `fuseRankedLists` to order jobs inside each bucket using backend priority, role fit, proof fit, source confidence, and recency. This activates RRF without letting a new or trusted source outrank hard policy.
 
-4. Next: lexical retrieval index.
+4. Done: lexical retrieval index.
 
-Owner: `packages/discovery` or a small local index package if reuse becomes obvious.
+Owner: `packages/ranker`.
 
-Use MiniSearch first for local title/JD search with field boosts. Index normalized jobs from approved sources and produce a ranked candidate list for `fuseRankedLists`. Avoid adding embeddings until this works.
+`rankJobs` now builds a MiniSearch-backed local lexical list over normalized jobs and fuses it with backend priority, role fit, proof fit, source confidence, and recency. This gives title/JD keyword retrieval without adding embeddings yet, and still keeps hard decision buckets ahead of rank fusion.
 
-5. Next: source scorecards.
+5. Done: source scorecards.
 
 Owner: `packages/tracker` plus `packages/engine`.
 
@@ -348,9 +348,9 @@ Track per-source:
 fetched, kept, prepared, submitted, reply, interview, offer, rejection
 ```
 
-Use these only to allocate scan budget and order sources. Do not show a candidate-worth score to users.
+Run manifests, dashboards, and chat summaries now include source scorecards with fetched, kept, filtered, prepared, submitted, reply, interview, offer, rejection, precision, and yield. Use these only to allocate scan budget and order sources. Do not show a candidate-worth score to users.
 
-6. Next: ambiguity prompts from reusable policy.
+6. Done: first ambiguity prompts from reusable policy.
 
 Owner: `packages/ranker` for detection, `packages/engine` for handoff.
 
@@ -360,7 +360,7 @@ Ask only when the answer is low-confidence, high-impact, and reusable. Examples:
 - location policy: "Should onsite Gurgaon be allowed?"
 - source policy: "Should this unknown portal be allowed after fraud checks?"
 
-Store the answer in editable user config, not source code.
+`buildAmbiguityPrompts` now creates reusable pending questions for seniority/company-grade, location/work authorization, work mode, employment type, and company-stage ambiguity after a role-family match is plausible. The engine carries these into the run manifest, dashboard, and chat summary. Store the answer in editable user config, not source code.
 
 7. Later: embedding candidate list.
 

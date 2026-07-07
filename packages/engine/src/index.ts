@@ -10,6 +10,7 @@ import type {
   JobLiveState,
   JobRecord,
   OutcomeEvent,
+  PendingQuestion,
   ProgressApplicationItem,
   ProgressCvQualitySummary,
   ProgressJobDecisionItem,
@@ -17,6 +18,7 @@ import type {
   ProgressScanHistorySummary,
   ProgressSnapshot,
   ProgressSourceOutcomeSummary,
+  ProgressSourceScorecardSummary,
   ProgressSourceQualitySummary,
   RankedJob,
   ReconciliationReport,
@@ -49,8 +51,9 @@ import {
 } from "@applycue/discovery";
 import { normalizeJob, type RawJobInput } from "@applycue/normalizer";
 import { createProfile, getApplyCueProfileConfigPath, loadApplyCueConfig } from "@applycue/profile";
-import { rankJobs } from "@applycue/ranker";
+import { buildAmbiguityPrompts, rankJobs } from "@applycue/ranker";
 import {
+  buildSourceScorecardSummary,
   buildSourceOutcomeSummary,
   buildProgressSnapshot,
   createApplicationRecord,
@@ -74,12 +77,14 @@ export interface SampleBatchResult {
   jobDecisions: ProgressJobDecisionItem[];
   manifest: RunManifest;
   outputRoot: string;
+  pendingQuestions: PendingQuestion[];
   profile: UserProfile;
   progressItems: ProgressApplicationItem[];
   reconciliationReports: ReconciliationReport[];
   scanHistory?: ProgressScanHistorySummary;
   sourceOutcomes?: ProgressSourceOutcomeSummary;
   sourcePlan: SourcePlan;
+  sourceScorecards?: ProgressSourceScorecardSummary;
   sourceQuality?: ProgressSourceQualitySummary;
 }
 
@@ -108,6 +113,11 @@ export interface RunBatchOptions extends RunSampleBatchOptions {
   scanHistoryEntries?: ScanHistoryEntry[];
   scanHistory?: ProgressScanHistorySummary;
   scanHistoryPath?: string;
+  sourceScorecardJobs?: {
+    fetchedJobs: JobRecord[];
+    filteredJobs?: JobRecord[];
+    keptJobs: JobRecord[];
+  };
   sourcePlan?: SourcePlan;
   sourceQuality?: ProgressSourceQualitySummary;
 }
@@ -246,6 +256,11 @@ export async function runLocalOrSampleBatch(options: RunLocalBatchOptions = {}):
     scanHistoryEntries,
     scanHistory: scanHistory.summary,
     scanHistoryPath,
+    sourceScorecardJobs: {
+      fetchedJobs: discoveredJobs,
+      filteredJobs: sourceQuality.filtered.map((item) => item.job),
+      keptJobs: sourceQuality.jobs
+    },
     sourceQuality: sourceQuality.summary,
     ...(options.livenessVerifier ? { livenessVerifier: options.livenessVerifier } : {}),
     notes: [
@@ -456,6 +471,10 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
   const jobs = liveness?.jobs ?? options.jobs;
   const sourcePlan = options.sourcePlan ?? createSourcePlan(profile);
   const ranked = rankJobs(jobs, profile);
+  const pendingQuestions = buildAmbiguityPrompts(ranked, profile, {
+    createdAt: NOW,
+    limit: 5
+  });
   const batchLimit = Math.max(1, Math.floor(profile.applySettings.applicationsPerDay || 1));
   const applyReadyJobs = ranked.filter((rankedJob) => rankedJob.decision === "apply");
   const reviewFillJobs = ranked.filter((rankedJob) => rankedJob.decision === "review");
@@ -502,12 +521,22 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
         recordedJobs: writeFiles && options.scanHistoryPath ? scanHistoryEntries.length : 0
       }
     : undefined;
+  const combinedScanHistoryEntries = [...(options.scanHistoryEntries ?? []), ...scanHistoryEntries];
   const sourceOutcomes = buildSourceOutcomeSummary({
     applications,
     jobs,
     outcomeEvents: options.outcomeEvents ?? [],
-    scanHistoryEntries: [...(options.scanHistoryEntries ?? []), ...scanHistoryEntries],
+    scanHistoryEntries: combinedScanHistoryEntries,
     ...(options.outcomeEventsPath ? { eventPath: options.outcomeEventsPath } : {})
+  });
+  const sourceScorecards = buildSourceScorecardSummary({
+    applications,
+    fetchedJobs: options.sourceScorecardJobs?.fetchedJobs ?? jobs,
+    filteredJobs: options.sourceScorecardJobs?.filteredJobs ?? [],
+    jobs,
+    keptJobs: options.sourceScorecardJobs?.keptJobs ?? jobs,
+    outcomeEvents: options.outcomeEvents ?? [],
+    scanHistoryEntries: combinedScanHistoryEntries
   });
   const baseFiles = buildGeneratedFileManifests(
     options.runId,
@@ -564,6 +593,8 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
     ],
     ...(cvQuality ? { cvQuality } : {}),
     ...(scanHistory ? { scanHistory } : {}),
+    ...(pendingQuestions.length > 0 ? { pendingQuestions } : {}),
+    sourceScorecards,
     sourceOutcomes,
     ...(options.sourceQuality ? { sourceQuality: options.sourceQuality } : {})
   };
@@ -579,11 +610,13 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
       jobDecisions,
       jobs,
       manifest,
+      pendingQuestions,
       profile,
       progressItems,
       reconciliationReports,
       sourceOutcomes,
-      sourcePlan
+      sourcePlan,
+      sourceScorecards
     });
     if (options.scanHistoryPath) {
       await appendScanHistoryEntries(options.scanHistoryPath, scanHistoryEntries);
@@ -602,12 +635,14 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
     jobDecisions,
     manifest,
     outputRoot,
+    pendingQuestions,
     profile,
     progressItems,
     reconciliationReports,
     ...(scanHistory ? { scanHistory } : {}),
     sourceOutcomes,
     sourcePlan,
+    sourceScorecards,
     ...(options.sourceQuality ? { sourceQuality: options.sourceQuality } : {})
   };
 }
@@ -1188,6 +1223,7 @@ export function buildBatchProgressSnapshot(
   outputRoot: string,
   overlay: ProgressOutputOverlay = {}
 ): ProgressSnapshot {
+  const pendingQuestionItems = result.manifest.pendingQuestions ?? result.pendingQuestions ?? [];
   return buildProgressSnapshot({
     id: "sample-dashboard",
     periodStart: "2026-07-06",
@@ -1195,7 +1231,8 @@ export function buildBatchProgressSnapshot(
     applications: result.applications,
     items: result.progressItems,
     jobDecisions: result.jobDecisions,
-    pendingQuestions: overlay.pendingQuestions ?? 0,
+    pendingQuestions: (overlay.pendingQuestions ?? 0) + pendingQuestionItems.length,
+    pendingQuestionItems,
     nextActions: [...(overlay.nextActions ?? []), ...buildProgressNextActions(result)],
     notes: [...result.manifest.notes, ...(overlay.notes ?? [])],
     outputRoot,
@@ -1204,6 +1241,7 @@ export function buildBatchProgressSnapshot(
     ...(result.manifest.cvQuality ? { cvQuality: result.manifest.cvQuality } : {}),
     ...(overlay.livePreflight ? { livePreflight: overlay.livePreflight } : {}),
     ...(result.manifest.scanHistory ? { scanHistory: result.manifest.scanHistory } : {}),
+    ...(result.manifest.sourceScorecards ? { sourceScorecards: result.manifest.sourceScorecards } : {}),
     ...(result.manifest.sourceOutcomes ? { sourceOutcomes: result.manifest.sourceOutcomes } : {}),
     ...(result.manifest.sourceQuality ? { sourceQuality: result.manifest.sourceQuality } : {})
   });

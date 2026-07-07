@@ -4,10 +4,12 @@ import type {
   JobRecord,
   JobSource,
   OutcomeEvent,
+  PendingQuestion,
   ProgressApplicationItem,
   ProgressJobDecisionItem,
   ProgressSnapshot,
   ProgressSourceOutcomeSummary,
+  ProgressSourceScorecardSummary,
   ScanHistoryEntry
 } from "@applycue/core";
 
@@ -166,6 +168,59 @@ export function buildSourceOutcomeSummary(input: {
   return summary;
 }
 
+export function buildSourceScorecardSummary(input: {
+  applications: ApplicationRecord[];
+  fetchedJobs: JobRecord[];
+  filteredJobs?: JobRecord[];
+  jobs: JobRecord[];
+  keptJobs: JobRecord[];
+  outcomeEvents?: OutcomeEvent[];
+  scanHistoryEntries?: ScanHistoryEntry[];
+}): ProgressSourceScorecardSummary {
+  const buckets = new Map<string, SourceScorecardBucket>();
+  for (const job of input.fetchedJobs) ensureSourceScorecardBucket(buckets, sourceFromJob(job)).fetchedJobs += 1;
+  for (const job of input.keptJobs) ensureSourceScorecardBucket(buckets, sourceFromJob(job)).keptJobs += 1;
+  for (const job of input.filteredJobs ?? []) {
+    ensureSourceScorecardBucket(buckets, sourceFromJob(job)).filteredJobs += 1;
+  }
+
+  const sourceOutcomes = buildSourceOutcomeSummary({
+    applications: input.applications,
+    jobs: input.jobs,
+    outcomeEvents: input.outcomeEvents ?? [],
+    ...(input.scanHistoryEntries ? { scanHistoryEntries: input.scanHistoryEntries } : {})
+  });
+  for (const source of sourceOutcomes.sources) {
+    const bucket = ensureSourceScorecardBucket(buckets, source);
+    bucket.preparedApplications = source.preparedApplications;
+    bucket.submitted = source.submitted;
+    bucket.replies = source.replies;
+    bucket.interviews = source.interviews;
+    bucket.offers = source.offers;
+    bucket.rejections = source.rejections;
+    bucket.positiveOutcomes = source.positiveOutcomes;
+    if (source.lastOutcomeAt) bucket.lastOutcomeAt = source.lastOutcomeAt;
+  }
+
+  const sources = [...buckets.values()]
+    .map(toSourceScorecardItem)
+    .sort(compareSourceScorecardItems);
+
+  return {
+    fetchedJobs: sumSourceScorecardField(sources, "fetchedJobs"),
+    keptJobs: sumSourceScorecardField(sources, "keptJobs"),
+    filteredJobs: sumSourceScorecardField(sources, "filteredJobs"),
+    preparedApplications: sumSourceScorecardField(sources, "preparedApplications"),
+    submitted: sumSourceScorecardField(sources, "submitted"),
+    replies: sumSourceScorecardField(sources, "replies"),
+    interviews: sumSourceScorecardField(sources, "interviews"),
+    offers: sumSourceScorecardField(sources, "offers"),
+    rejections: sumSourceScorecardField(sources, "rejections"),
+    positiveOutcomes: sumSourceScorecardField(sources, "positiveOutcomes"),
+    sources
+  };
+}
+
 interface SourceIdentity {
   sourceId: string;
   sourceName: string;
@@ -181,6 +236,20 @@ interface ApplicationOutcomeRollup {
 
 interface SourceOutcomeBucket extends SourceIdentity {
   trackedApplications: number;
+  preparedApplications: number;
+  submitted: number;
+  replies: number;
+  interviews: number;
+  offers: number;
+  rejections: number;
+  positiveOutcomes: number;
+  lastOutcomeAt?: string;
+}
+
+interface SourceScorecardBucket extends SourceIdentity {
+  fetchedJobs: number;
+  keptJobs: number;
+  filteredJobs: number;
   preparedApplications: number;
   submitted: number;
   replies: number;
@@ -231,6 +300,30 @@ function ensureSourceOutcomeBucket(
   const bucket: SourceOutcomeBucket = {
     ...source,
     trackedApplications: 0,
+    preparedApplications: 0,
+    submitted: 0,
+    replies: 0,
+    interviews: 0,
+    offers: 0,
+    rejections: 0,
+    positiveOutcomes: 0
+  };
+  buckets.set(key, bucket);
+  return bucket;
+}
+
+function ensureSourceScorecardBucket(
+  buckets: Map<string, SourceScorecardBucket>,
+  source: SourceIdentity
+): SourceScorecardBucket {
+  const key = sourceIdentityKey(source);
+  const existing = buckets.get(key);
+  if (existing) return existing;
+  const bucket: SourceScorecardBucket = {
+    ...source,
+    fetchedJobs: 0,
+    keptJobs: 0,
+    filteredJobs: 0,
     preparedApplications: 0,
     submitted: 0,
     replies: 0,
@@ -309,6 +402,28 @@ function toSourceOutcomeItem(bucket: SourceOutcomeBucket): ProgressSourceOutcome
   return item;
 }
 
+function toSourceScorecardItem(bucket: SourceScorecardBucket): ProgressSourceScorecardSummary["sources"][number] {
+  const item: ProgressSourceScorecardSummary["sources"][number] = {
+    sourceId: bucket.sourceId,
+    sourceName: bucket.sourceName,
+    sourceKind: bucket.sourceKind,
+    fetchedJobs: bucket.fetchedJobs,
+    keptJobs: bucket.keptJobs,
+    filteredJobs: bucket.filteredJobs,
+    preparedApplications: bucket.preparedApplications,
+    submitted: bucket.submitted,
+    replies: bucket.replies,
+    interviews: bucket.interviews,
+    offers: bucket.offers,
+    rejections: bucket.rejections,
+    positiveOutcomes: bucket.positiveOutcomes,
+    precision: bucket.fetchedJobs > 0 ? roundRatio(bucket.keptJobs / bucket.fetchedJobs) : 0,
+    yield: bucket.fetchedJobs > 0 ? roundRatio(bucket.preparedApplications / bucket.fetchedJobs) : 0
+  };
+  if (bucket.lastOutcomeAt) item.lastOutcomeAt = bucket.lastOutcomeAt;
+  return item;
+}
+
 function compareSourceOutcomeItems(
   left: ProgressSourceOutcomeSummary["sources"][number],
   right: ProgressSourceOutcomeSummary["sources"][number]
@@ -322,9 +437,49 @@ function compareSourceOutcomeItems(
     left.sourceName.localeCompare(right.sourceName);
 }
 
+function compareSourceScorecardItems(
+  left: ProgressSourceScorecardSummary["sources"][number],
+  right: ProgressSourceScorecardSummary["sources"][number]
+): number {
+  return right.positiveOutcomes - left.positiveOutcomes ||
+    right.offers - left.offers ||
+    right.interviews - left.interviews ||
+    right.replies - left.replies ||
+    right.preparedApplications - left.preparedApplications ||
+    right.yield - left.yield ||
+    right.precision - left.precision ||
+    right.fetchedJobs - left.fetchedJobs ||
+    left.sourceName.localeCompare(right.sourceName);
+}
+
+function sourceIdentityKey(source: SourceIdentity): string {
+  return `${source.sourceKind}:${source.sourceId}`;
+}
+
+function roundRatio(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 function sumSourceOutcomeField(
   sources: ProgressSourceOutcomeSummary["sources"],
   field: "preparedApplications" | "submitted" | "replies" | "interviews" | "offers" | "rejections" | "positiveOutcomes"
+): number {
+  return sources.reduce((sum, source) => sum + source[field], 0);
+}
+
+function sumSourceScorecardField(
+  sources: ProgressSourceScorecardSummary["sources"],
+  field:
+    | "fetchedJobs"
+    | "keptJobs"
+    | "filteredJobs"
+    | "preparedApplications"
+    | "submitted"
+    | "replies"
+    | "interviews"
+    | "offers"
+    | "rejections"
+    | "positiveOutcomes"
 ): number {
   return sources.reduce((sum, source) => sum + source[field], 0);
 }
@@ -345,10 +500,13 @@ export function buildProgressSnapshot(input: {
   cvQuality?: ProgressSnapshot["cvQuality"];
   jobDecisions?: ProgressJobDecisionItem[];
   livePreflight?: ProgressSnapshot["livePreflight"];
+  pendingQuestionItems?: PendingQuestion[];
   scanHistory?: ProgressSnapshot["scanHistory"];
+  sourceScorecards?: ProgressSnapshot["sourceScorecards"];
   sourceOutcomes?: ProgressSnapshot["sourceOutcomes"];
   sourceQuality?: ProgressSnapshot["sourceQuality"];
 }): ProgressSnapshot {
+  const pendingQuestionItems = input.pendingQuestionItems ?? [];
   const snapshot: ProgressSnapshot = {
     id: input.id,
     generatedAt: input.generatedAt ?? new Date().toISOString(),
@@ -359,13 +517,15 @@ export function buildProgressSnapshot(input: {
       input.applications.map((application) => application.status)
     ),
     items: input.items ?? [],
-    pendingQuestions: input.pendingQuestions ?? 0,
+    pendingQuestions: input.pendingQuestions ?? pendingQuestionItems.length,
     nextActions: input.nextActions ?? [],
     notes: input.notes ?? [],
     ...(input.cvQuality ? { cvQuality: input.cvQuality } : {}),
     jobDecisions: input.jobDecisions ?? [],
     ...(input.livePreflight ? { livePreflight: input.livePreflight } : {}),
+    ...(pendingQuestionItems.length > 0 ? { pendingQuestionItems } : {}),
     ...(input.scanHistory ? { scanHistory: input.scanHistory } : {}),
+    ...(input.sourceScorecards ? { sourceScorecards: input.sourceScorecards } : {}),
     ...(input.sourceOutcomes ? { sourceOutcomes: input.sourceOutcomes } : {}),
     ...(input.sourceQuality ? { sourceQuality: input.sourceQuality } : {})
   };
@@ -486,6 +646,72 @@ function renderSourceQuality(snapshot: ProgressSnapshot): string {
         </div>
       </div>
   </section>`;
+}
+
+function renderSourceScorecards(snapshot: ProgressSnapshot): string {
+  if (!snapshot.sourceScorecards) return "";
+  const scorecards = snapshot.sourceScorecards;
+  const cards = [
+    {
+      label: "Fetched",
+      value: scorecards.fetchedJobs,
+      tone: "neutral",
+      helper: "Jobs gathered by source"
+    },
+    {
+      label: "Prepared",
+      value: scorecards.preparedApplications,
+      tone: scorecards.preparedApplications > 0 ? "ready" : "neutral",
+      helper: "CV work created"
+    },
+    {
+      label: "Positive",
+      value: scorecards.positiveOutcomes,
+      tone: scorecards.positiveOutcomes > 0 ? "ready" : "neutral",
+      helper: "Replies, interviews, or offers"
+    }
+  ];
+
+  return `<section>
+      <div class="section-head">
+        <h2>Source Scorecards</h2>
+        <p>Which sources are worth spending future search effort on.</p>
+      </div>
+      <div class="source-quality-layout">
+        ${cards.map(renderStatCard).join("")}
+        <div class="reason-panel">
+          <h3>Top Sources</h3>
+          ${renderTopSourceScorecards(scorecards.sources)}
+        </div>
+      </div>
+    </section>`;
+}
+
+function renderTopSourceScorecards(sources: ProgressSourceScorecardSummary["sources"]): string {
+  if (sources.length === 0) return `<p class="empty-state">No source scorecard data yet.</p>`;
+  return `<div class="signal-list">${sources
+    .slice(0, 5)
+    .map((source) =>
+      `<div>${escapeHtml(source.sourceName)}: ${source.keptJobs}/${source.fetchedJobs} kept, ${source.preparedApplications} prepared, ${formatPercent(source.precision)} kept rate, ${source.positiveOutcomes} positive</div>`
+    )
+    .join("")}</div>`;
+}
+
+function renderPendingQuestions(snapshot: ProgressSnapshot): string {
+  const questions = snapshot.pendingQuestionItems ?? [];
+  if (questions.length === 0) return "";
+  return `<section>
+      <div class="section-head">
+        <h2>Pending Questions</h2>
+        <p>Reusable choices the agent should ask before changing saved preferences.</p>
+      </div>
+      <div class="signal-list">${questions
+        .slice(0, 5)
+        .map((question) =>
+          `<div><strong>${escapeHtml(question.question)}</strong><br><span class="muted">${escapeHtml(question.reason)}</span></div>`
+        )
+        .join("")}</div>
+    </section>`;
 }
 
 function renderCvQuality(snapshot: ProgressSnapshot): string {
@@ -892,6 +1118,10 @@ function humanizeIdentifier(value: string): string {
     .join(" ");
 }
 
+function formatPercent(value: number): string {
+  return `${Math.round(value * 100)}%`;
+}
+
 export function renderProgressDashboardHtml(snapshot: ProgressSnapshot): string {
   const meta = renderMeta(snapshot);
   const applicationItems = renderApplicationItems(snapshot.items);
@@ -899,9 +1129,11 @@ export function renderProgressDashboardHtml(snapshot: ProgressSnapshot): string 
   const statusCards = renderStatusCards(snapshot);
   const scanHistory = renderScanHistory(snapshot);
   const sourceOutcomes = renderSourceOutcomes(snapshot);
+  const sourceScorecards = renderSourceScorecards(snapshot);
   const sourceQuality = renderSourceQuality(snapshot);
   const cvQuality = renderCvQuality(snapshot);
   const livePreflight = renderLivePreflight(snapshot);
+  const pendingQuestions = renderPendingQuestions(snapshot);
   const decisionSummary = renderDecisionSummary(snapshot.jobDecisions ?? []);
   const actions = snapshot.nextActions.map((action) => `<li>${escapeHtml(action)}</li>`).join("");
   const notes = snapshot.notes.map((note) => `<li>${escapeHtml(note)}</li>`).join("");
@@ -940,7 +1172,7 @@ export function renderProgressDashboardHtml(snapshot: ProgressSnapshot): string 
           detail: "Check the CV, reconciliation, browser plan, and receipt for each role."
         };
   const runWindow = `${escapeHtml(snapshot.periodStart)} to ${escapeHtml(snapshot.periodEnd)}`;
-  const diagnosticBlocks = [livePreflight, sourceQuality, cvQuality, scanHistory, sourceOutcomes].filter(Boolean).join("");
+  const diagnosticBlocks = [livePreflight, pendingQuestions, sourceQuality, sourceScorecards, cvQuality, scanHistory, sourceOutcomes].filter(Boolean).join("");
   const statusLine = [
     `${preparedCount} prepared`,
     `${cvCount} CVs`,
@@ -1327,6 +1559,7 @@ export function renderProgressChatSummaryMarkdown(snapshot: ProgressSnapshot): s
   const submittedCount = snapshot.applications.submitted + snapshot.applications.confirmation_received;
   const cvReadyCount = snapshot.applications.cv_ready;
   const readyToApplyCount = snapshot.items.filter((item) => item.canAutoSubmit).length;
+  const pendingQuestionItems = snapshot.pendingQuestionItems ?? [];
   const livePendingQuestions = snapshot.livePreflight?.status === "pause"
     ? snapshot.livePreflight.answerPromptCount
     : 0;
@@ -1351,6 +1584,16 @@ export function renderProgressChatSummaryMarkdown(snapshot: ProgressSnapshot): s
         ""
       ].join("\n")
     : "";
+  const pendingQuestionSection = pendingQuestionItems.length > 0
+    ? [
+        "## Pending Questions",
+        "",
+        ...pendingQuestionItems.slice(0, 5).map((question) =>
+          `- ${escapeMarkdownLine(question.question)} Reason: ${escapeMarkdownLine(question.reason)}`
+        ),
+        ""
+      ].join("\n")
+    : "";
   const sourceQuality = snapshot.sourceQuality
     ? [
         "## Source Quality",
@@ -1359,6 +1602,19 @@ export function renderProgressChatSummaryMarkdown(snapshot: ProgressSnapshot): s
         `- Kept for ranking: ${snapshot.sourceQuality.keptJobs}`,
         `- Skipped before CV work: ${snapshot.sourceQuality.filteredJobs}`,
         `- Skip reasons: ${snapshot.sourceQuality.byReason.title} title, ${snapshot.sourceQuality.byReason.location} location, ${snapshot.sourceQuality.byReason.content} content`,
+        ""
+      ].join("\n")
+    : "";
+  const sourceScorecards = snapshot.sourceScorecards
+    ? [
+        "## Source Scorecards",
+        "",
+        `- Fetched jobs: ${snapshot.sourceScorecards.fetchedJobs}`,
+        `- Kept jobs: ${snapshot.sourceScorecards.keptJobs}`,
+        `- Filtered jobs: ${snapshot.sourceScorecards.filteredJobs}`,
+        `- Prepared applications: ${snapshot.sourceScorecards.preparedApplications}`,
+        `- Positive outcomes: ${snapshot.sourceScorecards.positiveOutcomes}`,
+        ...renderSourceScorecardSummaryLines(snapshot.sourceScorecards),
         ""
       ].join("\n")
     : "";
@@ -1433,7 +1689,7 @@ Period: ${escapeMarkdownLine(snapshot.periodStart)} to ${escapeMarkdownLine(snap
 - Submitted or confirmed: ${submittedCount}
 - Pending questions: ${pendingQuestionCount}
 
-${livePreflight}${sourceQuality}${cvQuality}${scanHistory}${sourceOutcomes}## Prepared Queue
+${livePreflight}${pendingQuestionSection}${sourceQuality}${sourceScorecards}${cvQuality}${scanHistory}${sourceOutcomes}## Prepared Queue
 
 ${preparedQueue}
 ## Skipped Or Watch
@@ -1453,6 +1709,13 @@ function renderSourceOutcomeSummaryLines(sourceOutcomes: ProgressSourceOutcomeSu
   if (sourceOutcomes.sources.length === 0) return ["- No source outcome data recorded yet."];
   return sourceOutcomes.sources.slice(0, 5).map((source) =>
     `- ${escapeMarkdownLine(source.sourceName)}: ${source.preparedApplications} prepared, ${source.replies} replies, ${source.interviews} interviews, ${source.offers} offers`
+  );
+}
+
+function renderSourceScorecardSummaryLines(scorecards: ProgressSourceScorecardSummary): string[] {
+  if (scorecards.sources.length === 0) return ["- No source scorecard data recorded yet."];
+  return scorecards.sources.slice(0, 5).map((source) =>
+    `- ${escapeMarkdownLine(source.sourceName)}: ${source.keptJobs}/${source.fetchedJobs} kept, ${source.preparedApplications} prepared, ${formatPercent(source.precision)} kept rate, ${source.positiveOutcomes} positive`
   );
 }
 

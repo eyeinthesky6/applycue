@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { JobRecord, UserPreferences, UserProfile } from "@applycue/core";
-import { buildRelaxPlan, fuseRankedLists, rankJob, rankJobs } from "./index.js";
+import { buildAmbiguityPrompts, buildRelaxPlan, fuseRankedLists, rankJob, rankJobs } from "./index.js";
 
 describe("fuseRankedLists", () => {
   it("combines different ranked signals without comparing raw score scales", () => {
@@ -71,6 +71,66 @@ describe("rankJobs", () => {
     expect(ranked.map((item) => item.job.id)).toEqual(["apply-older", "review-newer"]);
     expect(ranked[0]?.decision).toBe("apply");
     expect(ranked[1]?.decision).toBe("review");
+  });
+
+  it("creates reusable ambiguity prompts for company-grade seniority edge cases", () => {
+    const profile = productProfileForOrdering();
+    profile.preferences.targetRoleTerms = ["product manager"];
+    profile.preferences.targetSeniorities = ["vp"];
+    profile.preferences.acceptableSeniorities = ["vp"];
+    const job = productJobForOrdering({
+      id: "global-product-manager",
+      company: "Global Enterprise Co",
+      title: "Product Manager",
+      description: "Own product strategy for fintech platforms.",
+      seniority: "manager",
+      companyMarketGrade: "enterprise"
+    });
+
+    const prompts = buildAmbiguityPrompts(rankJobs([job], profile), profile, {
+      createdAt: "2026-07-07T00:00:00.000Z"
+    });
+
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]?.question).toContain("count as one of your target seniority levels");
+    expect(prompts[0]?.blocksPipeline).toBe(false);
+  });
+
+  it("deduplicates reusable location prompts and ignores generic remote text", () => {
+    const profile = productProfileForOrdering();
+    profile.preferences.targetRoleTerms = ["product manager"];
+    profile.preferences.acceptableSeniorities = ["senior", "director", "vp"];
+    const genericRemote = productJobForOrdering({
+      id: "generic-remote",
+      title: "Senior Product Manager",
+      description: "Own product strategy for fintech platforms.",
+      seniority: "senior",
+      location: "Remote"
+    });
+    const remoteEurope = productJobForOrdering({
+      id: "remote-europe-1",
+      title: "Senior Product Manager",
+      description: "Own product strategy for fintech platforms.",
+      seniority: "senior",
+      location: "Remote Europe"
+    });
+    const remoteEuropeDuplicate = productJobForOrdering({
+      id: "remote-europe-2",
+      title: "Senior Product Manager",
+      description: "Own product strategy for fintech platforms.",
+      seniority: "senior",
+      location: "Remote Europe"
+    });
+
+    const prompts = buildAmbiguityPrompts(
+      rankJobs([genericRemote, remoteEurope, remoteEuropeDuplicate], profile),
+      profile,
+      { createdAt: "2026-07-07T00:00:00.000Z" }
+    );
+
+    expect(prompts.map((prompt) => prompt.question)).toEqual([
+      "Should roles in Remote Europe be allowed for your future searches and applications?"
+    ]);
   });
 });
 

@@ -349,7 +349,9 @@ Record outcomes through the product command:
 pnpm record-outcome -- --application <application-id> --type reply --note "Recruiter replied"
 ```
 
-The engine reads application records, scan history, and outcome events to produce Source Learning in the run manifest, dashboard, and chat summary. Use it to decide which sources are producing replies, interviews, offers, or rejections. Do not expose it as a candidate-worth score.
+The engine reads application records, scan history, and outcome events to produce Source Learning in the run manifest, dashboard, and chat summary. It also produces Source Scorecards from fetched, kept, filtered, prepared, and outcome data. Use these to decide which sources deserve more scan budget. Do not expose them as a candidate-worth score.
+
+When the run manifest or dashboard includes pending questions, ask the user in chat and save reusable answers into editable profile config. Do not patch source code, generated manifests, generated dashboards, or generated source plans to resolve one ambiguity.
 
 ### Batch Orchestration
 

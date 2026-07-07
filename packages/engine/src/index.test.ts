@@ -900,6 +900,10 @@ Lead product strategy and automation.
         content: 0
       }
     });
+    expect(result.manifest.sourceScorecards?.fetchedJobs).toBe(2);
+    expect(result.manifest.sourceScorecards?.keptJobs).toBe(1);
+    expect(result.manifest.sourceScorecards?.filteredJobs).toBe(1);
+    expect(result.manifest.sourceScorecards?.preparedApplications).toBe(1);
   });
 
   it("uses scan history to avoid repeated prepared job-board roles in automation runs", async () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildSourceScorecardSummary,
   buildSourceOutcomeSummary,
   buildProgressSnapshot,
   createApplicationRecord,
@@ -80,7 +81,15 @@ describe("progress dashboard", () => {
       outputRoot: "C:\\Users\\Example\\.applycue\\profiles\\default",
       profileId: "profile-1",
       runId: "run-1",
-      pendingQuestions: 1,
+      pendingQuestionItems: [
+        {
+          id: "question-seniority-example",
+          question: "Should Product Manager at Global Enterprise Co count as target seniority?",
+          reason: "Company title ladders can differ by employer size.",
+          blocksPipeline: false,
+          createdAt: "2026-07-07T00:00:00.000Z"
+        }
+      ],
       nextActions: ["Review one compensation question"],
       notes: ["First local dashboard run"],
       cvQuality: {
@@ -144,6 +153,38 @@ describe("progress dashboard", () => {
           }
         ]
       },
+      sourceScorecards: {
+        fetchedJobs: 12,
+        keptJobs: 4,
+        filteredJobs: 8,
+        preparedApplications: 2,
+        submitted: 2,
+        replies: 1,
+        interviews: 1,
+        offers: 0,
+        rejections: 1,
+        positiveOutcomes: 1,
+        sources: [
+          {
+            sourceId: "jobspy-product",
+            sourceName: "JobSpy product search",
+            sourceKind: "job_board",
+            fetchedJobs: 12,
+            keptJobs: 4,
+            filteredJobs: 8,
+            preparedApplications: 2,
+            submitted: 2,
+            replies: 1,
+            interviews: 1,
+            offers: 0,
+            rejections: 1,
+            positiveOutcomes: 1,
+            precision: 0.33,
+            yield: 0.17,
+            lastOutcomeAt: "2026-07-07T00:00:00.000Z"
+          }
+        ]
+      },
       sourceQuality: {
         inputJobs: 12,
         keptJobs: 4,
@@ -167,6 +208,8 @@ describe("progress dashboard", () => {
     expect(html).toContain("Live browser preflight paused for Example Fintech");
     expect(html).toContain("Answer review");
     expect(html).toContain("What is your notice period?");
+    expect(html).toContain("Pending Questions");
+    expect(html).toContain("Should Product Manager at Global Enterprise Co count as target seniority?");
     expect(html).toContain("Source Quality");
     expect(html).toContain("12");
     expect(html).toContain("4");
@@ -174,6 +217,9 @@ describe("progress dashboard", () => {
     expect(html).toContain("6 title");
     expect(html).toContain("1 location");
     expect(html).toContain("1 content");
+    expect(html).toContain("Source Scorecards");
+    expect(html).toContain("4/12 kept");
+    expect(html).toContain("33% kept rate");
     expect(html).toContain("CV Quality");
     expect(html).toContain("Full-CV evidence");
     expect(html).toContain("Generated CVs");
@@ -220,7 +266,11 @@ describe("progress dashboard", () => {
     expect(summary).toContain("Live Preflight");
     expect(summary).toContain("Status: PAUSE");
     expect(summary).toContain("Answer review: outputs/live-preflight/live-answer-prompts.html");
+    expect(summary).toContain("Pending Questions");
+    expect(summary).toContain("Should Product Manager at Global Enterprise Co count as target seniority?");
     expect(summary).toContain("Source Quality");
+    expect(summary).toContain("Source Scorecards");
+    expect(summary).toContain("JobSpy product search: 4/12 kept, 2 prepared, 33% kept rate, 1 positive");
     expect(summary).toContain("CV Quality");
     expect(summary).toContain("Minimum generated CV size: 4700 chars (65% of base CV)");
     expect(summary).toContain("Thinnest employer section: 3 bullet(s)");
@@ -324,5 +374,64 @@ describe("progress dashboard", () => {
     expect(summary.sources[0]?.positiveOutcomes).toBe(1);
     expect(summary.sources[1]?.sourceName).toBe("Remotive product search");
     expect(summary.sources[1]?.rejections).toBe(1);
+  });
+
+  it("builds source scorecards from fetched, filtered, prepared, and outcome data", () => {
+    const keptJob: Parameters<typeof buildSourceScorecardSummary>[0]["keptJobs"][number] = {
+      id: "job-1",
+      source: {
+        id: "jobspy-product",
+        kind: "job_board",
+        name: "JobSpy product search"
+      },
+      company: "Example Fintech",
+      title: "Head of Product",
+      url: "https://example.com/job-1",
+      description: "Lead product strategy.",
+      workMode: "remote",
+      discoveredAt: "2026-07-06T00:00:00.000Z",
+      liveState: "live"
+    };
+    const filteredJob = {
+      ...keptJob,
+      id: "job-2",
+      title: "Sales Manager",
+      url: "https://example.com/job-2"
+    };
+
+    const scorecards = buildSourceScorecardSummary({
+      applications: [
+        {
+          id: "app-1",
+          jobId: "job-1",
+          status: "submitted",
+          notes: [],
+          createdAt: "2026-07-06T00:00:00.000Z",
+          updatedAt: "2026-07-06T12:00:00.000Z"
+        }
+      ],
+      fetchedJobs: [keptJob, filteredJob],
+      filteredJobs: [filteredJob],
+      jobs: [keptJob],
+      keptJobs: [keptJob],
+      outcomeEvents: [
+        {
+          id: "event-reply",
+          applicationId: "app-1",
+          type: "reply",
+          note: "Recruiter replied.",
+          occurredAt: "2026-07-07T00:00:00.000Z"
+        }
+      ]
+    });
+
+    expect(scorecards.fetchedJobs).toBe(2);
+    expect(scorecards.keptJobs).toBe(1);
+    expect(scorecards.filteredJobs).toBe(1);
+    expect(scorecards.preparedApplications).toBe(1);
+    expect(scorecards.replies).toBe(1);
+    expect(scorecards.positiveOutcomes).toBe(1);
+    expect(scorecards.sources[0]?.precision).toBe(0.5);
+    expect(scorecards.sources[0]?.yield).toBe(0.5);
   });
 });

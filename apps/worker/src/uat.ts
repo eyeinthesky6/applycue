@@ -223,6 +223,17 @@ async function buildChecks(
         : "No source outcome summary was written to the manifest."
     },
     {
+      id: "source-scorecards",
+      label: "Source Scorecards",
+      status: batch.manifest.sourceScorecards &&
+        batch.manifest.sourceScorecards.fetchedJobs >= batch.jobs.length
+        ? "pass"
+        : "fail",
+      detail: batch.manifest.sourceScorecards
+        ? `${batch.manifest.sourceScorecards.fetchedJobs} fetched, ${batch.manifest.sourceScorecards.keptJobs} kept, ${batch.manifest.sourceScorecards.preparedApplications} prepared.`
+        : "No source scorecard summary was written to the manifest."
+    },
+    {
       id: "batch-volume",
       label: "Review Batch Volume",
       status: batch.applications.length >= configuredApplicationsPerDay(batch) ? "pass" : "warn",
@@ -254,6 +265,7 @@ async function writeRunViewsWithBrowserReceipts(
   summaryPath: string
 ): Promise<void> {
   const progressItems = attachBrowserReceipts(batch.progressItems, browserDryRuns);
+  const pendingQuestionItems = batch.manifest.pendingQuestions ?? batch.pendingQuestions ?? [];
   const snapshot = buildProgressSnapshot({
     id: "sample-dashboard",
     periodStart: "2026-07-06",
@@ -261,7 +273,8 @@ async function writeRunViewsWithBrowserReceipts(
     applications: batch.applications,
     items: progressItems,
     jobDecisions: batch.jobDecisions,
-    pendingQuestions: 0,
+    pendingQuestions: pendingQuestionItems.length,
+    pendingQuestionItems,
     nextActions: buildUatProgressNextActions(batch),
     notes: [
       ...batch.manifest.notes,
@@ -272,6 +285,7 @@ async function writeRunViewsWithBrowserReceipts(
     runId: batch.manifest.id,
     ...(batch.manifest.cvQuality ? { cvQuality: batch.manifest.cvQuality } : {}),
     ...(batch.manifest.scanHistory ? { scanHistory: batch.manifest.scanHistory } : {}),
+    ...(batch.manifest.sourceScorecards ? { sourceScorecards: batch.manifest.sourceScorecards } : {}),
     ...(batch.manifest.sourceOutcomes ? { sourceOutcomes: batch.manifest.sourceOutcomes } : {}),
     ...(batch.manifest.sourceQuality ? { sourceQuality: batch.manifest.sourceQuality } : {})
   });
