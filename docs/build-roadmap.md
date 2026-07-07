@@ -335,9 +335,18 @@ Ranker parity improvement now in place:
 target title anchor -> can enter today's preparation queue
 adjacent-only, description-only, or wrong-family role match -> skip unless the user explicitly targets it
 broad remote region that includes the user's authorized region -> do not hard-block at discovery/ranking time
+decision bucket -> fused ordering by backend priority, role fit, proof fit, source confidence, and recency
 ```
 
 This keeps weak matches from filling application slots while still allowing explicit role pivots and plausible remote roles to remain reviewable. Default source generation also keeps adjacent-only terms out of active search queries and title positives; separate exploration lanes must be approved through user config.
+
+Matching upgrade path:
+
+```text
+hard gates -> source-quality filter -> rankJobs fused ordering -> local lexical retrieval list -> source scorecards -> ambiguity prompts -> embeddings/cross-encoder -> learning-to-rank
+```
+
+The first fused-ordering slice is implemented in `packages/ranker`. It must keep `apply -> review -> watch -> skip` ahead of any fused rank, so newer jobs, trusted sources, or future embedding matches cannot bypass hard user policy.
 
 Dashboard parity improvement now in place:
 

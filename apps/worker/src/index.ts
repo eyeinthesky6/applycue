@@ -15,7 +15,7 @@ import {
   runLocalOrSampleBatch
 } from "@applycue/engine";
 import { getApplyCueProfileDir } from "@applycue/profile";
-import { rankJob } from "@applycue/ranker";
+import { rankJobs } from "@applycue/ranker";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -27,9 +27,7 @@ import { formatApplyCueStatus, readApplyCueStatus, type ApplyCueStatusOptions } 
 import { runApplyCueUat } from "./uat.js";
 
 export function rankDiscoveredJobs(jobs: JobRecord[], profile: UserProfile): RankedJob[] {
-  return jobs
-    .map((job) => rankJob(job, profile))
-    .sort((a, b) => b.priority - a.priority);
+  return rankJobs(jobs, profile);
 }
 
 export async function runFirstBuild(): Promise<void> {

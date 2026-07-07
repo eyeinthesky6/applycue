@@ -310,6 +310,82 @@ TOPSIS/AHP-style multi-criteria ranking can help explain soft tradeoffs, but sho
 - Cross-encoder rerank: use Sentence Transformers from a Python sidecar only after top-N candidates are already filtered.
 - Learning-to-rank: use XGBoost or LightGBM later, after outcome labels exist.
 
+### Implementation Upgrade Path
+
+Keep this order. Do not skip hard gates and do not make the user-facing product about scores.
+
+1. Done: deterministic hard gates.
+
+Owner: `packages/ranker`.
+
+Hard blockers run before ranking. Wrong role family, blocked companies, explicit seniority mismatch, junior experience ranges for senior profiles, work-mode conflicts, and work-authorization conflicts must not become "low score" jobs.
+
+2. Done: source-quality filter before ranking.
+
+Owner: `packages/discovery`.
+
+Broad sources should first pass generated title, location, and content filters from `sourcePlan.searchProfile`. This keeps noisy boards and reverse ATS scans from flooding the batch.
+
+3. Done: fused ordering inside decision buckets.
+
+Owner: `packages/ranker`.
+
+`rankJobs` keeps `apply -> review -> watch -> skip` order first, then uses `fuseRankedLists` to order jobs inside each bucket using backend priority, role fit, proof fit, source confidence, and recency. This activates RRF without letting a new or trusted source outrank hard policy.
+
+4. Next: lexical retrieval index.
+
+Owner: `packages/discovery` or a small local index package if reuse becomes obvious.
+
+Use MiniSearch first for local title/JD search with field boosts. Index normalized jobs from approved sources and produce a ranked candidate list for `fuseRankedLists`. Avoid adding embeddings until this works.
+
+5. Next: source scorecards.
+
+Owner: `packages/tracker` plus `packages/engine`.
+
+Track per-source:
+
+```text
+fetched, kept, prepared, submitted, reply, interview, offer, rejection
+```
+
+Use these only to allocate scan budget and order sources. Do not show a candidate-worth score to users.
+
+6. Next: ambiguity prompts from reusable policy.
+
+Owner: `packages/ranker` for detection, `packages/engine` for handoff.
+
+Ask only when the answer is low-confidence, high-impact, and reusable. Examples:
+
+- company seniority mapping: "Should Product Manager at global enterprises count as director-level for you?"
+- location policy: "Should onsite Gurgaon be allowed?"
+- source policy: "Should this unknown portal be allowed after fraud checks?"
+
+Store the answer in editable user config, not source code.
+
+7. Later: embedding candidate list.
+
+Owner: optional Python sidecar or local model adapter.
+
+Use embeddings only to create another retrieval list for RRF. Embeddings can find adjacent wording. They cannot prove a CV claim.
+
+8. Later: cross-encoder top-N rerank.
+
+Owner: optional Python sidecar.
+
+Run only after hard gates and local retrieval reduce the batch to roughly 50-100 candidate jobs.
+
+9. Later: learning-to-rank from outcomes.
+
+Owner: offline learning job.
+
+Train only after enough outcome labels exist. Labels should come from real events:
+
+```text
+skip < prepared < submitted < reply < interview < offer
+```
+
+Use this for ordering and source budget, not CV truth.
+
 ### Sources Checked
 
 - LinkedIn KDD 2024 job matching paper: retrieval plus ranking, standardized entities, inverted indexes, learned retrieval, and feedback rules.

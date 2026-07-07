@@ -49,7 +49,7 @@ import {
 } from "@applycue/discovery";
 import { normalizeJob, type RawJobInput } from "@applycue/normalizer";
 import { createProfile, getApplyCueProfileConfigPath, loadApplyCueConfig } from "@applycue/profile";
-import { rankJob } from "@applycue/ranker";
+import { rankJobs } from "@applycue/ranker";
 import {
   buildSourceOutcomeSummary,
   buildProgressSnapshot,
@@ -455,7 +455,7 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
     : undefined;
   const jobs = liveness?.jobs ?? options.jobs;
   const sourcePlan = options.sourcePlan ?? createSourcePlan(profile);
-  const ranked = jobs.map((job) => rankJob(job, profile)).sort((a, b) => b.priority - a.priority);
+  const ranked = rankJobs(jobs, profile);
   const batchLimit = Math.max(1, Math.floor(profile.applySettings.applicationsPerDay || 1));
   const applyReadyJobs = ranked.filter((rankedJob) => rankedJob.decision === "apply");
   const reviewFillJobs = ranked.filter((rankedJob) => rankedJob.decision === "review");

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { JobRecord, UserPreferences, UserProfile } from "@applycue/core";
-import { buildRelaxPlan, fuseRankedLists, rankJob } from "./index.js";
+import { buildRelaxPlan, fuseRankedLists, rankJob, rankJobs } from "./index.js";
 
 describe("fuseRankedLists", () => {
   it("combines different ranked signals without comparing raw score scales", () => {
@@ -44,6 +44,135 @@ describe("fuseRankedLists", () => {
     expect(fused).toHaveLength(2);
   });
 });
+
+describe("rankJobs", () => {
+  it("keeps apply-ready jobs ahead of review jobs before applying fused ordering", () => {
+    const profile = productProfileForOrdering({
+      applySettings: {
+        minimumFitToApply: 0.75
+      }
+    });
+    const reviewJob = productJobForOrdering({
+      id: "review-newer",
+      company: "General Co",
+      title: "Head of Product",
+      description: "Lead general product rituals.",
+      discoveredAt: "2026-07-07T00:00:00.000Z"
+    });
+    const applyJob = productJobForOrdering({
+      id: "apply-older",
+      title: "Head of Product",
+      description: "Lead product strategy, roadmap, and fintech growth.",
+      discoveredAt: "2026-07-01T00:00:00.000Z"
+    });
+
+    const ranked = rankJobs([reviewJob, applyJob], profile);
+
+    expect(ranked.map((item) => item.job.id)).toEqual(["apply-older", "review-newer"]);
+    expect(ranked[0]?.decision).toBe("apply");
+    expect(ranked[1]?.decision).toBe("review");
+  });
+});
+
+function productProfileForOrdering(input: {
+  applySettings?: Partial<UserProfile["applySettings"]>;
+} = {}): UserProfile {
+  return {
+    id: "ordering-user",
+    pastEmployers: [],
+    preferences: {
+      targetRoleTerms: ["head of product"],
+      adjacentRoleTerms: [],
+      targetIndustries: ["fintech"],
+      excludedIndustries: [],
+      preferredLocations: ["remote india"],
+      extraLocations: [],
+      askBeforeLocations: [],
+      acceptableWorkModes: ["remote", "hybrid"],
+      targetSeniorities: ["director"],
+      acceptableSeniorities: ["director", "vp"],
+      employmentTypes: ["full_time"],
+      companyStages: [],
+      preferredCompanyNames: [],
+      blockedCompanyNames: [],
+      noGoRoleTerms: [],
+      requiredKeywords: [],
+      niceToHaveKeywords: ["strategy", "roadmap"],
+      excludedKeywords: [],
+      workAuthorizationCountries: ["india"],
+      preferredTimezones: []
+    },
+    searchSettings: {
+      searchCountries: ["india"],
+      searchAreas: ["remote india"],
+      remoteRegions: ["india"],
+      agentMayExpandSearchArea: true,
+      informUserOnSearchAreaChange: true,
+      standardHoursOnly: true,
+      preferredShifts: ["standard"],
+      askBeforeShifts: []
+    },
+    sourceSettings: {
+      allowLoggedInBrowserAccess: false,
+      defaultPortalApplyPolicy: "ask",
+      trustedPortals: [],
+      askBeforePortals: [],
+      blockedPortals: [],
+      fraudSignalTerms: []
+    },
+    applySettings: {
+      mode: "daily",
+      applicationsPerDay: 2,
+      minimumFitToApply: 0.75,
+      allowedSourceKinds: ["job_board", "manual"],
+      messagePolicy: "draft_only",
+      pauseReasons: ["missing_required_answer"],
+      trackEmailReplies: false,
+      allowRecruiterDmDrafts: false,
+      ...input.applySettings
+    },
+    matchSettings: {
+      range: "normal",
+      widenIfFewerThan: 20,
+      relaxOrder: ["source", "title", "industry", "location", "recency", "minimum_fit"],
+      minimumFitFloor: 0.5,
+      allowAdjacentTitles: true,
+      allowAdjacentIndustries: true
+    },
+    proofBank: [
+      {
+        id: "proof-product-strategy",
+        claim: "Led product strategy and roadmap work in fintech.",
+        evidence: "Approved profile proof.",
+        tags: ["strategy", "roadmap", "fintech"],
+        kind: "work"
+      }
+    ]
+  };
+}
+
+function productJobForOrdering(input: Partial<JobRecord> & { id: string }): JobRecord {
+  const { id, ...overrides } = input;
+  return {
+    id,
+    source: {
+      id: "job-board",
+      kind: "job_board",
+      name: "Job board"
+    },
+    company: "Ordering Fintech",
+    title: "Head of Product",
+    url: `https://example.com/${id}`,
+    description: "Lead product strategy.",
+    location: "Remote India",
+    workMode: "remote",
+    seniority: "director",
+    employmentType: "full_time",
+    discoveredAt: "2026-07-05T00:00:00.000Z",
+    liveState: "live",
+    ...overrides
+  };
+}
 
 describe("rankJob", () => {
   const basePreferences: UserPreferences = {

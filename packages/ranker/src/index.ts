@@ -64,6 +64,48 @@ export function fuseRankedLists<TId extends string>(
   return typeof options.limit === "number" ? sorted.slice(0, options.limit) : sorted;
 }
 
+export function rankJobs(jobs: readonly JobRecord[], profile: UserProfile): RankedJob[] {
+  const ranked = jobs.map((job) => rankJob(job, profile));
+  const fusedByJobId = new Map(
+    fuseRankedLists([
+      {
+        id: "backend-priority",
+        items: rankedBy(ranked, (item) => item.priority).map((item) => item.job.id),
+        weight: 1.5
+      },
+      {
+        id: "role-fit",
+        items: rankedBy(ranked, (item) => componentScore(item, "role-objective-fit")).map((item) => item.job.id),
+        weight: 1.25
+      },
+      {
+        id: "proof-fit",
+        items: rankedBy(ranked, (item) => componentScore(item, "proof-strength")).map((item) => item.job.id),
+        weight: 1
+      },
+      {
+        id: "source-confidence",
+        items: rankedBy(ranked, (item) => componentScore(item, "source-confidence")).map((item) => item.job.id),
+        weight: 0.35
+      },
+      {
+        id: "recency",
+        items: rankedBy(ranked, (item) => discoveredAtScore(item.job)).map((item) => item.job.id),
+        weight: 0.25
+      }
+    ]).map((item) => [item.id, item])
+  );
+
+  return [...ranked].sort((left, right) => {
+    const decisionDelta = decisionRank(left) - decisionRank(right);
+    if (decisionDelta !== 0) return decisionDelta;
+    const fusionDelta = (fusedByJobId.get(right.job.id)?.score ?? 0) - (fusedByJobId.get(left.job.id)?.score ?? 0);
+    if (fusionDelta !== 0) return fusionDelta;
+    if (right.priority !== left.priority) return right.priority - left.priority;
+    return left.job.id.localeCompare(right.job.id);
+  });
+}
+
 export function evaluateHardGates(job: JobRecord, profile: UserProfile): GateResult[] {
   const prefs = profile.preferences;
   const jobLocation = job.location;
@@ -344,6 +386,37 @@ function weightedPriority(components: RankComponent[]): number {
   const totalWeight = components.reduce((sum, component) => sum + (weights[component.id] ?? 0), 0);
   if (totalWeight <= 0) return 0;
   return components.reduce((sum, component) => sum + component.score * (weights[component.id] ?? 0), 0) / totalWeight;
+}
+
+function rankedBy(ranked: RankedJob[], score: (item: RankedJob) => number): RankedJob[] {
+  return [...ranked].sort((left, right) => {
+    const scoreDelta = score(right) - score(left);
+    if (scoreDelta !== 0) return scoreDelta;
+    if (right.priority !== left.priority) return right.priority - left.priority;
+    return left.job.id.localeCompare(right.job.id);
+  });
+}
+
+function componentScore(rankedJob: RankedJob, componentId: string): number {
+  return rankedJob.components.find((component) => component.id === componentId)?.score ?? 0;
+}
+
+function discoveredAtScore(job: JobRecord): number {
+  const timestamp = Date.parse(job.discoveredAt);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function decisionRank(rankedJob: RankedJob): number {
+  switch (rankedJob.decision) {
+    case "apply":
+      return 0;
+    case "review":
+      return 1;
+    case "watch":
+      return 2;
+    case "skip":
+      return 3;
+  }
 }
 
 function termCoverage(text: string, terms: string[]): number {
