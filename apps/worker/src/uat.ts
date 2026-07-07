@@ -47,6 +47,7 @@ export async function runApplyCueUat(options: SetupApplyCueOptions = {}): Promis
   const batch = await runLocalOrSampleBatch({
     workspaceRoot,
     ...(options.applyCueHome ? { applyCueHome: options.applyCueHome } : {}),
+    ...(typeof options.generatedSourceExpansion === "boolean" ? { generatedSourceExpansion: options.generatedSourceExpansion } : {}),
     ...(options.profileKey ? { profileKey: options.profileKey } : {}),
     writeFiles: true
   });

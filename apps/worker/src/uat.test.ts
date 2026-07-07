@@ -132,6 +132,7 @@ MBA from Example Institute
     const report = await runApplyCueUat({
       autoApproveSources: false,
       applyCueHome,
+      generatedSourceExpansion: false,
       installTools: false,
       workspaceRoot
     });

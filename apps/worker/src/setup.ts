@@ -8,6 +8,7 @@ import { getApplyCueHome, getApplyCueProfileConfigPath, getApplyCueProfileDir } 
 export interface SetupApplyCueOptions {
   autoApproveSources?: boolean;
   applyCueHome?: string;
+  generatedSourceExpansion?: boolean;
   installTools?: boolean;
   profileKey?: string;
   workspaceRoot?: string;
@@ -57,6 +58,7 @@ export async function setupApplyCue(options: SetupApplyCueOptions = {}): Promise
   const firstRun = await runLocalOrSampleBatch({
     workspaceRoot,
     applyCueHome,
+    ...(typeof options.generatedSourceExpansion === "boolean" ? { generatedSourceExpansion: options.generatedSourceExpansion } : {}),
     ...(options.profileKey ? { profileKey: options.profileKey } : {}),
     writeFiles: true
   });
@@ -88,6 +90,7 @@ export async function setupApplyCue(options: SetupApplyCueOptions = {}): Promise
     ? await runLocalOrSampleBatch({
         workspaceRoot,
         applyCueHome,
+        ...(typeof options.generatedSourceExpansion === "boolean" ? { generatedSourceExpansion: options.generatedSourceExpansion } : {}),
         ...(options.profileKey ? { profileKey: options.profileKey } : {}),
         writeFiles: true
       })

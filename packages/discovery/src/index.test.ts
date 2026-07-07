@@ -250,10 +250,12 @@ describe("createSourcePlan", () => {
     ]);
     expect(plan.suggestions.some((source) => source.provider === "greenhouse" && source.query?.includes("Head of Product fintech"))).toBe(true);
     expect(plan.suggestions.some((source) => source.provider === "jobspy")).toBe(true);
-    expect(plan.suggestions.filter((source) => source.provider === "jobspy")).toHaveLength(2);
+    expect(plan.suggestions.filter((source) => source.provider === "jobspy")).toHaveLength(10);
     expect(plan.suggestions.find((source) => source.provider === "jobspy")?.options?.siteNames).toEqual(["indeed", "google", "naukri"]);
     expect(plan.suggestions.find((source) => source.provider === "jobspy")?.options?.location).toBe("Delhi NCR");
     expect(plan.suggestions.some((source) => source.provider === "jobspy" && source.query === "Head of Product fintech")).toBe(true);
+    expect(plan.suggestions.some((source) => source.provider === "jobspy" && source.query === "vice president product")).toBe(true);
+    expect(plan.suggestions.some((source) => source.provider === "jobspy" && source.query === "director of product")).toBe(true);
     expect(plan.suggestions.some((source) => source.label === "Naukri search")).toBe(true);
     expect(plan.suggestions.some((source) => source.provider === "remotive")).toBe(true);
     expect(plan.suggestions.some((source) => source.provider === "remoteok")).toBe(true);
@@ -350,11 +352,14 @@ describe("createSourcePlan", () => {
     expect(jobSpyQueries).toHaveLength(10);
     expect(jobSpyQueries).toEqual(
       expect.arrayContaining([
-        "product management",
         "chief product officer",
-        "vp product fintech"
+        "vp product fintech",
+        "vice president product",
+        "vice president product fintech"
       ])
     );
+    expect(jobSpyQueries).not.toContain("product management");
+    expect(jobSpyQueries).not.toContain("product strategy");
     expect(jobSpyQueries).not.toContain("business development");
     expect(plan.searchProfile.titleFilter.positive).not.toContain("business development");
     expect(plan.searchProfile.titleFilter.negative).toContain("business development");
@@ -432,6 +437,80 @@ describe("createSourcePlan", () => {
     expect(serializedPlan).not.toContain("naukri");
     expect(serializedPlan).not.toContain("india");
   });
+
+  it("does not hardcode product title variants for non-product targets", () => {
+    const plan = createSourcePlan({
+      id: "profile-chief-of-staff",
+      pastEmployers: [],
+      preferences: {
+        targetRoleTerms: ["chief of staff"],
+        adjacentRoleTerms: [],
+        targetIndustries: ["climate tech"],
+        excludedIndustries: [],
+        preferredLocations: ["Germany"],
+        extraLocations: [],
+        askBeforeLocations: [],
+        acceptableWorkModes: ["hybrid"],
+        targetSeniorities: ["vp"],
+        acceptableSeniorities: ["director", "vp"],
+        employmentTypes: ["full_time"],
+        companyStages: ["startup"],
+        preferredCompanyNames: [],
+        blockedCompanyNames: [],
+        noGoRoleTerms: [],
+        requiredKeywords: [],
+        niceToHaveKeywords: ["operations"],
+        excludedKeywords: [],
+        workAuthorizationCountries: ["germany"],
+        preferredTimezones: []
+      },
+      searchSettings: {
+        searchCountries: ["Germany"],
+        searchAreas: ["Berlin"],
+        remoteRegions: [],
+        agentMayExpandSearchArea: true,
+        informUserOnSearchAreaChange: true,
+        standardHoursOnly: true,
+        preferredShifts: ["standard"],
+        askBeforeShifts: []
+      },
+      sourceSettings: {
+        allowLoggedInBrowserAccess: false,
+        defaultPortalApplyPolicy: "ask",
+        trustedPortals: [],
+        askBeforePortals: [],
+        blockedPortals: [],
+        fraudSignalTerms: []
+      },
+      applySettings: {
+        mode: "review",
+        applicationsPerDay: 5,
+        minimumFitToApply: 0.75,
+        allowedSourceKinds: ["ats", "job_board", "company_site", "manual"],
+        messagePolicy: "draft_only",
+        pauseReasons: [],
+        trackEmailReplies: false,
+        allowRecruiterDmDrafts: false
+      },
+      matchSettings: {
+        range: "normal",
+        widenIfFewerThan: 20,
+        relaxOrder: ["source", "title", "industry", "location", "recency", "minimum_fit"],
+        minimumFitFloor: 0.55,
+        allowAdjacentTitles: true,
+        allowAdjacentIndustries: true
+      },
+      proofBank: []
+    });
+
+    const jobSpyQueries = plan.suggestions
+      .filter((source) => source.provider === "jobspy")
+      .map((source) => source.query);
+
+    expect(jobSpyQueries).toContain("vice president staff");
+    expect(jobSpyQueries).not.toContain("vice president product");
+    expect(JSON.stringify(plan).toLowerCase()).not.toContain("product management");
+  });
 });
 
 describe("filterJobsBySearchProfile", () => {
@@ -482,6 +561,34 @@ describe("filterJobsBySearchProfile", () => {
     expect(result.jobs.map((job) => job.id)).toEqual(["relevant"]);
     expect(result.filtered).toHaveLength(1);
     expect(result.filtered[0]?.reason).toBe("title");
+    expect(result.summary.byReason.title).toBe(1);
+  });
+
+  it("keeps senior product title variants only when the role anchor matches", () => {
+    const seniorProduct = jobRecord({
+      id: "vp-product",
+      title: "Vice President Product",
+      description: "Lead product strategy for fintech customers.",
+      location: "Remote India"
+    });
+    const seniorSales = jobRecord({
+      id: "vp-sales",
+      title: "Vice President Sales",
+      description: "Lead enterprise sales for fintech customers.",
+      location: "Remote India"
+    });
+    const profileWithVicePresident: SourcePlanSearchProfile = {
+      ...searchProfile,
+      titleFilter: {
+        ...searchProfile.titleFilter,
+        seniorityBoost: [...searchProfile.titleFilter.seniorityBoost, "Vice President"]
+      }
+    };
+
+    const result = filterJobsBySearchProfile([seniorProduct, seniorSales], profileWithVicePresident);
+
+    expect(result.jobs.map((job) => job.id)).toEqual(["vp-product"]);
+    expect(result.filtered.map((item) => item.job.id)).toEqual(["vp-sales"]);
     expect(result.summary.byReason.title).toBe(1);
   });
 

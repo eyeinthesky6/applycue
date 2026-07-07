@@ -47,6 +47,7 @@ import {
   type AtsCompanySourceConfig,
   type FetchJson,
   type JobLivenessVerifier,
+  type JobBoardSourceConfig,
   type JobSpyRunner
 } from "@applycue/discovery";
 import { normalizeJob, type RawJobInput } from "@applycue/normalizer";
@@ -127,6 +128,7 @@ export interface RunLocalBatchOptions extends RunSampleBatchOptions {
   atsDirectoryFetchJson?: FetchJson;
   companyPageFetchJson?: FetchJson;
   configPath?: string;
+  generatedSourceExpansion?: boolean;
   jobBoardFetchJson?: FetchJson;
   jobSpyRunner?: JobSpyRunner;
   jobsPath?: string;
@@ -228,12 +230,29 @@ export async function runLocalOrSampleBatch(options: RunLocalBatchOptions = {}):
     ...(options.jobSpyRunner ? { jobSpyRunner: options.jobSpyRunner } : {}),
     onWarning: (message) => sourceWarnings.push(message)
   });
-  const discoveredJobsBeforeDemoGuard = uniqueJobsById([...localJobs, ...companyPageJobs, ...atsDirectoryJobs, ...jobBoardJobs]);
-  const demoGuard = filterDevelopmentDemoJobs(discoveredJobsBeforeDemoGuard, {
+  let discoveredJobsBeforeDemoGuard = uniqueJobsById([...localJobs, ...companyPageJobs, ...atsDirectoryJobs, ...jobBoardJobs]);
+  let demoGuard = filterDevelopmentDemoJobs(discoveredJobsBeforeDemoGuard, {
     enabled: isExternalUserConfigPath(configPath, workspaceRoot)
   });
-  const discoveredJobs = demoGuard.jobs;
-  const sourceQuality = filterJobsBySearchProfile(discoveredJobs, sourcePlan.searchProfile);
+  let discoveredJobs = demoGuard.jobs;
+  let sourceQuality = filterJobsBySearchProfile(discoveredJobs, sourcePlan.searchProfile);
+  const expansionSources = generatedPublicJobBoardExpansionSources(sourcePlan, loaded.profile, jobBoardSources);
+  let expansionAttempted = false;
+  let expansionJobs: JobRecord[] = [];
+  if (shouldRunGeneratedSourceExpansion(loaded.profile, sourceQuality.summary.keptJobs, expansionEnabled(options), expansionSources)) {
+    expansionAttempted = true;
+    expansionJobs = await discoverJobsFromJobBoards(expansionSources, {
+      ...(options.jobBoardFetchJson ? { fetchJson: options.jobBoardFetchJson } : {}),
+      ...(options.jobSpyRunner ? { jobSpyRunner: options.jobSpyRunner } : {}),
+      onWarning: (message) => sourceWarnings.push(`Expansion source warning: ${message}`)
+    });
+    discoveredJobsBeforeDemoGuard = uniqueJobsById([...discoveredJobsBeforeDemoGuard, ...expansionJobs]);
+    demoGuard = filterDevelopmentDemoJobs(discoveredJobsBeforeDemoGuard, {
+      enabled: isExternalUserConfigPath(configPath, workspaceRoot)
+    });
+    discoveredJobs = demoGuard.jobs;
+    sourceQuality = filterJobsBySearchProfile(discoveredJobs, sourcePlan.searchProfile);
+  }
   const scanHistoryPath = options.scanHistoryPath ?? path.join(loaded.configDir, "data", "local", "scan-history.jsonl");
   const scanHistoryEntries = await readScanHistoryEntries(scanHistoryPath);
   const scanHistory = filterJobsByScanHistory(sourceQuality.jobs, scanHistoryEntries, {
@@ -273,6 +292,13 @@ export async function runLocalOrSampleBatch(options: RunLocalBatchOptions = {}):
       `Loaded ${companyPageJobs.length} job(s) from ${companyPages.filter((source) => source.enabled !== false).length} company/ATS source(s).`,
       `Loaded ${atsDirectoryJobs.length} job(s) from ${atsDirectorySources.filter((source) => source.enabled !== false).length} reverse ATS source(s).`,
       `Loaded ${jobBoardJobs.length} job(s) from ${jobBoardSources.filter((source) => source.enabled !== false).length} job-board source(s).`,
+      ...(expansionAttempted
+        ? [
+            expansionJobs.length > 0
+              ? `Transient source expansion ran ${expansionSources.length} generated public job-board source(s) and found ${expansionJobs.length} extra job(s); no user config was edited.`
+              : `Transient source expansion had ${expansionSources.length} generated public job-board source(s) available but did not run or found no extra jobs.`
+          ]
+        : []),
       ...(demoGuard.skippedJobs > 0
         ? [`Skipped ${demoGuard.skippedJobs} development/demo job(s) from this real user run.`]
         : []),
@@ -458,6 +484,109 @@ function formatSourceQualityReasons(byReason: Record<"title" | "location" | "con
     .filter((entry): entry is [string, number] => Number(entry[1]) > 0)
     .map(([reason, count]) => `${count} ${reason}`)
     .join(", ") || "0";
+}
+
+function generatedPublicJobBoardExpansionSources(
+  sourcePlan: SourcePlan,
+  profile: UserProfile,
+  existingSources: JobBoardSourceConfig[]
+): JobBoardSourceConfig[] {
+  const existingByKey = new Map(existingSources.map((source) => [jobBoardSourceKey(source), source]));
+  const emittedKeys = new Set<string>();
+  const entries = sourcePlan.suggestions
+    .filter((suggestion) =>
+      suggestion.status === "suggested" &&
+      suggestion.kind === "job_board" &&
+      !suggestion.requiresBrowser &&
+      !suggestion.requiresLogin &&
+      Boolean(suggestion.provider)
+    )
+    .sort((left, right) => right.priority - left.priority || left.label.localeCompare(right.label))
+    .flatMap((suggestion) => {
+      const entry = {
+        id: `transient-${suggestion.id}`,
+        label: `Expansion - ${suggestion.label}`,
+        provider: suggestion.provider,
+        query: suggestion.query,
+        enabled: true,
+        options: relaxedExpansionOptions(suggestion.provider, suggestion.options)
+      };
+      const parsed = parseJobBoardSources([entry]);
+      return parsed.filter((source) => {
+        const key = jobBoardSourceKey(source);
+        const existing = existingByKey.get(key);
+        if (existing && !isWiderExpansionSource(source, existing)) return false;
+        const emittedKey = `${key}::${JSON.stringify(source.options ?? {})}`;
+        if (emittedKeys.has(emittedKey)) return false;
+        emittedKeys.add(emittedKey);
+        if (!existing) existingByKey.set(key, source);
+        return true;
+      });
+    });
+
+  return entries.slice(0, generatedSourceExpansionLimit(profile));
+}
+
+function isWiderExpansionSource(source: JobBoardSourceConfig, existing: JobBoardSourceConfig): boolean {
+  if (source.provider === "jobspy") {
+    return (
+      (numberOption(source.options?.resultsWanted) ?? 0) > (numberOption(existing.options?.resultsWanted) ?? 0) ||
+      (numberOption(source.options?.hoursOld) ?? 0) > (numberOption(existing.options?.hoursOld) ?? 0)
+    );
+  }
+  if (source.provider === "remotive" || source.provider === "remoteok" || source.provider === "workingnomads" || source.provider === "jobicy" || source.provider === "himalayas" || source.provider === "themuse") {
+    return (numberOption(source.options?.limit) ?? 0) > (numberOption(existing.options?.limit) ?? 0);
+  }
+  return false;
+}
+
+function shouldRunGeneratedSourceExpansion(
+  profile: UserProfile,
+  keptJobs: number,
+  writeFiles: boolean,
+  expansionSources: JobBoardSourceConfig[]
+): boolean {
+  if (!writeFiles) return false;
+  if (expansionSources.length === 0) return false;
+  if (!profile.matchSettings.relaxOrder.includes("source")) return false;
+  const dailyTarget = Math.max(1, Math.floor(profile.applySettings.applicationsPerDay || 1));
+  const widenTarget = Math.max(dailyTarget, Math.min(20, Math.floor(profile.matchSettings.widenIfFewerThan || dailyTarget)));
+  return keptJobs < widenTarget;
+}
+
+function expansionEnabled(options: RunLocalBatchOptions): boolean {
+  return (options.writeFiles ?? true) && options.generatedSourceExpansion !== false;
+}
+
+function generatedSourceExpansionLimit(profile: UserProfile): number {
+  const dailyTarget = Math.max(1, Math.floor(profile.applySettings.applicationsPerDay || 1));
+  if (profile.matchSettings.range === "tight") return Math.min(4, Math.max(2, dailyTarget));
+  if (profile.matchSettings.range === "wide") return Math.min(10, Math.max(5, dailyTarget * 2));
+  return Math.min(10, Math.max(5, dailyTarget * 2));
+}
+
+function relaxedExpansionOptions(provider: unknown, options: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  const current = { ...(options ?? {}) };
+  if (provider === "jobspy") {
+    current.resultsWanted = Math.max(numberOption(current.resultsWanted) ?? 0, 35);
+    current.hoursOld = Math.max(numberOption(current.hoursOld) ?? 0, 336);
+  } else if (provider === "remotive" || provider === "remoteok" || provider === "workingnomads" || provider === "jobicy" || provider === "himalayas" || provider === "themuse") {
+    current.limit = Math.max(numberOption(current.limit) ?? 0, 75);
+  }
+  return Object.keys(current).length > 0 ? current : undefined;
+}
+
+function jobBoardSourceKey(source: JobBoardSourceConfig): string {
+  return [
+    source.provider,
+    source.query?.toLowerCase() ?? "",
+    String(source.options?.location ?? "").toLowerCase(),
+    JSON.stringify(source.options?.siteNames ?? [])
+  ].join("::");
+}
+
+function numberOption(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 export async function runBatch(options: RunBatchOptions): Promise<SampleBatchResult> {

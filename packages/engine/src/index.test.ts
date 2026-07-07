@@ -172,6 +172,186 @@ describe("runSampleBatch", () => {
     expect(result.manifest.notes).toContain("No manual local job file configured; using approved source connectors only.");
   });
 
+  it("uses transient generated public job-board expansion when the configured batch is short", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-expansion-"));
+    const applyCueHome = path.join(workspaceRoot, "applycue-home");
+    const profileDir = path.join(applyCueHome, "profiles", "default");
+    await mkdir(profileDir, { recursive: true });
+    await writeFile(
+      path.join(profileDir, "applycue.json"),
+      JSON.stringify({
+        profile: {
+          name: "Expansion Candidate",
+          email: "expansion@example.com",
+          currentDesignation: "Head of Product",
+          currentCountry: "India"
+        },
+        preferences: {
+          targetRoleTerms: ["head of product"],
+          targetIndustries: ["fintech"],
+          preferredLocations: ["Remote India"],
+          acceptableWorkModes: ["remote"],
+          targetSeniorities: ["vp"],
+          acceptableSeniorities: ["director", "vp"],
+          employmentTypes: ["full_time"],
+          niceToHaveKeywords: ["product strategy", "roadmap"]
+        },
+        applySettings: {
+          mode: "review",
+          applicationsPerDay: 1,
+          minimumFitToApply: 0.5
+        },
+        matchSettings: {
+          widenIfFewerThan: 20,
+          relaxOrder: ["source", "recency"],
+          minimumFitFloor: 0.5
+        },
+        proofBank: [
+          {
+            id: "proof-product",
+            claim: "Led product strategy and roadmap for fintech products.",
+            evidence: "Approved profile proof.",
+            tags: ["head of product", "product strategy", "roadmap", "fintech"],
+            kind: "work"
+          }
+        ],
+        sources: {
+          jobBoards: []
+        }
+      }),
+      "utf8"
+    );
+    const requests: string[] = [];
+
+    const result = await runLocalOrSampleBatch({
+      workspaceRoot,
+      applyCueHome,
+      writeFiles: true,
+      jobSpyRunner: async (request) => {
+        requests.push(request.search_term ?? "");
+        if (request.search_term !== "vice president product") return [];
+        return [
+          {
+            site: "indeed",
+            title: "Vice President Product",
+            company: "Expansion Fintech",
+            job_url: "https://careers.expansionfintech.test/jobs/vp-product",
+            location: "Remote India",
+            is_remote: true,
+            job_type: "full_time",
+            description: "Lead product strategy, roadmap, and fintech platform growth."
+          }
+        ];
+      }
+    });
+
+    expect(requests).toContain("vice president product");
+    expect(result.jobs.map((job) => job.company)).toContain("Expansion Fintech");
+    expect(result.applications).toHaveLength(1);
+    expect(result.manifest.notes.some((note) => note.includes("Transient source expansion ran"))).toBe(true);
+  });
+
+  it("widens approved public job-board sources transiently when their first pass is short", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-expansion-widen-"));
+    const applyCueHome = path.join(workspaceRoot, "applycue-home");
+    const profileDir = path.join(applyCueHome, "profiles", "default");
+    await mkdir(profileDir, { recursive: true });
+    await writeFile(
+      path.join(profileDir, "applycue.json"),
+      JSON.stringify({
+        profile: {
+          name: "Expansion Widen Candidate",
+          email: "expansion-widen@example.com",
+          currentDesignation: "Head of Product",
+          currentCountry: "India"
+        },
+        preferences: {
+          targetRoleTerms: ["head of product"],
+          targetIndustries: ["fintech"],
+          preferredLocations: ["Remote India"],
+          acceptableWorkModes: ["remote"],
+          targetSeniorities: ["vp"],
+          acceptableSeniorities: ["director", "vp"],
+          employmentTypes: ["full_time"],
+          niceToHaveKeywords: ["product strategy", "roadmap"]
+        },
+        applySettings: {
+          mode: "review",
+          applicationsPerDay: 1,
+          minimumFitToApply: 0.5
+        },
+        matchSettings: {
+          widenIfFewerThan: 20,
+          relaxOrder: ["source", "recency"],
+          minimumFitFloor: 0.5
+        },
+        proofBank: [
+          {
+            id: "proof-product",
+            claim: "Led product strategy and roadmap for fintech products.",
+            evidence: "Approved profile proof.",
+            tags: ["head of product", "product strategy", "roadmap", "fintech"],
+            kind: "work"
+          }
+        ],
+        sources: {
+          jobBoards: [
+            {
+              id: "approved-vp-product",
+              label: "Approved VP Product search",
+              provider: "jobspy",
+              query: "vice president product",
+              options: {
+                siteNames: ["indeed"],
+                location: "India",
+                resultsWanted: 5,
+                hoursOld: 24
+              }
+            }
+          ]
+        }
+      }),
+      "utf8"
+    );
+    const requests: Array<{ hoursOld?: number; resultsWanted?: number; searchTerm?: string }> = [];
+
+    const result = await runLocalOrSampleBatch({
+      workspaceRoot,
+      applyCueHome,
+      writeFiles: true,
+      jobSpyRunner: async (request) => {
+        const recordedRequest: { hoursOld?: number; resultsWanted?: number; searchTerm?: string } = {};
+        if (typeof request.hours_old === "number") recordedRequest.hoursOld = request.hours_old;
+        if (typeof request.results_wanted === "number") recordedRequest.resultsWanted = request.results_wanted;
+        if (request.search_term) recordedRequest.searchTerm = request.search_term;
+        requests.push(recordedRequest);
+        if (request.search_term !== "vice president product" || request.hours_old !== 336) return [];
+        return [
+          {
+            site: "indeed",
+            title: "Vice President Product",
+            company: "Widened Expansion Fintech",
+            job_url: "https://careers.widened-expansion.test/jobs/vp-product",
+            location: "Remote India",
+            is_remote: true,
+            job_type: "full_time",
+            description: "Lead product strategy, roadmap, and fintech platform growth."
+          }
+        ];
+      }
+    });
+
+    expect(requests).toContainEqual(
+      expect.objectContaining({ searchTerm: "vice president product", resultsWanted: 5, hoursOld: 24 })
+    );
+    expect(requests).toContainEqual(
+      expect.objectContaining({ searchTerm: "vice president product", resultsWanted: 35, hoursOld: 336 })
+    );
+    expect(result.jobs.map((job) => job.company)).toContain("Widened Expansion Fintech");
+    expect(result.applications).toHaveLength(1);
+    expect(result.manifest.notes.some((note) => note.includes("Transient source expansion ran"))).toBe(true);
+  });
+
   it("removes obvious demo jobs from real external user runs", async () => {
     const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-demo-guard-workspace-"));
     const applyCueHome = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-demo-guard-home-"));
@@ -1000,6 +1180,7 @@ Lead product strategy and automation.
     const first = await runLocalOrSampleBatch({
       workspaceRoot,
       applyCueHome: path.join(workspaceRoot, "empty-applycue-home"),
+      generatedSourceExpansion: false,
       writeFiles: true,
       jobBoardFetchJson: async () => ({ jobs: rows })
     });
@@ -1433,7 +1614,7 @@ Lead product strategy and automation.
       "utf8"
     );
 
-    await runLocalOrSampleBatch({ workspaceRoot, applyCueHome, writeFiles: true });
+    await runLocalOrSampleBatch({ workspaceRoot, applyCueHome, writeFiles: true, generatedSourceExpansion: false });
     const sourcePlanPath = path.join(profileDir, "data", "local", "source-plan.generated.json");
     const originalPlanJson = await readFile(sourcePlanPath, "utf8");
     const sourcePlan = JSON.parse(originalPlanJson) as SourcePlan;

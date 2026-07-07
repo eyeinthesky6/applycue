@@ -1281,6 +1281,39 @@ describe("rankJob", () => {
     expect(ranked.decision).not.toBe("skip");
   });
 
+  it("treats senior product leadership title variants as target roles without lifting unrelated VP roles", () => {
+    const profile = productLeadershipProfile({
+      preferences: {
+        targetRoleTerms: ["head of product"],
+        adjacentRoleTerms: ["business development", "product marketing"],
+        targetSeniorities: ["vp"],
+        acceptableSeniorities: ["director", "vp"]
+      }
+    });
+    const seniorProduct = rankJob(
+      rankableJob({
+        id: "job-vp-product",
+        title: "Vice President Product",
+        seniority: "vp"
+      }),
+      profile
+    );
+    const seniorSales = rankJob(
+      rankableJob({
+        id: "job-vp-sales",
+        title: "Vice President Sales",
+        description: "Lead enterprise sales teams for fintech customers.",
+        seniority: "vp"
+      }),
+      profile
+    );
+
+    expect(seniorProduct.gates.find((gate) => gate.id === "role-family")?.passed).toBe(true);
+    expect(seniorProduct.decision).not.toBe("skip");
+    expect(seniorSales.gates.find((gate) => gate.id === "role-family")?.passed).toBe(false);
+    expect(seniorSales.decision).toBe("skip");
+  });
+
   it("hard-blocks lower-title product roles when company grade does not lift them", () => {
     const ranked = rankJob(
       rankableJob({

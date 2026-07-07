@@ -154,7 +154,7 @@ This is the first direct Career OS parity move: better source quality before exp
 Current local run evidence:
 
 ```text
-164 discovered jobs -> 12 source-quality kept -> 5 CVs -> 5 application drafts -> 5 browser plans
+1135 discovered jobs -> 18 source-quality kept -> 3 CVs -> 3 application drafts -> 3 browser plans
 ```
 
 The source-quality filter currently runs before ranking. Manual jobs are not filtered by this generated plan, because manual imports are deliberate user/agent inputs and should remain reviewable.
@@ -166,7 +166,7 @@ Status: implemented on 2026-07-06 for the local UAT path.
 Career OS gets useful outcomes because noisy jobs are cleaned before expensive evaluation. ApplyCue now mirrors that lesson in its own contracts:
 
 ```text
-broad source results -> source-quality filter -> role-forward ranking -> metadata-cleaned JD requirements -> reconciliation -> filled review batch
+broad source results -> source-quality filter -> role-forward ranking -> metadata-cleaned JD requirements -> reconciliation -> truth-checked review batch
 ```
 
 Applied fixes:
@@ -181,10 +181,10 @@ Applied fixes:
 This improved local relevance and truth checks while filling the configured daily batch:
 
 ```text
-164 discovered jobs -> 12 kept jobs -> 5 CVs -> 5 application drafts -> 5 browser plans -> 0 blocked reconciliations
+1135 discovered jobs -> 18 kept jobs -> 3 CVs -> 3 application drafts -> 3 browser plans -> 0 blocked reconciliations
 ```
 
-The engine still warns when the prepared batch does not fill `applicationsPerDay`; the current local run no longer hits that warning after safe job-board query expansion.
+The engine still warns when the prepared batch does not fill `applicationsPerDay`; the current local run correctly still warns because remaining kept jobs are mostly below the saved seniority target or outside saved location/work-authorization policy. The right next move is better source coverage or explicit user approval to relax preferences, not weakening hard blockers.
 
 The local dashboard now has a typed Source Quality panel fed from the run manifest:
 

@@ -116,7 +116,7 @@ Use JobSpy for:
 - LinkedIn discovery, cautiously
 - Glassdoor, ZipRecruiter, Bayt, and BDJobs where relevant
 
-JobSpy is intentionally broad. Its output must pass through ApplyCue normalization, dedupe, and generated `searchProfile` filtering before ranking. In the current local UAT, broad board sources produced 163 board jobs, and the source-quality layer kept 12 reviewable jobs before the engine prepared the configured 5 applications.
+JobSpy is intentionally broad. Its output must pass through ApplyCue normalization, dedupe, and generated `searchProfile` filtering before ranking. In the current local UAT, approved and transiently widened sources produced 1135 fetched jobs, the source-quality layer kept 18 reviewable jobs, and the engine prepared 3 applications because the remaining roles were blocked by saved seniority/location policy.
 
 After source-quality filtering, daily and push runs also pass through scan history. Non-manual jobs already recorded as `prepared` or `closed` in the user's `data/local/scan-history.jsonl` are skipped before ranking/CV work. Review mode keeps them visible for inspection.
 
@@ -127,6 +127,8 @@ Query budget rule:
 - `wide`: allow more no-login job-board variants before asking the user to loosen harder preferences.
 
 Do not fill the daily batch by lowering CV truth checks or inventing claims. Widen source supply first.
+
+For short batches, ApplyCue may transiently rerun approved public JobSpy/remote-board queries with wider `resultsWanted`, `hoursOld`, or `limit` values. This is a runtime scan expansion only; it must not rewrite user source config or generated source-plan files.
 
 Start conservative:
 

@@ -448,14 +448,114 @@ function buildSearchQueries(
   input: { role: string; industry: string },
   maxQueries: number
 ): string[] {
-  const roleQueries = uniqueNonEmpty([
-    input.role,
-    ...profile.preferences.targetRoleTerms.slice(1)
-  ]).slice(0, maxQueries);
+  const targetRoleTerms = uniqueNonEmpty([input.role, ...profile.preferences.targetRoleTerms.slice(1)]);
+  const anchoredRoleTerms = targetRoleTerms.filter(isAnchoredSearchRoleTerm);
+  const broadRoleTerms = targetRoleTerms.filter((term) => !isAnchoredSearchRoleTerm(term));
   const industries = uniqueNonEmpty([input.industry, ...profile.preferences.targetIndustries]).slice(0, 2);
-  const industryQueries = industries.length > 0 ? roleQueries.map((role) => `${role} ${industries[0]}`) : [];
-  const queries = [...roleQueries, ...industryQueries];
+  const primaryIndustry = industries[0] ?? "";
+  const anchoredIndustryQueries = primaryIndustry
+    ? anchoredRoleTerms.map((role) => `${role} ${primaryIndustry}`)
+    : [];
+  const seniorityVariants = seniorRoleSearchVariants(profile);
+  const seniorityIndustryQueries = primaryIndustry
+    ? seniorityVariants.map((role) => `${role} ${primaryIndustry}`)
+    : [];
+  const broadIndustryQueries = primaryIndustry
+    ? broadRoleTerms.map((role) => `${role} ${primaryIndustry}`)
+    : [];
+  const queries = [
+    ...interleave(anchoredRoleTerms, anchoredIndustryQueries),
+    ...interleave(seniorityVariants, seniorityIndustryQueries),
+    ...broadRoleTerms,
+    ...broadIndustryQueries
+  ];
   return uniqueNonEmpty(queries).slice(0, maxQueries);
+}
+
+function isAnchoredSearchRoleTerm(term: string): boolean {
+  const normalized = normalizeComparable(term);
+  return /\b(vp|vice president|head|director|chief|cpo|founder|co-founder)\b/.test(normalized);
+}
+
+function seniorRoleSearchVariants(profile: UserProfile): string[] {
+  const roleAnchor = primaryRoleAnchorPhrase(profile);
+  if (!roleAnchor) return [];
+  const seniorities = new Set([
+    ...profile.preferences.targetSeniorities,
+    ...profile.preferences.acceptableSeniorities
+  ]);
+  if (roleAnchor !== "product") return genericSeniorRoleSearchVariants(seniorities, roleAnchor);
+
+  const variants: string[] = [];
+  if (seniorities.has("vp")) {
+    variants.push("vice president product", "vice president product management");
+  }
+  if (seniorities.has("director")) {
+    variants.push("director of product", "director of product management", "product director");
+  }
+  if (seniorities.has("c_level")) {
+    variants.push("chief product officer");
+  }
+  if (profile.preferences.targetRoleTerms.some((term) => normalizeComparable(term).includes("head of product"))) {
+    variants.push("head of product management");
+  }
+  return uniqueNonEmpty(variants);
+}
+
+function genericSeniorRoleSearchVariants(seniorities: Set<string>, roleAnchor: string): string[] {
+  const variants: string[] = [];
+  if (seniorities.has("vp")) {
+    variants.push(`vice president ${roleAnchor}`, `vp ${roleAnchor}`);
+  }
+  if (seniorities.has("director")) {
+    variants.push(`director of ${roleAnchor}`, `${roleAnchor} director`);
+  }
+  if (seniorities.has("c_level")) {
+    variants.push(`chief ${roleAnchor} officer`);
+  }
+  return uniqueNonEmpty(variants);
+}
+
+function primaryRoleAnchorPhrase(profile: UserProfile): string {
+  const generic = new Set([
+    "and",
+    "chief",
+    "co",
+    "director",
+    "founder",
+    "head",
+    "lead",
+    "management",
+    "manager",
+    "of",
+    "officer",
+    "president",
+    "principal",
+    "senior",
+    "strategy",
+    "the",
+    "vice",
+    "vp"
+  ]);
+  for (const term of profile.preferences.targetRoleTerms) {
+    const tokens = normalizeComparable(term)
+      .split(" ")
+      .filter((token) => token.length >= 2 && !generic.has(token));
+    if (tokens.length > 0) return tokens.join(" ");
+  }
+  return "";
+}
+
+function interleave(left: string[], right: string[]): string[] {
+  const values: string[] = [];
+  const length = Math.max(left.length, right.length);
+  for (let index = 0; index < length; index += 1) {
+    const leftValue = left[index];
+    const rightValue = right[index];
+    if (leftValue) values.push(leftValue);
+    if (rightValue) values.push(rightValue);
+  }
+  return values;
 }
 
 function jobBoardQueryLimit(profile: UserProfile): number {

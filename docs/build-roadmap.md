@@ -375,7 +375,7 @@ The CV renderer also preserves base-CV career structure and suppresses near-dupl
 Career OS parity / UAT volume improvement now in place:
 
 ```text
-source jobs -> source-quality filter -> role-forward ranker -> cleaned JD requirements -> truth reconciliation -> daily batch filled to applicationsPerDay
+source jobs -> source-quality filter -> role-forward ranker -> cleaned JD requirements -> truth reconciliation -> daily batch filled when enough eligible roles exist
 ```
 
 The first real UAT exposed the Career OS gap clearly: broad job-board discovery found many roles, but weak source filtering and over-flat ranking prepared only one application. ApplyCue now keeps weak-role matches capped, weights role-title fit more strongly for review ordering, maps regulated-financial-services requirements to approved banking/lending evidence, and strips common non-requirement job-post metadata before CV reconciliation. The goal is better batch fill without lowering the truth gate.
@@ -383,8 +383,18 @@ The first real UAT exposed the Career OS gap clearly: broad job-board discovery 
 Current UAT evidence:
 
 ```text
-164 discovered jobs -> 12 source-quality kept -> 5 CVs -> 5 application drafts -> 5 browser plans -> 0 blocked reconciliations -> 5 browser dry-run receipts
+1135 discovered jobs -> 18 source-quality kept -> 3 CVs -> 3 application drafts -> 3 browser plans -> 0 blocked reconciliations -> 3 browser dry-run receipts
 ```
+
+The latest local UAT still warns on batch volume: 3 prepared of 5 configured per day. That warning is correct. The remaining kept jobs are mostly Senior Product Manager/Product Manager roles or roles outside saved location/work-authorization policy, while the user profile currently accepts director, VP, C-level, and founder seniority. Do not fake-fill the queue by weakening hard blockers. The next volume path is better source coverage or explicit user approval to relax saved preferences.
+
+Transient source expansion now runs before preference relaxation when the batch is short:
+
+```text
+generated source plan + approved public job-board sources -> wider no-config-edit scan -> source-quality filter -> ranker
+```
+
+This can rerun approved public JobSpy/remote-board queries with wider `resultsWanted`, `hoursOld`, or `limit` values. It does not edit source config, generated source plans, CVs, or user assets.
 
 Career OS parity / repeat-control improvement now in place:
 
@@ -438,9 +448,11 @@ Build order:
 15. Local lexical retrieval list in rank fusion. Done.
 16. Source scorecards in manifest, dashboard, and chat summary. Done.
 17. Reusable ambiguity prompts in manifest, dashboard, and chat summary. Done.
-18. Crawl4AI adapter for public pages with no API.
-19. Browser-visible extraction for login-backed sources.
-20. Key-required APIs such as Adzuna only with user-owned credentials.
+18. Transient generated public job-board expansion for short batches without editing user config. Done.
+19. Senior title-variant matching for accepted seniority plus target role anchor. Done.
+20. Crawl4AI adapter for public pages with no API.
+21. Browser-visible extraction for login-backed sources.
+22. Key-required APIs such as Adzuna only with user-owned credentials.
 
 See `docs/prebuilt-providers-and-libraries.md`.
 

@@ -663,10 +663,14 @@ function roleScore(job: JobRecord, profile: UserProfile): number {
   const titleHasTargetAnchor = targetAnchors.length === 0 || targetAnchors.some((token) => titleTokens.has(token));
   const titleHasAnyAnchor = allAnchors.length === 0 || allAnchors.some((token) => titleTokens.has(token));
   const untargetedAdjacentTitle = hasUntargetedAdjacentTitle(title, profile);
+  const seniorRoleVariantScore = seniorityRoleVariantScore(title, profile);
 
   if (targetTitleScore >= 0.7 && !untargetedAdjacentTitle) return roundScore(Math.max(targetScore, adjacentScore));
 
   const descriptionOnlyTargetScore = titleHasTargetAnchor ? targetScore : Math.min(targetScore, 0.49);
+  if (seniorRoleVariantScore >= 0.7 && !untargetedAdjacentTitle) {
+    return roundScore(Math.max(descriptionOnlyTargetScore, seniorRoleVariantScore));
+  }
   if (adjacentTitleScore >= 0.7) {
     const adjacentOnlyCap = titleHasTargetAnchor ? adjacentScore : Math.min(adjacentScore, 0.49);
     return roundScore(Math.max(descriptionOnlyTargetScore, adjacentOnlyCap));
@@ -682,6 +686,41 @@ function roleScore(job: JobRecord, profile: UserProfile): number {
     return roundScore(Math.min(titleAnchoredScore, 0.49));
   }
   return roundScore(titleAnchoredScore);
+}
+
+function seniorityRoleVariantScore(title: string, profile: UserProfile): number {
+  const titleTokens = tokenSet(title);
+  const targetAnchors = roleAnchorTokens(profile.preferences.targetRoleTerms);
+  if (targetAnchors.length === 0 || !targetAnchors.some((token) => titleTokens.has(token))) return 0;
+  if (isBlockedSeniorRoleVariantTitle(title, profile)) return 0;
+  const acceptedSeniorities = new Set([
+    ...profile.preferences.targetSeniorities,
+    ...profile.preferences.acceptableSeniorities
+  ]);
+  if (acceptedSeniorities.has("vp") && hasAnyToken(titleTokens, ["vp"])) return 0.85;
+  if (acceptedSeniorities.has("vp") && hasTokens(titleTokens, ["vice", "president"])) return 0.85;
+  if (acceptedSeniorities.has("director") && hasAnyToken(titleTokens, ["director"])) return 0.8;
+  if (acceptedSeniorities.has("c_level") && hasAnyToken(titleTokens, ["chief", "cpo", "cxo"])) return 0.82;
+  if (acceptedSeniorities.has("founder") && hasAnyToken(titleTokens, ["founder"])) return 0.78;
+  return 0;
+}
+
+function isBlockedSeniorRoleVariantTitle(title: string, profile: UserProfile): boolean {
+  const normalizedTitle = normalizeText(title);
+  const explicitNoGo = [
+    ...profile.preferences.noGoRoleTerms,
+    ...profile.preferences.excludedKeywords,
+    ...profile.preferences.adjacentRoleTerms
+  ]
+    .map((term) => normalizeText(term))
+    .filter(Boolean);
+  if (explicitNoGo.some((term) => normalizedTitle.includes(term))) return true;
+
+  const targetText = normalizeText(profile.preferences.targetRoleTerms.join(" "));
+  if (!targetText.includes("product")) return false;
+  const blockedProductAdjacentTokens = ["marketing", "sales", "business", "development", "engineer", "engineering", "data", "support"];
+  const titleTokens = tokenSet(normalizedTitle);
+  return blockedProductAdjacentTokens.some((token) => titleTokens.has(token));
 }
 
 function hasUntargetedAdjacentTitle(title: string, profile: UserProfile): boolean {
@@ -1040,6 +1079,14 @@ function hasRegionCodeToken(text: string, code: string): boolean {
 
 function tokenSet(text: string): Set<string> {
   return new Set(normalizeText(text).split(" ").filter(Boolean));
+}
+
+function hasAnyToken(tokens: Set<string>, candidates: string[]): boolean {
+  return candidates.some((candidate) => tokens.has(candidate));
+}
+
+function hasTokens(tokens: Set<string>, candidates: string[]): boolean {
+  return candidates.every((candidate) => tokens.has(candidate));
 }
 
 function normalizeText(text: string): string {

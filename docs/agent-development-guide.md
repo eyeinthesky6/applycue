@@ -215,6 +215,8 @@ Generated source plans live under:
 
 Do not hand-edit generated source-plan files. Put approved sources in user-editable config and keep `system_generated`, `agent_suggested`, and `user_added` origins separate.
 
+When a run is short, the engine may perform transient public job-board expansion from the generated source plan. This can include rerunning already-approved public JobSpy/remote-board queries with a wider result count or lookback. It must not edit the user's source config or generated source-plan file. Treat it as "scan more before relaxing preferences," not as permission to fill the batch with blocked seniority, location, or wrong-family roles.
+
 To approve generated suggestions, use:
 
 ```powershell
@@ -238,6 +240,8 @@ Hard gates first. Scores are backend prioritization signals, not user-facing jud
 Wrong role family, explicit out-of-range seniority, and clear out-of-range experience are hard blockers. Adjacent roles are not default application targets. If a user wants a pivot, store that role in `preferences.targetRoleTerms` or an approved user config change; do not make one-off code edits for a single job.
 
 Company title levels can be adjusted only through reusable evidence: `companyMarketGrade`, `companyStage`, normalized seniority evidence, or `preferences.companySeniorityOverrides`. Do not hardcode one company name in ranker logic.
+
+Senior title variants may match when both pieces are true: the title has an accepted seniority signal such as VP, Vice President, Director, or Chief, and the title also has the target role anchor such as product. Do not let unrelated senior titles such as VP Sales pass for a product-leadership search.
 
 ### CV Tailoring
 

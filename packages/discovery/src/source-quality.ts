@@ -106,7 +106,10 @@ function checkTitle(
   const title = job.title;
   const positive = searchProfile.titleFilter.positive;
   const negative = searchProfile.titleFilter.negative;
-  const hasPositive = positive.length === 0 || positive.some((term) => termMatches(title, term));
+  const hasPositive =
+    positive.length === 0 ||
+    positive.some((term) => termMatches(title, term)) ||
+    titleMatchesSeniorityBoostedRole(title, searchProfile.titleFilter);
   const hasNegative = negative.some((term) => termMatches(title, term));
   if (hasNegative) {
     return {
@@ -214,6 +217,50 @@ function termMatches(text: string, term: string): boolean {
     const tokens = variant.split(" ").filter(Boolean);
     return tokens.length > 1 && tokens.every((token) => tokenSet(normalizedText).has(token));
   });
+}
+
+function titleMatchesSeniorityBoostedRole(
+  title: string,
+  titleFilter: SourcePlanSearchProfile["titleFilter"]
+): boolean {
+  const boostTerms = titleFilter.seniorityBoost.filter(Boolean);
+  if (boostTerms.length === 0) return false;
+  const normalizedTitle = normalizeText(title);
+  const hasSeniority = boostTerms.some((term) => termMatches(normalizedTitle, term));
+  if (!hasSeniority) return false;
+  const titleTokens = tokenSet(normalizedTitle);
+  const anchorTokens = roleAnchorTokens(titleFilter.positive);
+  return anchorTokens.some((token) => titleTokens.has(token));
+}
+
+function roleAnchorTokens(positiveTerms: string[]): string[] {
+  const blocked = new Set([
+    "and",
+    "chief",
+    "co",
+    "director",
+    "founder",
+    "head",
+    "lead",
+    "manager",
+    "management",
+    "mid",
+    "officer",
+    "of",
+    "president",
+    "principal",
+    "senior",
+    "the",
+    "vice",
+    "vp"
+  ]);
+  const anchors = new Set<string>();
+  for (const term of positiveTerms) {
+    for (const token of normalizeText(term).split(" ")) {
+      if (token.length >= 3 && !blocked.has(token)) anchors.add(token);
+    }
+  }
+  return [...anchors];
 }
 
 function termVariants(normalizedTerm: string): string[] {
