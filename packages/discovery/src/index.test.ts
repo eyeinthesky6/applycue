@@ -352,10 +352,12 @@ describe("createSourcePlan", () => {
       expect.arrayContaining([
         "product management",
         "chief product officer",
-        "business development",
         "vp product fintech"
       ])
     );
+    expect(jobSpyQueries).not.toContain("business development");
+    expect(plan.searchProfile.titleFilter.positive).not.toContain("business development");
+    expect(plan.searchProfile.titleFilter.negative).toContain("business development");
   });
 
   it("does not inject market-specific boards or locations unless the profile asks for them", () => {
@@ -547,6 +549,41 @@ describe("filterJobsBySearchProfile", () => {
 
     expect(result.jobs.map((job) => job.id)).toEqual(["ats-relevant"]);
     expect(result.summary.byReason.title).toBe(1);
+  });
+
+  it("filters adjacent-lane titles when the generated title profile is target-only", () => {
+    const targetOnlyProfile: SourcePlanSearchProfile = {
+      ...searchProfile,
+      titleFilter: {
+        positive: ["vp product", "head of product", "director product"],
+        negative: ["business development", "product marketing"],
+        seniorityBoost: ["Director", "VP"]
+      }
+    };
+    const product = jobRecord({
+      id: "target-product",
+      title: "Head of Product",
+      description: "Lead product strategy.",
+      location: "Remote India"
+    });
+    const businessDevelopment = jobRecord({
+      id: "adjacent-bd",
+      title: "Head of Business Development",
+      description: "Lead partnerships with product teams.",
+      location: "Remote India"
+    });
+    const productMarketing = jobRecord({
+      id: "adjacent-product-marketing",
+      title: "Director Product Marketing",
+      description: "Lead launches and GTM.",
+      location: "Remote India"
+    });
+
+    const result = filterJobsBySearchProfile([product, businessDevelopment, productMarketing], targetOnlyProfile);
+
+    expect(result.jobs.map((job) => job.id)).toEqual(["target-product"]);
+    expect(result.filtered.map((job) => job.job.id)).toEqual(["adjacent-bd", "adjacent-product-marketing"]);
+    expect(result.summary.byReason.title).toBe(2);
   });
 });
 

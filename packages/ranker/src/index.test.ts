@@ -677,7 +677,8 @@ describe("rankJob", () => {
 
     expect(roleFit?.score).toBeLessThan(0.5);
     expect(ranked.priority).toBeLessThan(profile.matchSettings.minimumFitFloor);
-    expect(ranked.decision).toBe("watch");
+    expect(ranked.decision).toBe("skip");
+    expect(ranked.gates.find((gate) => gate.id === "role-family")?.passed).toBe(false);
   });
 
   it("still ranks the same role when the user explicitly targets it", () => {
@@ -841,7 +842,8 @@ describe("rankJob", () => {
 
     expect(roleFit?.score).toBeLessThan(0.5);
     expect(ranked.priority).toBeLessThan(profile.matchSettings.minimumFitFloor);
-    expect(ranked.decision).toBe("watch");
+    expect(ranked.decision).toBe("skip");
+    expect(ranked.gates.find((gate) => gate.id === "role-family")?.passed).toBe(false);
   });
 
   it("does not treat product engineering titles as product-management matches", () => {
@@ -924,6 +926,190 @@ describe("rankJob", () => {
 
     expect(roleFit?.score).toBeLessThan(0.5);
     expect(ranked.priority).toBeLessThan(profile.matchSettings.minimumFitFloor);
+    expect(ranked.decision).toBe("skip");
+    expect(ranked.gates.find((gate) => gate.id === "role-family")?.passed).toBe(false);
+  });
+
+  function productLeadershipProfile(overrides: {
+    preferences?: Partial<UserPreferences>;
+    minimumFitFloor?: number;
+  } = {}): UserProfile {
+    return {
+      id: "user-product-leadership",
+      currentLevel: "director",
+      totalExperienceYears: 15,
+      pastEmployers: [],
+      preferences: {
+        ...basePreferences,
+        targetRoleTerms: ["vp product", "head of product", "director product", "product manager"],
+        adjacentRoleTerms: ["business development", "product marketing"],
+        targetIndustries: ["fintech", "payments"],
+        preferredLocations: ["india"],
+        acceptableSeniorities: ["director", "vp", "c_level"],
+        targetSeniorities: ["director", "vp"],
+        companyStages: [],
+        niceToHaveKeywords: ["roadmap", "payments"],
+        ...overrides.preferences
+      },
+      searchSettings: {
+        searchCountries: ["india"],
+        searchAreas: ["india"],
+        remoteRegions: ["india"],
+        agentMayExpandSearchArea: true,
+        informUserOnSearchAreaChange: true,
+        standardHoursOnly: true,
+        preferredShifts: ["standard"],
+        askBeforeShifts: []
+      },
+      sourceSettings: {
+        allowLoggedInBrowserAccess: false,
+        defaultPortalApplyPolicy: "ask",
+        trustedPortals: [],
+        askBeforePortals: [],
+        blockedPortals: [],
+        fraudSignalTerms: []
+      },
+      applySettings: {
+        mode: "daily",
+        applicationsPerDay: 5,
+        minimumFitToApply: 0.72,
+        allowedSourceKinds: ["company_site", "ats", "job_board", "manual"],
+        messagePolicy: "draft_only",
+        pauseReasons: ["missing_required_answer"],
+        trackEmailReplies: false,
+        allowRecruiterDmDrafts: true
+      },
+      matchSettings: {
+        range: "normal",
+        widenIfFewerThan: 20,
+        relaxOrder: ["source", "title", "industry", "location", "recency", "minimum_fit"],
+        minimumFitFloor: overrides.minimumFitFloor ?? 0.55,
+        allowAdjacentTitles: true,
+        allowAdjacentIndustries: true
+      },
+      proofBank: [
+        {
+          id: "proof-product",
+          claim: "Led product roadmap, GTM, payments, and fintech product work.",
+          evidence: "Approved product leadership profile.",
+          tags: ["product", "roadmap", "payments", "fintech", "gtm"]
+        }
+      ]
+    };
+  }
+
+  function rankableJob(overrides: Partial<JobRecord>): JobRecord {
+    return {
+      id: "job-fit",
+      source: {
+        id: "manual",
+        kind: "manual",
+        name: "Manual"
+      },
+      company: "Example Co",
+      title: "Senior Product Manager",
+      url: "https://example.com/jobs/fit",
+      description: "Lead product roadmap and payments strategy for fintech customers.",
+      location: "Remote India",
+      workMode: "remote",
+      discoveredAt: "2026-07-05T00:00:00.000Z",
+      liveState: "live",
+      ...overrides
+    };
+  }
+
+  it("hard-blocks explicit junior seniority for senior product targets", () => {
+    const ranked = rankJob(
+      rankableJob({
+        id: "job-junior-product",
+        title: "Associate Product Manager",
+        seniority: "junior",
+        requiredExperienceYears: { max: 2 }
+      }),
+      productLeadershipProfile()
+    );
+
+    expect(ranked.decision).toBe("skip");
+    expect(ranked.gates.find((gate) => gate.id === "seniority")?.passed).toBe(false);
+  });
+
+  it("lets high-grade company product manager titles reach review instead of failing title level alone", () => {
+    const ranked = rankJob(
+      rankableJob({
+        id: "job-global-enterprise-spm",
+        company: "Global Enterprise",
+        title: "Senior Product Manager",
+        seniority: "senior",
+        companyMarketGrade: "global_enterprise"
+      }),
+      productLeadershipProfile()
+    );
+
+    expect(ranked.gates.find((gate) => gate.id === "seniority")?.passed).toBe(true);
+    expect(ranked.decision).not.toBe("skip");
+  });
+
+  it("hard-blocks lower-title product roles when company grade does not lift them", () => {
+    const ranked = rankJob(
+      rankableJob({
+        id: "job-small-company-pm",
+        company: "Small Startup",
+        title: "Product Manager",
+        seniority: "manager",
+        companyMarketGrade: "startup"
+      }),
+      productLeadershipProfile()
+    );
+
+    expect(ranked.decision).toBe("skip");
+    expect(ranked.gates.find((gate) => gate.id === "seniority")?.passed).toBe(false);
+  });
+
+  it("uses user-approved company seniority overrides before blocking title level", () => {
+    const ranked = rankJob(
+      rankableJob({
+        id: "job-override-company-pm",
+        company: "Example Marketplace",
+        title: "Product Manager",
+        seniority: "manager",
+        companyMarketGrade: "startup"
+      }),
+      productLeadershipProfile({
+        preferences: {
+          companySeniorityOverrides: [
+            {
+              company: "Example Marketplace",
+              titleTerms: ["product manager"],
+              effectiveSeniority: "director",
+              reason: "User confirmed this company's Product Manager maps to director scope."
+            }
+          ]
+        }
+      })
+    );
+
+    expect(ranked.gates.find((gate) => gate.id === "seniority")?.passed).toBe(true);
+    expect(ranked.decision).not.toBe("skip");
+  });
+
+  it("hard-blocks junior experience ranges for senior profiles", () => {
+    const ranked = rankJob(
+      rankableJob({
+        id: "job-junior-years",
+        title: "Senior Product Manager",
+        seniority: "senior",
+        requiredExperienceYears: { min: 0, max: 2 }
+      }),
+      productLeadershipProfile({
+        preferences: {
+          acceptableSeniorities: ["senior", "director", "vp"],
+          acceptableExperienceYears: { min: 8, max: 20 }
+        }
+      })
+    );
+
+    expect(ranked.decision).toBe("skip");
+    expect(ranked.gates.find((gate) => gate.id === "experience")?.passed).toBe(false);
   });
 
   it("suggests a relax plan when the batch is short", () => {

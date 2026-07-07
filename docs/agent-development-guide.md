@@ -235,6 +235,10 @@ docs/research-math-and-oss.md
 
 Hard gates first. Scores are backend prioritization signals, not user-facing judgment.
 
+Wrong role family, explicit out-of-range seniority, and clear out-of-range experience are hard blockers. Adjacent roles are not default application targets. If a user wants a pivot, store that role in `preferences.targetRoleTerms` or an approved user config change; do not make one-off code edits for a single job.
+
+Company title levels can be adjusted only through reusable evidence: `companyMarketGrade`, `companyStage`, normalized seniority evidence, or `preferences.companySeniorityOverrides`. Do not hardcode one company name in ranker logic.
+
 ### CV Tailoring
 
 Use:

@@ -182,11 +182,12 @@ function buildAtsDirectorySuggestion(profile: UserProfile, generatedAt: string, 
 
 function buildSearchProfile(profile: UserProfile): SourcePlan["searchProfile"] {
   const remoteAllowed = profile.preferences.remoteOnly || profile.preferences.acceptableWorkModes.includes("remote");
-  const titlePositive = uniqueNonEmpty([
-    ...profile.preferences.targetRoleTerms,
-    ...(profile.matchSettings.allowAdjacentTitles ? profile.preferences.adjacentRoleTerms : [])
+  const titlePositive = uniqueNonEmpty(profile.preferences.targetRoleTerms);
+  const titleNegative = uniqueNonEmpty([
+    ...profile.preferences.noGoRoleTerms,
+    ...profile.preferences.excludedKeywords,
+    ...adjacentOnlyRoleTerms(profile)
   ]);
-  const titleNegative = uniqueNonEmpty([...profile.preferences.noGoRoleTerms, ...profile.preferences.excludedKeywords]);
   const seniorityBoost = uniqueNonEmpty([
     ...profile.preferences.targetSeniorities.flatMap(senioritySearchTerms),
     ...profile.preferences.acceptableSeniorities.flatMap(senioritySearchTerms)
@@ -238,9 +239,18 @@ function buildSearchProfile(profile: UserProfile): SourcePlan["searchProfile"] {
     notes: [
       "Use title filters before expensive evaluation so weak roles do not crowd the batch.",
       "Use location filters as search guidance first; ask-before locations require user confirmation before application.",
-      "Use content filters for prioritization and pause decisions, not for inventing CV claims."
+      "Use content filters for prioritization and pause decisions, not for inventing CV claims.",
+      "Adjacent role terms are stored for optional exploration but are not default source-query or title-filter positives."
     ]
   };
+}
+
+function adjacentOnlyRoleTerms(profile: UserProfile): string[] {
+  const targetTerms = new Set(profile.preferences.targetRoleTerms.map((term) => normalizeComparable(term)));
+  return profile.preferences.adjacentRoleTerms.filter((term) => {
+    const normalized = normalizeComparable(term);
+    return normalized && !targetTerms.has(normalized);
+  });
 }
 
 function buildAtsSearchSuggestions(
@@ -440,8 +450,7 @@ function buildSearchQueries(
 ): string[] {
   const roleQueries = uniqueNonEmpty([
     input.role,
-    ...profile.preferences.targetRoleTerms.slice(1),
-    ...profile.preferences.adjacentRoleTerms.slice(0, profile.matchSettings.allowAdjacentTitles ? 1 : 0)
+    ...profile.preferences.targetRoleTerms.slice(1)
   ]).slice(0, maxQueries);
   const industries = uniqueNonEmpty([input.industry, ...profile.preferences.targetIndustries]).slice(0, 2);
   const industryQueries = industries.length > 0 ? roleQueries.map((role) => `${role} ${industries[0]}`) : [];

@@ -117,7 +117,7 @@ function checkTitle(
   if (!hasPositive) {
     return {
       passed: false,
-      detail: "Title did not match target or adjacent role terms."
+      detail: "Title did not match target role terms."
     };
   }
   return {

@@ -333,11 +333,11 @@ Ranker parity improvement now in place:
 
 ```text
 target title anchor -> can enter today's preparation queue
-adjacent-only or description-only role match -> watch unless the user explicitly targets it
+adjacent-only, description-only, or wrong-family role match -> skip unless the user explicitly targets it
 broad remote region that includes the user's authorized region -> do not hard-block at discovery/ranking time
 ```
 
-This keeps weak matches from filling application slots while still allowing explicit role pivots and plausible remote roles to remain reviewable.
+This keeps weak matches from filling application slots while still allowing explicit role pivots and plausible remote roles to remain reviewable. Default source generation also keeps adjacent-only terms out of active search queries and title positives; separate exploration lanes must be approved through user config.
 
 Dashboard parity improvement now in place:
 

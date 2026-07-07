@@ -457,12 +457,8 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
   const sourcePlan = options.sourcePlan ?? createSourcePlan(profile);
   const ranked = jobs.map((job) => rankJob(job, profile)).sort((a, b) => b.priority - a.priority);
   const batchLimit = Math.max(1, Math.floor(profile.applySettings.applicationsPerDay || 1));
-  const applyPriority = Math.max(profile.matchSettings.minimumFitFloor, profile.applySettings.minimumFitToApply);
-  const floorPriority = profile.matchSettings.minimumFitFloor;
-  const applyReadyJobs = ranked.filter((rankedJob) => rankedJob.priority >= applyPriority);
-  const reviewFillJobs = ranked.filter(
-    (rankedJob) => rankedJob.priority >= floorPriority && rankedJob.priority < applyPriority
-  );
+  const applyReadyJobs = ranked.filter((rankedJob) => rankedJob.decision === "apply");
+  const reviewFillJobs = ranked.filter((rankedJob) => rankedJob.decision === "review");
   const candidateJobs = [...applyReadyJobs, ...reviewFillJobs];
   const { cvResults, skippedReconciliations } = generatePassedCvResults(candidateJobs, profile, batchLimit);
   const jobDecisions = buildProgressJobDecisionItems(ranked, skippedReconciliations);

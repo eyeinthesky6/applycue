@@ -15,7 +15,7 @@ A profile contains:
 - match settings
 - proof bank
 
-Normal preferences include target roles, adjacent roles, industries, excluded industries, locations, work modes, seniority, employment type, company stage, compensation, work authorization, notice period, travel, blocked companies, and keywords.
+Normal preferences include target roles, adjacent roles, industries, excluded industries, locations, work modes, seniority, acceptable experience range, employment type, company stage, compensation, work authorization, notice period, travel, blocked companies, company seniority overrides, and keywords.
 
 Proof bank items connect claims to evidence. CV tailoring must use proof, not invention.
 
@@ -88,6 +88,10 @@ Ranking stores:
 - final priority
 
 The user sees reasons and decisions. The backend keeps scores.
+
+Ranking hard-gates wrong role family, blocked companies, no-go terms, excluded industries/keywords, impossible work mode, out-of-range seniority, out-of-range required experience, employment type, company stage, and work authorization. Adjacent-only roles are optional exploration lanes, not default application targets.
+
+`JobRecord` may carry `seniorityEvidence`, `companyMarketGrade`, and `requiredExperienceYears`. The normalizer can infer simple seniority and experience evidence from titles/JDs, and can attach a small reusable company-grade signal from known company/domain markers. User-approved exceptions belong in `preferences.companySeniorityOverrides`, not in ranker code.
 
 ## Application Record
 

@@ -1,7 +1,7 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import type { CompanyStage, EmploymentType, JobRecord, JobSource, Seniority, WorkMode } from "@applycue/core";
+import type { CompanyMarketGrade, CompanyStage, EmploymentType, JobRecord, JobSource, Seniority, WorkMode } from "@applycue/core";
 import { normalizeJob, type RawJobInput } from "@applycue/normalizer";
 
 export * from "./ats.js";
@@ -197,6 +197,8 @@ function parseMetadataBlock(block: string): LocalRawJob {
   if (employmentType) output.employmentType = employmentType;
   const companyStage = parseCompanyStage(raw.companyStage);
   if (companyStage) output.companyStage = companyStage;
+  const companyMarketGrade = parseCompanyMarketGrade(raw.companyMarketGrade);
+  if (companyMarketGrade) output.companyMarketGrade = companyMarketGrade;
   const liveState = parseLiveState(raw.liveState);
   if (liveState) output.liveState = liveState;
   return output;
@@ -235,6 +237,8 @@ function fieldNameFromKey(key: string): keyof Omit<RawJobInput, "source"> | unde
     type: "employmentType",
     companystage: "companyStage",
     stage: "companyStage",
+    companymarketgrade: "companyMarketGrade",
+    marketgrade: "companyMarketGrade",
     livestate: "liveState",
     live: "liveState",
     jobstatus: "liveState",
@@ -255,6 +259,9 @@ function toRawJobInput(row: LocalRawJob, filePath: string, fallbackSource: JobSo
     ...(row.location ? { location: row.location } : {}),
     ...(row.workMode ? { workMode: row.workMode } : {}),
     ...(row.seniority ? { seniority: row.seniority } : {}),
+    ...(row.seniorityEvidence ? { seniorityEvidence: row.seniorityEvidence } : {}),
+    ...(row.companyMarketGrade ? { companyMarketGrade: row.companyMarketGrade } : {}),
+    ...(row.requiredExperienceYears ? { requiredExperienceYears: row.requiredExperienceYears } : {}),
     ...(row.employmentType ? { employmentType: row.employmentType } : {}),
     ...(row.companyStage ? { companyStage: row.companyStage } : {}),
     ...(liveState ? { liveState } : {})
@@ -363,6 +370,22 @@ function parseCompanyStage(value?: string): CompanyStage | undefined {
     agency: "agency",
     nonprofit: "nonprofit",
     non_profit: "nonprofit",
+    unknown: "unknown"
+  };
+  return aliases[normalized];
+}
+
+function parseCompanyMarketGrade(value?: string): CompanyMarketGrade | undefined {
+  const normalized = normalizeEnumValue(value);
+  if (!normalized) return undefined;
+  const aliases: Record<string, CompanyMarketGrade> = {
+    global_enterprise: "global_enterprise",
+    global: "global_enterprise",
+    enterprise: "enterprise",
+    large: "enterprise",
+    mid_market: "mid_market",
+    midmarket: "mid_market",
+    startup: "startup",
     unknown: "unknown"
   };
   return aliases[normalized];

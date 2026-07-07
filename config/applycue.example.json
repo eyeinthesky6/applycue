@@ -72,6 +72,7 @@
     "acceptableWorkModes": ["remote", "hybrid", "onsite"],
     "targetSeniorities": [],
     "acceptableSeniorities": [],
+    "companySeniorityOverrides": [],
     "employmentTypes": ["full_time"],
     "companyStages": [],
     "preferredCompanyNames": [],
@@ -188,7 +189,7 @@
         "label": "Example Remotive product search",
         "enabled": false,
         "provider": "remotive",
-        "query": "product",
+        "query": "head of product",
         "approvedAt": "2026-07-06T00:00:00.000Z",
         "options": {
           "limit": 10
@@ -202,7 +203,7 @@
         "label": "Example The Muse product search",
         "enabled": false,
         "provider": "themuse",
-        "query": "product",
+        "query": "vp product",
         "approvedAt": "2026-07-06T00:00:00.000Z",
         "options": {
           "limit": 25,

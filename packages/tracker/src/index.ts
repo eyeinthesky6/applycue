@@ -796,13 +796,14 @@ function renderJobDecisions(items: ProgressJobDecisionItem[]): string {
 }
 
 function renderJobDecision(item: ProgressJobDecisionItem): string {
-  const reasonText = item.reasons.length > 0
-    ? item.reasons.slice(0, 2).join(" ")
+  const reasonItems = item.reasons.filter((reason) => !reason.startsWith("Blocked:"));
+  const reasonText = reasonItems.length > 0
+    ? reasonItems.slice(0, 2).join(" ")
     : "No strong match reason recorded.";
   const blockers = item.failedGates.length > 0 ? item.failedGates.slice(0, 2).join(" ") : "";
   const location = item.location ? `<span class="muted">${escapeHtml(item.location)}</span>` : "";
   const skipped = item.skippedReason ? `Skipped reason: ${item.skippedReason}` : "";
-  const why = [reasonText, blockers, skipped].filter(Boolean).join(" ");
+  const why = [blockers, skipped, reasonText].filter(Boolean).join(" ");
 
   return `<tr>
     <td><span class="badge ${decisionBadgeClass(item.decision)}">${escapeHtml(humanizeIdentifier(item.decision))}</span></td>
@@ -1474,10 +1475,11 @@ function renderPreparedSummaryItem(item: ProgressApplicationItem, index: number)
 }
 
 function renderDecisionSummaryItem(item: ProgressJobDecisionItem): string {
-  const reasons = item.reasons.length > 0 ? item.reasons.slice(0, 2).join(" ") : "No strong match reason recorded.";
+  const reasonItems = item.reasons.filter((reason) => !reason.startsWith("Blocked:"));
+  const reasons = reasonItems.length > 0 ? reasonItems.slice(0, 2).join(" ") : "No strong match reason recorded.";
   const blockers = item.failedGates.length > 0 ? item.failedGates.slice(0, 2).join(" ") : "";
   const skipped = item.skippedReason ? `Skipped reason: ${item.skippedReason}` : "";
-  const why = [reasons, blockers, skipped].filter(Boolean).join(" ");
+  const why = [blockers, skipped, reasons].filter(Boolean).join(" ");
   return `- ${escapeMarkdownLine(item.company)} - ${escapeMarkdownLine(item.title)}: ${escapeMarkdownLine(humanizeIdentifier(item.decision))}. ${escapeMarkdownLine(why)} Next: ${escapeMarkdownLine(item.nextStep)}`;
 }
 

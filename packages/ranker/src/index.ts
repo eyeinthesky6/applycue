@@ -1,9 +1,12 @@
-import type { GateResult, JobRecord, RankedJob, RankComponent, RelaxStep, UserProfile } from "@applycue/core";
+import type { ExperienceRange, GateResult, JobRecord, RankedJob, RankComponent, RelaxStep, Seniority, UserProfile } from "@applycue/core";
 
 export function evaluateHardGates(job: JobRecord, profile: UserProfile): GateResult[] {
   const prefs = profile.preferences;
   const jobLocation = job.location;
   const haystack = `${job.company} ${job.title} ${job.description}`.toLowerCase();
+  const roleObjectiveFit = roleScore(job, profile);
+  const roleFamilyOk = roleObjectiveFit >= 0.5;
+  const effectiveSeniority = resolveEffectiveSeniority(job, profile, roleObjectiveFit);
   const blockedCompany = prefs.blockedCompanyNames.some((company) =>
     job.company.toLowerCase().includes(company.toLowerCase())
   );
@@ -19,10 +22,11 @@ export function evaluateHardGates(job: JobRecord, profile: UserProfile): GateRes
   const workModeOk = prefs.acceptableWorkModes.includes(job.workMode) || job.workMode === "unknown";
   const remoteOk = !prefs.remoteOnly || job.workMode === "remote" || job.workMode === "unknown";
   const seniorityOk =
-    !job.seniority ||
-    job.seniority === "unknown" ||
+    !effectiveSeniority.value ||
+    effectiveSeniority.value === "unknown" ||
     prefs.acceptableSeniorities.length === 0 ||
-    prefs.acceptableSeniorities.includes(job.seniority);
+    prefs.acceptableSeniorities.includes(effectiveSeniority.value);
+  const experienceOk = experienceRangeOk(job.requiredExperienceYears, profile);
   const employmentTypeOk =
     !job.employmentType ||
     job.employmentType === "unknown" ||
@@ -32,7 +36,7 @@ export function evaluateHardGates(job: JobRecord, profile: UserProfile): GateRes
     !job.companyStage ||
     job.companyStage === "unknown" ||
     prefs.companyStages.length === 0 ||
-    prefs.companyStages.includes(job.companyStage);
+    prefs.companyStages.some((stage) => companyStageMatchesPreference(job.companyStage!, stage));
   const workAuthOk =
     prefs.workAuthorizationCountries.length === 0 ||
     !jobLocation ||
@@ -62,6 +66,13 @@ export function evaluateHardGates(job: JobRecord, profile: UserProfile): GateRes
       reason: noGoRole ? "Role matches a user-defined no-go term." : "No no-go role term matched."
     },
     {
+      id: "role-family",
+      passed: roleFamilyOk,
+      reason: roleFamilyOk
+        ? "Title matches the target role family."
+        : "Role family does not match the target role terms strongly enough."
+    },
+    {
       id: "excluded-industry",
       passed: !excludedIndustry,
       reason: excludedIndustry ? "Role matches an excluded industry." : "No excluded industry matched."
@@ -79,7 +90,12 @@ export function evaluateHardGates(job: JobRecord, profile: UserProfile): GateRes
     {
       id: "seniority",
       passed: seniorityOk,
-      reason: seniorityOk ? "Seniority is acceptable." : "Seniority conflicts with preferences."
+      reason: seniorityGateReason(seniorityOk, effectiveSeniority, prefs.acceptableSeniorities)
+    },
+    {
+      id: "experience",
+      passed: experienceOk.passed,
+      reason: experienceOk.reason
     },
     {
       id: "employment-type",
@@ -117,16 +133,22 @@ export function rankJob(job: JobRecord, profile: UserProfile): RankedJob {
         ? "watch"
         : "skip";
 
+  const positiveReasons = components
+    .filter((component) => component.score >= 0.5)
+    .slice(0, 3)
+    .map((component) => component.reason);
+  const gateReasons = gates
+    .filter((gate) => !gate.passed)
+    .slice(0, 2)
+    .map((gate) => `Blocked: ${gate.reason}`);
+
   return {
     job,
     decision,
     priority,
     gates,
     components,
-    reasons: components
-      .filter((component) => component.score >= 0.5)
-      .slice(0, 3)
-      .map((component) => component.reason),
+    reasons: gateReasons.length > 0 ? [...gateReasons, ...positiveReasons.slice(0, 1)] : positiveReasons,
     nextStep: decision
   };
 }
@@ -282,8 +304,9 @@ function roleScore(job: JobRecord, profile: UserProfile): number {
   const titleTokens = tokenSet(title);
   const titleHasTargetAnchor = targetAnchors.length === 0 || targetAnchors.some((token) => titleTokens.has(token));
   const titleHasAnyAnchor = allAnchors.length === 0 || allAnchors.some((token) => titleTokens.has(token));
+  const untargetedAdjacentTitle = hasUntargetedAdjacentTitle(title, profile);
 
-  if (targetTitleScore >= 0.7) return roundScore(Math.max(targetScore, adjacentScore));
+  if (targetTitleScore >= 0.7 && !untargetedAdjacentTitle) return roundScore(Math.max(targetScore, adjacentScore));
 
   const descriptionOnlyTargetScore = titleHasTargetAnchor ? targetScore : Math.min(targetScore, 0.49);
   if (adjacentTitleScore >= 0.7) {
@@ -294,10 +317,21 @@ function roleScore(job: JobRecord, profile: UserProfile): number {
   const adjacentDescriptionScore = titleHasTargetAnchor ? adjacentScore : Math.min(adjacentScore, 0.49);
   const score = Math.max(descriptionOnlyTargetScore, adjacentDescriptionScore);
   const titleAnchoredScore = titleHasAnyAnchor ? score : Math.min(score, 0.4);
+  if (untargetedAdjacentTitle) {
+    return roundScore(Math.min(titleAnchoredScore, 0.49));
+  }
   if (isTechnicalProductTitleForProductLeadership(title, profile)) {
     return roundScore(Math.min(titleAnchoredScore, 0.49));
   }
   return roundScore(titleAnchoredScore);
+}
+
+function hasUntargetedAdjacentTitle(title: string, profile: UserProfile): boolean {
+  const targetTerms = new Set(profile.preferences.targetRoleTerms.map((term) => normalizeText(term)));
+  return profile.preferences.adjacentRoleTerms.some((term) => {
+    const normalized = normalizeText(term);
+    return normalized && !targetTerms.has(normalized) && singleTermScore(title, term) >= 0.7;
+  });
 }
 
 function roleTermScore(title: string, fullText: string, terms: string[]): number {
@@ -375,11 +409,159 @@ function companyScore(job: JobRecord, profile: UserProfile): number {
   if (profile.preferences.preferredCompanyNames.some((company) => job.company.toLowerCase().includes(company.toLowerCase()))) {
     return 1;
   }
-  if (job.companyStage && profile.preferences.companyStages.includes(job.companyStage)) {
+  if (job.companyStage && profile.preferences.companyStages.some((stage) => companyStageMatchesPreference(job.companyStage!, stage))) {
     return 0.8;
   }
   if (profile.preferences.preferredCompanyNames.length === 0 && !job.companyStage) return 0.5;
   return profile.preferences.preferredCompanyNames.length === 0 && profile.preferences.companyStages.length === 0 ? 0.5 : 0.25;
+}
+
+interface EffectiveSeniority {
+  value?: Seniority;
+  reason?: string;
+}
+
+function resolveEffectiveSeniority(job: JobRecord, profile: UserProfile, roleObjectiveFit: number): EffectiveSeniority {
+  const override = findCompanySeniorityOverride(job, profile);
+  if (override) {
+    return {
+      value: override.effectiveSeniority,
+      reason: override.reason
+        ? `Seniority uses user-approved company override: ${override.reason}`
+        : "Seniority uses a user-approved company override."
+    };
+  }
+
+  if (hasInflatedAvpTitle(job) && !hasHighCompanyGrade(job)) {
+    return {
+      value: "manager",
+      reason: "AVP or assistant vice president title is treated as manager-level until company grade or user feedback proves otherwise."
+    };
+  }
+
+  const base = job.seniority && job.seniority !== "unknown" ? job.seniority : undefined;
+  if (!base) {
+    return job.seniority === "unknown"
+      ? { value: "unknown", reason: "Seniority is unknown, so it is not used as a hard blocker." }
+      : { reason: "Seniority is unknown, so it is not used as a hard blocker." };
+  }
+
+  if (shouldUpgradeByCompanyGrade(job, base, roleObjectiveFit)) {
+    return {
+      value: "director",
+      reason: "Large-company grade lifts this title one seniority band for review; it does not guarantee auto-apply."
+    };
+  }
+
+  return {
+    value: base,
+    reason: job.seniorityEvidence?.reason ?? "Seniority is acceptable."
+  };
+}
+
+function seniorityGateReason(passed: boolean, effective: EffectiveSeniority, acceptableSeniorities: Seniority[]): string {
+  if (passed) return effective.reason ?? "Seniority is acceptable.";
+  const accepted = acceptableSeniorities.length > 0 ? acceptableSeniorities.map(formatSeniority).join(", ") : "any";
+  const actual = effective.value ? formatSeniority(effective.value) : "unknown";
+  const evidence = effective.reason ? ` ${effective.reason}` : "";
+  return `Seniority ${actual} conflicts with acceptable seniorities (${accepted}).${evidence}`;
+}
+
+function formatSeniority(value: Seniority): string {
+  return value.replaceAll("_", " ");
+}
+
+function findCompanySeniorityOverride(job: JobRecord, profile: UserProfile): NonNullable<UserProfile["preferences"]["companySeniorityOverrides"]>[number] | undefined {
+  const overrides = profile.preferences.companySeniorityOverrides ?? [];
+  const company = normalizeText(job.company);
+  const title = normalizeText(job.title);
+  return overrides.find((override) => {
+    const overrideCompany = normalizeText(override.company);
+    if (!overrideCompany || !company.includes(overrideCompany)) return false;
+    const titleTerms = override.titleTerms ?? [];
+    return titleTerms.length === 0 || titleTerms.some((term) => title.includes(normalizeText(term)));
+  });
+}
+
+function hasInflatedAvpTitle(job: JobRecord): boolean {
+  const title = normalizeText(job.title);
+  return /\bavp\b/.test(title) || title.includes("assistant vice president") || title.includes("associate vice president");
+}
+
+function shouldUpgradeByCompanyGrade(job: JobRecord, base: Seniority, roleObjectiveFit: number): boolean {
+  if (roleObjectiveFit < 0.5) return false;
+  if (!["manager", "senior", "lead"].includes(base)) return false;
+  return hasHighCompanyGrade(job);
+}
+
+function hasHighCompanyGrade(job: JobRecord): boolean {
+  return job.companyMarketGrade === "global_enterprise" ||
+    job.companyMarketGrade === "enterprise" ||
+    job.companyStage === "public_company" ||
+    job.companyStage === "enterprise";
+}
+
+function companyStageMatchesPreference(jobStage: NonNullable<JobRecord["companyStage"]>, preferredStage: NonNullable<JobRecord["companyStage"]>): boolean {
+  if (jobStage === preferredStage) return true;
+  return preferredStage === "enterprise" && jobStage === "public_company";
+}
+
+interface ExperienceGateResult {
+  passed: boolean;
+  reason: string;
+}
+
+function experienceRangeOk(required: ExperienceRange | undefined, profile: UserProfile): ExperienceGateResult {
+  if (!required) return { passed: true, reason: "Required experience range is not known." };
+
+  const acceptable = profile.preferences.acceptableExperienceYears;
+  if (acceptable) {
+    if (typeof acceptable.min === "number" && typeof required.max === "number" && required.max < acceptable.min) {
+      return {
+        passed: false,
+        reason: `Role asks for ${formatExperienceRange(required)}, below the user's acceptable experience range.`
+      };
+    }
+    if (typeof acceptable.max === "number" && typeof required.min === "number" && required.min > acceptable.max) {
+      return {
+        passed: false,
+        reason: `Role asks for ${formatExperienceRange(required)}, above the user's acceptable experience range.`
+      };
+    }
+  }
+
+  if (typeof profile.totalExperienceYears === "number" && typeof required.min === "number" && required.min > profile.totalExperienceYears + 1) {
+    return {
+      passed: false,
+      reason: `Role asks for ${formatExperienceRange(required)}, above the user's recorded experience.`
+    };
+  }
+
+  if (isSeniorTargetProfile(profile) && typeof required.max === "number" && required.max <= 2) {
+    return {
+      passed: false,
+      reason: `Role asks for ${formatExperienceRange(required)}, which is junior for this profile.`
+    };
+  }
+
+  return { passed: true, reason: "Required experience range is acceptable or not limiting." };
+}
+
+function isSeniorTargetProfile(profile: UserProfile): boolean {
+  const seniorLevels = new Set<Seniority>(["senior", "lead", "manager", "director", "vp", "c_level", "founder"]);
+  const levels = [
+    profile.currentLevel,
+    ...profile.preferences.targetSeniorities,
+    ...profile.preferences.acceptableSeniorities
+  ].filter((level): level is Seniority => Boolean(level));
+  return levels.some((level) => seniorLevels.has(level));
+}
+
+function formatExperienceRange(range: ExperienceRange): string {
+  if (typeof range.min === "number" && typeof range.max === "number") return `${range.min}-${range.max} years`;
+  if (typeof range.min === "number") return `${range.min}+ years`;
+  if (typeof range.max === "number") return `up to ${range.max} years`;
+  return "unknown years";
 }
 
 function locationScore(job: JobRecord, profile: UserProfile): number {

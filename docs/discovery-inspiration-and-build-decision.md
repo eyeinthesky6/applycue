@@ -172,7 +172,8 @@ broad source results -> source-quality filter -> role-forward ranking -> metadat
 Applied fixes:
 
 - use weighted backend priority instead of a flat average, with role fit as the strongest signal
-- keep low role-fit and adjacent-only matches capped below the application floor
+- hard-block low role-fit, adjacent-only, description-only, and wrong-family matches before CV work
+- keep adjacent-only terms out of default source queries and source-quality title positives unless they are also target terms
 - strip reporting-line and provider appendix noise before requirement extraction
 - map regulated financial-services requirements only when approved banking/lending evidence exists
 - keep the generated CV full and structured, with no empty employer headings

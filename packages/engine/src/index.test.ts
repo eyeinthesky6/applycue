@@ -1,12 +1,13 @@
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { SourcePlan } from "@applycue/core";
+import type { JobRecord, SourcePlan, UserProfile } from "@applycue/core";
 import { describe, expect, it } from "vitest";
 import {
   approveApplicationAnswers,
   approveSourceSuggestions,
   recordOutcomeEvent,
+  runBatch,
   runLocalOrSampleBatch,
   runSampleBatch
 } from "./index.js";
@@ -1083,6 +1084,149 @@ Lead product strategy and automation.
 
     expect(result.applications).toHaveLength(5);
     expect(result.cvVariants).toHaveLength(5);
+  });
+
+  it("does not prepare skipped weak-role jobs even when the match floor is low", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-decision-gate-"));
+    const profile: UserProfile = {
+      id: "decision-gate-user",
+      currentLevel: "director",
+      totalExperienceYears: 15,
+      currentDesignation: "Head of Product",
+      baseCvText: [
+        "Decision Gate Candidate",
+        "",
+        "Example Product Co        Head of Product",
+        "- Led product roadmap and fintech payments strategy.",
+        "- Owned product leadership and GTM execution.",
+        "",
+        "EDUCATION",
+        "MBA"
+      ].join("\n"),
+      pastEmployers: [],
+      preferences: {
+        targetRoleTerms: ["head of product", "director product"],
+        adjacentRoleTerms: ["business development"],
+        targetIndustries: ["fintech"],
+        excludedIndustries: [],
+        preferredLocations: ["remote india"],
+        extraLocations: [],
+        askBeforeLocations: [],
+        acceptableWorkModes: ["remote", "hybrid"],
+        targetSeniorities: ["director", "vp"],
+        acceptableSeniorities: ["director", "vp", "c_level"],
+        employmentTypes: ["full_time"],
+        companyStages: [],
+        preferredCompanyNames: [],
+        blockedCompanyNames: [],
+        noGoRoleTerms: [],
+        requiredKeywords: [],
+        niceToHaveKeywords: ["roadmap", "payments"],
+        excludedKeywords: [],
+        workAuthorizationCountries: ["india"],
+        preferredTimezones: []
+      },
+      searchSettings: {
+        searchCountries: ["india"],
+        searchAreas: ["remote india"],
+        remoteRegions: ["india"],
+        agentMayExpandSearchArea: true,
+        informUserOnSearchAreaChange: true,
+        standardHoursOnly: true,
+        preferredShifts: ["standard"],
+        askBeforeShifts: []
+      },
+      sourceSettings: {
+        allowLoggedInBrowserAccess: false,
+        defaultPortalApplyPolicy: "ask",
+        trustedPortals: [],
+        askBeforePortals: [],
+        blockedPortals: [],
+        fraudSignalTerms: []
+      },
+      applySettings: {
+        mode: "daily",
+        applicationsPerDay: 5,
+        minimumFitToApply: 0.8,
+        allowedSourceKinds: ["manual", "job_board"],
+        messagePolicy: "draft_only",
+        pauseReasons: ["missing_required_answer"],
+        trackEmailReplies: false,
+        allowRecruiterDmDrafts: true
+      },
+      matchSettings: {
+        range: "normal",
+        widenIfFewerThan: 20,
+        relaxOrder: ["source", "title", "industry", "location", "recency", "minimum_fit"],
+        minimumFitFloor: 0.4,
+        allowAdjacentTitles: true,
+        allowAdjacentIndustries: true
+      },
+      proofBank: [
+        {
+          id: "proof-product",
+          claim: "Worked as Head of Product and led product roadmap and fintech payments work.",
+          evidence: "Approved profile proof covers Head of Product, roadmap, fintech, and payments.",
+          tags: ["head of product", "product", "roadmap", "fintech", "payments"],
+          kind: "work"
+        }
+      ],
+      facts: [
+        {
+          id: "fact-head-of-product",
+          statement: "Worked as Head of Product and led product roadmap and fintech payments strategy.",
+          category: "role",
+          sourceKind: "user_confirmed",
+          sensitivity: "major",
+          sourceRef: "engine-test",
+          approvedByUser: true,
+          createdAt: "2026-07-05T00:00:00.000Z"
+        }
+      ]
+    };
+    const jobs: JobRecord[] = [
+      {
+        id: "strong-product",
+        source: { id: "manual", kind: "manual", name: "Manual" },
+        company: "Good Fintech",
+        title: "Head of Product",
+        url: "https://example.com/strong",
+        description: "Lead product roadmap and fintech payments strategy.",
+        location: "Remote India",
+        workMode: "remote",
+        seniority: "director",
+        employmentType: "full_time",
+        discoveredAt: "2026-07-05T00:00:00.000Z",
+        liveState: "live"
+      },
+      {
+        id: "weak-adjacent",
+        source: { id: "manual", kind: "manual", name: "Manual" },
+        company: "Adjacent Co",
+        title: "Head of Business Development",
+        url: "https://example.com/weak",
+        description: "Own partnerships and work with product teams on fintech GTM.",
+        location: "Remote India",
+        workMode: "remote",
+        seniority: "director",
+        employmentType: "full_time",
+        discoveredAt: "2026-07-05T00:00:00.000Z",
+        liveState: "live"
+      }
+    ];
+
+    const result = await runBatch({
+      workspaceRoot,
+      outputRoot: workspaceRoot,
+      profile,
+      jobs,
+      runId: "decision-gate",
+      kind: "daily_batch",
+      writeFiles: false
+    });
+
+    expect(result.cvVariants.map((variant) => variant.jobId)).toEqual(["strong-product"]);
+    expect(result.jobDecisions.find((item) => item.jobId === "weak-adjacent")?.decision).toBe("skip");
   });
 
   it("fills review batches down to the match floor when strict apply threshold is short", async () => {

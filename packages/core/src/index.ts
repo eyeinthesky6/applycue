@@ -31,6 +31,40 @@ export type CompanyStage =
   | "nonprofit"
   | "unknown";
 
+export type CompanyMarketGrade =
+  | "global_enterprise"
+  | "enterprise"
+  | "mid_market"
+  | "startup"
+  | "unknown";
+
+export type SeniorityEvidenceSource =
+  | "explicit"
+  | "title"
+  | "description"
+  | "provider"
+  | "user_override"
+  | "company_grade";
+
+export interface SeniorityEvidence {
+  value: Seniority;
+  source: SeniorityEvidenceSource;
+  confidence: "low" | "medium" | "high";
+  reason: string;
+}
+
+export interface ExperienceRange {
+  min?: number;
+  max?: number;
+}
+
+export interface CompanySeniorityOverride {
+  company: string;
+  titleTerms?: string[];
+  effectiveSeniority: Seniority;
+  reason?: string;
+}
+
 export type EmploymentType =
   | "full_time"
   | "part_time"
@@ -233,6 +267,8 @@ export interface UserPreferences {
   acceptableWorkModes: WorkMode[];
   targetSeniorities: Seniority[];
   acceptableSeniorities: Seniority[];
+  acceptableExperienceYears?: ExperienceRange;
+  companySeniorityOverrides?: CompanySeniorityOverride[];
   employmentTypes: EmploymentType[];
   companyStages: CompanyStage[];
   preferredCompanyNames: string[];
@@ -326,6 +362,7 @@ export interface UserProfile {
   currentCompany?: string;
   currentDesignation?: string;
   currentLevel?: Seniority;
+  totalExperienceYears?: number;
   currentCountry?: string;
   currentLocation?: string;
   pastEmployers: WorkHistoryItem[];
@@ -639,6 +676,9 @@ export interface JobRecord {
   location?: string;
   workMode: WorkMode;
   seniority?: Seniority;
+  seniorityEvidence?: SeniorityEvidence;
+  companyMarketGrade?: CompanyMarketGrade;
+  requiredExperienceYears?: ExperienceRange;
   employmentType?: EmploymentType;
   companyStage?: CompanyStage;
   compensation?: Compensation;

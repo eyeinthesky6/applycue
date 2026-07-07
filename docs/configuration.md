@@ -34,7 +34,7 @@ Example local job source:
 ~/.applycue/profiles/default/assets/jobs/jobs.jsonl
 ```
 
-Each row is one job with fields like `company`, `title`, `url`, `description`, `location`, `workMode`, `seniority`, `employmentType`, and `companyStage`.
+Each row is one job with fields like `company`, `title`, `url`, `description`, `location`, `workMode`, `seniority`, `seniorityEvidence`, `requiredExperienceYears`, `companyMarketGrade`, `employmentType`, and `companyStage`.
 
 `sources.localJobsPath` can point to a single file or to a directory.
 
@@ -284,6 +284,7 @@ Rules:
 - `searchProfile` is generated output and should not be hand-edited.
 - It must be derived from the user's CV/profile/preferences/search settings.
 - It should not contain market-specific defaults such as India, Naukri, or Dubai unless the user profile or setup config asks for them.
+- Title positives should use target role terms. Adjacent-only role terms are optional exploration lanes and should not enter default source queries or title positives.
 - Source adapters and ranking may use it later for filtering and diagnostics, but user-facing CV claims still come only from approved facts and proof.
 
 ## Approving Generated Sources

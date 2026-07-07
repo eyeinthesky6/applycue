@@ -31,6 +31,7 @@ export interface ApplyCueProfileConfig {
   currentCompany?: string | null;
   currentDesignation?: string | null;
   currentLevel?: UserProfile["currentLevel"] | null;
+  totalExperienceYears?: number | null;
   currentCountry?: string | null;
   currentLocation?: string | null;
   pastEmployers?: WorkHistoryItem[];
@@ -101,6 +102,7 @@ export function createDefaultPreferences(): UserPreferences {
     acceptableWorkModes: ["remote", "hybrid", "onsite", "unknown"],
     targetSeniorities: [],
     acceptableSeniorities: [],
+    companySeniorityOverrides: [],
     employmentTypes: ["full_time"],
     companyStages: [],
     preferredCompanyNames: [],
@@ -192,6 +194,7 @@ export function createProfile(input: {
   currentCompany?: string;
   currentDesignation?: string;
   currentLevel?: UserProfile["currentLevel"];
+  totalExperienceYears?: number;
   currentCountry?: string;
   currentLocation?: string;
   pastEmployers?: WorkHistoryItem[];
@@ -226,6 +229,7 @@ export function createProfile(input: {
     acceptableSeniorities: input.preferences?.acceptableSeniorities ?? defaults.acceptableSeniorities,
     employmentTypes: input.preferences?.employmentTypes ?? defaults.employmentTypes,
     companyStages: input.preferences?.companyStages ?? defaults.companyStages,
+    companySeniorityOverrides: input.preferences?.companySeniorityOverrides ?? defaults.companySeniorityOverrides ?? [],
     preferredCompanyNames: input.preferences?.preferredCompanyNames ?? defaults.preferredCompanyNames,
     blockedCompanyNames: input.preferences?.blockedCompanyNames ?? defaults.blockedCompanyNames,
     noGoRoleTerms: input.preferences?.noGoRoleTerms ?? defaults.noGoRoleTerms,
@@ -284,6 +288,7 @@ export function createProfile(input: {
   if (input.currentCompany) profile.currentCompany = input.currentCompany;
   if (input.currentDesignation) profile.currentDesignation = input.currentDesignation;
   if (input.currentLevel) profile.currentLevel = input.currentLevel;
+  if (typeof input.totalExperienceYears === "number") profile.totalExperienceYears = input.totalExperienceYears;
   if (input.currentCountry) profile.currentCountry = input.currentCountry;
   if (input.currentLocation) profile.currentLocation = input.currentLocation;
   if (typeof input.applyToPastEmployers === "boolean") profile.applyToPastEmployers = input.applyToPastEmployers;
@@ -316,6 +321,8 @@ export async function createProfileFromConfig(config: ApplyCueConfig, configDir 
   const headline = nonEmptyString(profileConfig.headline);
   const currentCompany = nonEmptyString(profileConfig.currentCompany);
   const currentDesignation = nonEmptyString(profileConfig.currentDesignation);
+  const totalExperienceYears =
+    typeof profileConfig.totalExperienceYears === "number" ? profileConfig.totalExperienceYears : undefined;
   const currentCountry = nonEmptyString(profileConfig.currentCountry);
   const currentLocation = nonEmptyString(profileConfig.currentLocation);
   const profileInput: Parameters<typeof createProfile>[0] = {
@@ -341,6 +348,7 @@ export async function createProfileFromConfig(config: ApplyCueConfig, configDir 
   if (currentCompany) profileInput.currentCompany = currentCompany;
   if (currentDesignation) profileInput.currentDesignation = currentDesignation;
   if (profileConfig.currentLevel) profileInput.currentLevel = profileConfig.currentLevel;
+  if (typeof totalExperienceYears === "number") profileInput.totalExperienceYears = totalExperienceYears;
   if (currentCountry) profileInput.currentCountry = currentCountry;
   if (currentLocation) profileInput.currentLocation = currentLocation;
   if (typeof profileConfig.applyToPastEmployers === "boolean") {
