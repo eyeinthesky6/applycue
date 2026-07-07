@@ -217,6 +217,18 @@ Do not hand-edit generated source-plan files. Put approved sources in user-edita
 
 When a run is short, the engine may perform transient public job-board expansion from the generated source plan. This can include rerunning already-approved public JobSpy/remote-board queries with a wider result count or lookback. It must not edit the user's source config or generated source-plan file. Treat it as "scan more before relaxing preferences," not as permission to fill the batch with blocked seniority, location, or wrong-family roles.
 
+Every batch now writes `funnelHealth` into the run manifest, dashboard, and chat summary. Agents must read it before changing search or match settings. It reports:
+
+- daily target vs prepared applications
+- discovered and kept job counts
+- dominant source filters
+- dominant preference hard gates
+- suggested next actions
+
+If the count is low, follow the suggested path. For example: scan or approve more sources, ask about a reusable seniority/company-title exception, or ask before widening work mode/location/employment type. Do not fill volume by weakening hard blockers silently.
+
+If the count is huge or source quality is noisy, tighten title/source filters before increasing automation. Do not add more broad scrapers just because the system can fetch many rows.
+
 To approve generated suggestions, use:
 
 ```powershell
@@ -254,6 +266,10 @@ docs/cv-engine-architecture.md
 ```
 
 The agent must call the engine. It must not hand-edit generated CVs.
+
+The CV engine maps JD requirements to approved facts and proof items before rendering. Direct support can shape the generated CV. Adjacent support becomes `needs_confirmation` for required requirements and pauses that candidate until the user confirms it. Unsupported requirements block the CV for that job.
+
+Do not bypass this by editing Markdown/DOCX output. If a user wants to claim a new role, industry, skill, location, metric, or career pivot, record it as an approved fact or target base CV update first, then regenerate.
 
 ### Application Drafts And Browser Submit
 

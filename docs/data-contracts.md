@@ -36,6 +36,10 @@ A CV variant stores:
 
 Each requirement match says whether the job requirement is supported, adjacent, unsupported, or needs confirmation.
 
+Direct `supported` requirements can shape generated CV content. Required `needs_confirmation` or adjacent-only requirements must pause before application output proceeds. `unsupported` requirements must not be claimed.
+
+Reconciliation reports include coverage counts for required requirements: total, supported, needs confirmation, adjacent, and unsupported. Agents should use this to inspect false positives and false negatives before changing proof terms.
+
 The CV generator may change wording and emphasis. It may not create a claim that lacks a proof item or user-confirmed source fact.
 
 V1 uses one standard ATS format. The user's uploaded CV is a fact source, not a layout source.
@@ -92,6 +96,23 @@ The user sees reasons and decisions. The backend keeps scores.
 Ranking hard-gates wrong role family, blocked companies, no-go terms, excluded industries/keywords, impossible work mode, out-of-range seniority, out-of-range required experience, employment type, company stage, and work authorization. Adjacent-only roles are optional exploration lanes, not default application targets.
 
 `JobRecord` may carry `seniorityEvidence`, `companyMarketGrade`, and `requiredExperienceYears`. The normalizer can infer simple seniority and experience evidence from titles/JDs, and can attach a small reusable company-grade signal from known company/domain markers. User-approved exceptions belong in `preferences.companySeniorityOverrides`, not in ranker code.
+
+## Funnel Health
+
+Each run manifest and progress snapshot may include `funnelHealth`.
+
+It summarizes:
+
+- configured daily target
+- prepared applications
+- discovered jobs
+- jobs kept for ranking
+- watched or skipped jobs
+- dominant source filters
+- dominant preference gate blockers
+- suggested next actions
+
+This is not a user-worth score. It tells the agent why the pipeline is too narrow, too broad, or healthy. Low volume should trigger source expansion or explicit user questions. High/noisy volume should trigger tighter source and title filters.
 
 ## Application Record
 

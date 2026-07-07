@@ -13,6 +13,8 @@ import type {
   PendingQuestion,
   ProgressApplicationItem,
   ProgressCvQualitySummary,
+  ProgressFunnelHealthSummary,
+  ProgressFunnelPressureItem,
   ProgressJobDecisionItem,
   ProgressLivePreflightSummary,
   ProgressScanHistorySummary,
@@ -87,6 +89,7 @@ export interface SampleBatchResult {
   sourcePlan: SourcePlan;
   sourceScorecards?: ProgressSourceScorecardSummary;
   sourceQuality?: ProgressSourceQualitySummary;
+  funnelHealth?: ProgressFunnelHealthSummary;
 }
 
 export interface ProgressOutputOverlay {
@@ -667,6 +670,14 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
     outcomeEvents: options.outcomeEvents ?? [],
     scanHistoryEntries: combinedScanHistoryEntries
   });
+  const funnelHealth = buildFunnelHealthSummary({
+    applications,
+    jobDecisions,
+    profile,
+    rankedJobs: ranked,
+    sourceScorecards,
+    ...(options.sourceQuality ? { sourceQuality: options.sourceQuality } : {})
+  });
   const baseFiles = buildGeneratedFileManifests(
     options.runId,
     cvVariants,
@@ -725,7 +736,8 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
     ...(pendingQuestions.length > 0 ? { pendingQuestions } : {}),
     sourceScorecards,
     sourceOutcomes,
-    ...(options.sourceQuality ? { sourceQuality: options.sourceQuality } : {})
+    ...(options.sourceQuality ? { sourceQuality: options.sourceQuality } : {}),
+    funnelHealth
   };
 
   if (writeFiles) {
@@ -772,7 +784,8 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
     sourceOutcomes,
     sourcePlan,
     sourceScorecards,
-    ...(options.sourceQuality ? { sourceQuality: options.sourceQuality } : {})
+    ...(options.sourceQuality ? { sourceQuality: options.sourceQuality } : {}),
+    funnelHealth
   };
 }
 
@@ -832,6 +845,188 @@ function formatLivenessVerificationNotes(result: LivenessVerificationBatch): str
     `Liveness verifier checked ${result.checkedCount} job(s); updated ${result.changedCount} (${result.classified.closed} closed, ${result.classified.live} live, ${result.classified.unknown} unknown).`,
     ...result.warnings.map((warning) => `Liveness warning: ${warning}`)
   ];
+}
+
+function buildFunnelHealthSummary(input: {
+  applications: ApplicationRecord[];
+  jobDecisions: ProgressJobDecisionItem[];
+  profile: UserProfile;
+  rankedJobs: RankedJob[];
+  sourceQuality?: ProgressSourceQualitySummary;
+  sourceScorecards?: ProgressSourceScorecardSummary;
+}): ProgressFunnelHealthSummary {
+  const configuredDailyTarget = Math.max(1, Math.floor(input.profile.applySettings.applicationsPerDay || 1));
+  const preparedApplications = input.applications.length;
+  const discoveredJobs = input.sourceQuality?.inputJobs ?? input.sourceScorecards?.fetchedJobs ?? input.rankedJobs.length;
+  const keptForRanking = input.sourceQuality?.keptJobs ?? input.sourceScorecards?.keptJobs ?? input.rankedJobs.length;
+  const rankedJobs = input.rankedJobs.length;
+  const watchOrSkippedJobs = input.jobDecisions.filter((item) =>
+    item.decision === "watch" || item.decision === "skip" || Boolean(item.skippedReason)
+  ).length;
+  const dominantFilters = buildFilterPressure(input.sourceQuality).slice(0, 3);
+  const dominantGateBlocks = buildGatePressure(input.jobDecisions).slice(0, 5);
+  const suggestedActions = buildFunnelSuggestedActions({
+    configuredDailyTarget,
+    dominantFilters,
+    dominantGateBlocks,
+    discoveredJobs,
+    keptForRanking,
+    preparedApplications,
+    profile: input.profile,
+    rankedJobs
+  });
+  const keptRate = discoveredJobs > 0 ? keptForRanking / discoveredJobs : 1;
+  const tooNoisy = discoveredJobs >= Math.max(100, configuredDailyTarget * 30) && keptRate < 0.08;
+  const tooManyKept = keptForRanking >= Math.max(100, configuredDailyTarget * 25);
+  const status: ProgressFunnelHealthSummary["status"] = preparedApplications < configuredDailyTarget
+    ? "low_volume"
+    : tooNoisy
+      ? "noisy_sources"
+      : tooManyKept
+        ? "high_volume"
+        : "healthy";
+  const message = status === "low_volume"
+    ? `Prepared ${preparedApplications} of ${configuredDailyTarget}; review the dominant blockers before widening.`
+    : status === "noisy_sources"
+      ? `Fetched ${discoveredJobs} jobs but only ${keptForRanking} survived source filters; source queries are broad or noisy.`
+      : status === "high_volume"
+        ? `Kept ${keptForRanking} jobs for ranking; tighten filters before increasing automation.`
+        : `Prepared ${preparedApplications} of ${configuredDailyTarget}; funnel is within the expected range.`;
+
+  return {
+    status,
+    message,
+    configuredDailyTarget,
+    preparedApplications,
+    discoveredJobs,
+    keptForRanking,
+    rankedJobs,
+    watchOrSkippedJobs,
+    dominantFilters,
+    dominantGateBlocks,
+    suggestedActions
+  };
+}
+
+function buildFilterPressure(sourceQuality: ProgressSourceQualitySummary | undefined): ProgressFunnelPressureItem[] {
+  if (!sourceQuality) return [];
+  return (Object.entries(sourceQuality.byReason) as Array<[keyof ProgressSourceQualitySummary["byReason"], number]>)
+    .filter(([, count]) => count > 0)
+    .sort((left, right) => right[1] - left[1])
+    .map(([id, count]) => ({
+      id,
+      label: `${humanizeIdentifier(id)} source filter`,
+      count,
+      examples: []
+    }));
+}
+
+function buildGatePressure(jobDecisions: ProgressJobDecisionItem[]): ProgressFunnelPressureItem[] {
+  const gateMap = new Map<string, { count: number; examples: Set<string> }>();
+  for (const decision of jobDecisions) {
+    for (const failedGate of decision.failedGates) {
+      const gate = failedGateId(failedGate);
+      const current = gateMap.get(gate) ?? { count: 0, examples: new Set<string>() };
+      current.count += 1;
+      const reason = decision.reasons.find((item) => item.toLowerCase().includes(humanizeIdentifier(gate).split(" ")[0] ?? ""));
+      current.examples.add(reason ?? `${decision.company} - ${decision.title}`);
+      gateMap.set(gate, current);
+    }
+  }
+
+  return [...gateMap.entries()]
+    .sort((left, right) => right[1].count - left[1].count)
+    .map(([id, item]) => ({
+      id,
+      label: humanizeGate(id),
+      count: item.count,
+      examples: [...item.examples].slice(0, 3)
+    }));
+}
+
+function failedGateId(value: string): string {
+  return value.split(":")[0]?.trim() || value;
+}
+
+function buildFunnelSuggestedActions(input: {
+  configuredDailyTarget: number;
+  discoveredJobs: number;
+  dominantFilters: ProgressFunnelPressureItem[];
+  dominantGateBlocks: ProgressFunnelPressureItem[];
+  keptForRanking: number;
+  preparedApplications: number;
+  profile: UserProfile;
+  rankedJobs: number;
+}): string[] {
+  const actions: string[] = [];
+  const shortBy = input.configuredDailyTarget - input.preparedApplications;
+  const topFilter = input.dominantFilters[0];
+  const topGate = input.dominantGateBlocks[0];
+  const keptRate = input.discoveredJobs > 0 ? input.keptForRanking / input.discoveredJobs : 1;
+
+  if (shortBy > 0) {
+    if (topGate) actions.push(shortVolumeActionForGate(topGate.id, shortBy, input.profile));
+    if (input.keptForRanking < input.profile.matchSettings.widenIfFewerThan) {
+      actions.push("Scan or approve more sources before lowering match quality; current kept count is below the saved widen-if-fewer-than setting.");
+    }
+    if (topFilter) {
+      actions.push(`Review the ${topFilter.label}; it removed ${topFilter.count} job(s) before ranking.`);
+    }
+  }
+
+  if (input.discoveredJobs >= Math.max(100, input.configuredDailyTarget * 30) && keptRate < 0.08 && topFilter) {
+    actions.push(`Tighten or split noisy source queries before adding more sources; ${topFilter.label} is doing most of the cleanup.`);
+  }
+
+  if (input.keptForRanking >= Math.max(100, input.configuredDailyTarget * 25)) {
+    actions.push("Too many jobs reached ranking; add stricter title terms, no-go role terms, or location/work-mode rules before increasing automation.");
+  }
+
+  if (actions.length === 0) {
+    actions.push("Keep hard blockers unchanged and review prepared CVs before enabling submit.");
+  }
+
+  return uniqueValues(actions).slice(0, 4);
+}
+
+function shortVolumeActionForGate(gateId: string, shortBy: number, profile: UserProfile): string {
+  switch (gateId) {
+    case "seniority":
+      return `Daily target short by ${shortBy}; ask whether company-specific title levels should be saved, especially for large employers with flatter titles.`;
+    case "experience":
+      return `Daily target short by ${shortBy}; keep experience as a hard blocker unless the user changes the acceptable range.`;
+    case "work-authorization":
+      return `Daily target short by ${shortBy}; ask before adding countries or regions outside saved work authorization.`;
+    case "work-mode":
+      return `Daily target short by ${shortBy}; ask before widening beyond ${profile.preferences.acceptableWorkModes.join(", ") || "the saved work modes"}.`;
+    case "employment-type":
+      return `Daily target short by ${shortBy}; ask before adding employment types outside the saved preference set.`;
+    case "company-stage":
+      return `Daily target short by ${shortBy}; ask before adding company stages outside the saved preference set.`;
+    case "role-family":
+      return `Daily target short by ${shortBy}; improve source title queries before relaxing role-family matching.`;
+    default:
+      return `Daily target short by ${shortBy}; dominant blocker is ${humanizeGate(gateId)}.`;
+  }
+}
+
+function humanizeGate(value: string): string {
+  return `${humanizeIdentifier(value)} gate`;
+}
+
+function humanizeIdentifier(value: string): string {
+  return value.replace(/[-_]+/g, " ");
+}
+
+function uniqueValues(values: string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const value of values) {
+    if (seen.has(value)) continue;
+    seen.add(value);
+    unique.push(value);
+  }
+  return unique;
 }
 
 function generatePassedCvResults(
@@ -1372,7 +1567,8 @@ export function buildBatchProgressSnapshot(
     ...(result.manifest.scanHistory ? { scanHistory: result.manifest.scanHistory } : {}),
     ...(result.manifest.sourceScorecards ? { sourceScorecards: result.manifest.sourceScorecards } : {}),
     ...(result.manifest.sourceOutcomes ? { sourceOutcomes: result.manifest.sourceOutcomes } : {}),
-    ...(result.manifest.sourceQuality ? { sourceQuality: result.manifest.sourceQuality } : {})
+    ...(result.manifest.sourceQuality ? { sourceQuality: result.manifest.sourceQuality } : {}),
+    ...(result.manifest.funnelHealth ? { funnelHealth: result.manifest.funnelHealth } : {})
   });
 }
 
@@ -1390,11 +1586,17 @@ export async function writeProgressDashboardAndSummary(
 
 function buildProgressNextActions(result: Omit<SampleBatchResult, "drafts" | "outputRoot">): string[] {
   const configuredDailyTarget = Math.max(1, Math.floor(result.profile.applySettings.applicationsPerDay || 1));
-  const actions = ["Review generated CVs and reconciliation reports before enabling submit."];
+  const actions = [
+    ...(result.manifest.funnelHealth?.suggestedActions ?? []),
+    "Review generated CVs and reconciliation reports before enabling submit."
+  ];
   if (result.applications.length < configuredDailyTarget) {
-    actions.unshift(
-      `Daily target short by ${configuredDailyTarget - result.applications.length}; add or approve more sources, or widen search before increasing automation.`
-    );
+    const hasShortGuidance = actions.some((action) => action.toLowerCase().includes("daily target short"));
+    if (!hasShortGuidance) {
+      actions.unshift(
+        `Daily target short by ${configuredDailyTarget - result.applications.length}; add or approve more sources, or widen search before increasing automation.`
+      );
+    }
   }
   return actions;
 }

@@ -388,6 +388,24 @@ Current UAT evidence:
 
 The latest local UAT still warns on batch volume: 3 prepared of 5 configured per day. That warning is correct. The remaining kept jobs are mostly Senior Product Manager/Product Manager roles or roles outside saved location/work-authorization policy, while the user profile currently accepts director, VP, C-level, and founder seniority. Do not fake-fill the queue by weakening hard blockers. The next volume path is better source coverage or explicit user approval to relax saved preferences.
 
+Funnel health guidance now accompanies every run:
+
+```text
+source filters + ranker hard gates + prepared count -> funnelHealth -> next actions
+```
+
+The dashboard and chat summary should show whether the batch is healthy, low-volume, high-volume, or source-noisy. Agents must use those suggested actions before changing search width, source lists, or user preferences.
+
+CV/JD reconciliation is stricter now:
+
+```text
+direct proof -> supported -> can shape CV
+adjacent proof -> needs_confirmation -> pause
+no proof -> unsupported -> block
+```
+
+This reduces false positives from shared words while preserving false-negative fixes through explicit aliases such as product roadmap/roadmap, SaaS/B2B SaaS, payments/payment gateway, GTM/go-to-market, and digital banking/banking.
+
 Transient source expansion now runs before preference relaxation when the batch is short:
 
 ```text

@@ -399,6 +399,7 @@ export interface ProgressSnapshot {
   sourceScorecards?: ProgressSourceScorecardSummary;
   sourceOutcomes?: ProgressSourceOutcomeSummary;
   sourceQuality?: ProgressSourceQualitySummary;
+  funnelHealth?: ProgressFunnelHealthSummary;
 }
 
 export interface ProgressCvQualitySummary {
@@ -445,6 +446,29 @@ export interface ProgressSourceQualitySummary {
     location: number;
     content: number;
   };
+}
+
+export type ProgressFunnelHealthStatus = "healthy" | "low_volume" | "high_volume" | "noisy_sources";
+
+export interface ProgressFunnelPressureItem {
+  id: string;
+  label: string;
+  count: number;
+  examples: string[];
+}
+
+export interface ProgressFunnelHealthSummary {
+  status: ProgressFunnelHealthStatus;
+  message: string;
+  configuredDailyTarget: number;
+  preparedApplications: number;
+  discoveredJobs: number;
+  keptForRanking: number;
+  rankedJobs: number;
+  watchOrSkippedJobs: number;
+  dominantFilters: ProgressFunnelPressureItem[];
+  dominantGateBlocks: ProgressFunnelPressureItem[];
+  suggestedActions: string[];
 }
 
 export interface ProgressSourceScorecardSummary {
@@ -805,6 +829,13 @@ export interface ReconciliationReport {
   cvContentPlanId: ApplyCueId;
   status: "passed" | "needs_user_confirmation" | "blocked";
   issues: ReconciliationIssue[];
+  coverage: {
+    totalRequired: number;
+    supported: number;
+    needsConfirmation: number;
+    adjacent: number;
+    unsupported: number;
+  };
   checkedAt: string;
 }
 
@@ -970,4 +1001,5 @@ export interface RunManifest {
   sourceScorecards?: ProgressSourceScorecardSummary;
   sourceOutcomes?: ProgressSourceOutcomeSummary;
   sourceQuality?: ProgressSourceQualitySummary;
+  funnelHealth?: ProgressFunnelHealthSummary;
 }

@@ -110,7 +110,47 @@ describe("generateJobSpecificCv", () => {
     const result = generateJobSpecificCv(jobWithDescription("Own chief of staff roadmap execution."), profile);
 
     expect(result.reconciliationReport.status).toBe("needs_user_confirmation");
-    expect(result.variant.requirementMatches.some((match) => match.requirement === "chief of staff" && match.status === "adjacent")).toBe(true);
+    expect(result.reconciliationReport.coverage.needsConfirmation).toBe(1);
+    expect(result.variant.requirementMatches.some((match) => match.requirement === "chief of staff" && match.status === "needs_confirmation")).toBe(true);
+  });
+
+  it("does not treat one shared product word as adjacent evidence", () => {
+    const profile = profileWithProof();
+    profile.preferences.requiredKeywords = ["product marketing"];
+
+    const result = generateJobSpecificCv(jobWithDescription("Lead product marketing strategy for partner launches."), profile);
+
+    expect(result.reconciliationReport.status).toBe("blocked");
+    expect(result.variant.unsupportedRequirements).toContain("product marketing");
+    expect(result.variant.requirementMatches.some((match) => match.requirement === "product marketing" && match.status === "needs_confirmation")).toBe(false);
+  });
+
+  it("maps senior product requirements to approved proof aliases", () => {
+    const profile = profileWithProof();
+    profile.proofBank.push({
+      id: "proof-senior-product-growth",
+      claim: "Owned GTM, payment gateway growth, customer acquisition, and revenue optimization.",
+      evidence: "Base CV includes GTM, payment gateway, acquisition, and revenue optimization work.",
+      tags: ["gtm", "payment gateway", "customer acquisition", "revenue optimization", "b2b saas"],
+      kind: "work"
+    });
+
+    const result = generateJobSpecificCv(
+      jobWithDescription("Lead go to market, payments, customer acquisition, revenue optimization, and B2B SaaS roadmap."),
+      profile
+    );
+
+    expect(result.reconciliationReport.status).toBe("passed");
+    expect(result.reconciliationReport.coverage.supported).toBeGreaterThanOrEqual(5);
+    expect(result.variant.requirementMatches).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ requirement: "go to market", status: "supported" }),
+        expect.objectContaining({ requirement: "payments", status: "supported" }),
+        expect.objectContaining({ requirement: "customer acquisition", status: "supported" }),
+        expect.objectContaining({ requirement: "revenue optimization", status: "supported" }),
+        expect.objectContaining({ requirement: "b2b saas", status: "supported" })
+      ])
+    );
   });
 
   it("renders company-level experience and base-CV education in the standard CV", () => {

@@ -1414,6 +1414,159 @@ Lead product strategy and automation.
     expect(result.jobDecisions.find((item) => item.jobId === "weak-adjacent")?.decision).toBe("skip");
   });
 
+  it("explains low batch volume through source filters and preference gates", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-funnel-health-"));
+    const profile: UserProfile = {
+      id: "funnel-health-user",
+      currentLevel: "vp",
+      totalExperienceYears: 16,
+      currentDesignation: "VP Product",
+      pastEmployers: [],
+      preferences: {
+        targetRoleTerms: ["vp product", "head of product", "product management"],
+        adjacentRoleTerms: [],
+        targetIndustries: ["fintech"],
+        excludedIndustries: [],
+        preferredLocations: ["india"],
+        extraLocations: [],
+        askBeforeLocations: [],
+        acceptableWorkModes: ["remote", "hybrid", "onsite"],
+        targetSeniorities: ["vp"],
+        acceptableSeniorities: ["vp", "c_level"],
+        employmentTypes: ["full_time"],
+        companyStages: [],
+        preferredCompanyNames: [],
+        blockedCompanyNames: [],
+        noGoRoleTerms: [],
+        requiredKeywords: [],
+        niceToHaveKeywords: ["product strategy", "payments"],
+        excludedKeywords: [],
+        workAuthorizationCountries: ["india"],
+        preferredTimezones: []
+      },
+      searchSettings: {
+        searchCountries: ["india"],
+        searchAreas: ["india"],
+        remoteRegions: ["india"],
+        agentMayExpandSearchArea: true,
+        informUserOnSearchAreaChange: true,
+        standardHoursOnly: true,
+        preferredShifts: ["standard"],
+        askBeforeShifts: []
+      },
+      sourceSettings: {
+        allowLoggedInBrowserAccess: false,
+        defaultPortalApplyPolicy: "ask",
+        trustedPortals: [],
+        askBeforePortals: [],
+        blockedPortals: [],
+        fraudSignalTerms: []
+      },
+      applySettings: {
+        mode: "daily",
+        applicationsPerDay: 3,
+        minimumFitToApply: 0.65,
+        allowedSourceKinds: ["manual", "job_board"],
+        messagePolicy: "draft_only",
+        pauseReasons: ["unsupported_cv_claim"],
+        trackEmailReplies: false,
+        allowRecruiterDmDrafts: false
+      },
+      matchSettings: {
+        range: "normal",
+        widenIfFewerThan: 10,
+        relaxOrder: ["source", "title", "location", "minimum_fit"],
+        minimumFitFloor: 0.5,
+        allowAdjacentTitles: false,
+        allowAdjacentIndustries: false
+      },
+      proofBank: [
+        {
+          id: "proof-vp-product",
+          claim: "Led VP Product work across product strategy and payments.",
+          evidence: "Approved profile proof covers VP Product, product strategy, fintech, and payments.",
+          tags: ["vp product", "product management", "product strategy", "fintech", "payments"],
+          kind: "work"
+        }
+      ]
+    };
+    const jobs: JobRecord[] = [
+      {
+        id: "vp-product",
+        source: { id: "job-board", kind: "job_board", name: "Board" },
+        company: "Good Fintech",
+        title: "VP Product",
+        url: "https://example.com/vp",
+        description: "Lead product strategy and payments for fintech.",
+        location: "India",
+        workMode: "hybrid",
+        seniority: "vp",
+        employmentType: "full_time",
+        discoveredAt: "2026-07-05T00:00:00.000Z",
+        liveState: "live"
+      },
+      {
+        id: "senior-pm",
+        source: { id: "job-board", kind: "job_board", name: "Board" },
+        company: "Large Employer",
+        title: "Senior Product Manager",
+        url: "https://example.com/spm",
+        description: "Own product management and product strategy for fintech.",
+        location: "India",
+        workMode: "hybrid",
+        seniority: "manager",
+        employmentType: "full_time",
+        discoveredAt: "2026-07-05T00:00:00.000Z",
+        liveState: "live"
+      },
+      {
+        id: "product-manager",
+        source: { id: "job-board", kind: "job_board", name: "Board" },
+        company: "Smaller Co",
+        title: "Product Manager",
+        url: "https://example.com/pm",
+        description: "Own product management and payments.",
+        location: "India",
+        workMode: "hybrid",
+        seniority: "manager",
+        employmentType: "full_time",
+        discoveredAt: "2026-07-05T00:00:00.000Z",
+        liveState: "live"
+      }
+    ];
+
+    const result = await runBatch({
+      workspaceRoot,
+      outputRoot: workspaceRoot,
+      profile,
+      jobs,
+      runId: "funnel-health",
+      kind: "daily_batch",
+      writeFiles: false,
+      sourceQuality: {
+        inputJobs: 150,
+        keptJobs: 3,
+        filteredJobs: 147,
+        byReason: {
+          title: 120,
+          location: 20,
+          content: 7
+        }
+      }
+    });
+
+    expect(result.applications).toHaveLength(1);
+    expect(result.manifest.funnelHealth?.status).toBe("low_volume");
+    expect(result.manifest.funnelHealth?.dominantFilters[0]).toEqual(
+      expect.objectContaining({ id: "title", count: 120 })
+    );
+    expect(result.manifest.funnelHealth?.dominantGateBlocks[0]).toEqual(
+      expect.objectContaining({ id: "seniority", count: 2 })
+    );
+    expect(result.manifest.funnelHealth?.suggestedActions.join(" ")).toContain("Daily target short by 2");
+    expect(result.manifest.funnelHealth?.suggestedActions.join(" ")).toContain("company-specific title levels");
+  });
+
   it("fills review batches down to the match floor when strict apply threshold is short", async () => {
     const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-batch-floor-"));
     await mkdir(path.join(workspaceRoot, "config"), { recursive: true });

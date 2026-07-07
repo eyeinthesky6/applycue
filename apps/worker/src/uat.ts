@@ -288,7 +288,8 @@ async function writeRunViewsWithBrowserReceipts(
     ...(batch.manifest.scanHistory ? { scanHistory: batch.manifest.scanHistory } : {}),
     ...(batch.manifest.sourceScorecards ? { sourceScorecards: batch.manifest.sourceScorecards } : {}),
     ...(batch.manifest.sourceOutcomes ? { sourceOutcomes: batch.manifest.sourceOutcomes } : {}),
-    ...(batch.manifest.sourceQuality ? { sourceQuality: batch.manifest.sourceQuality } : {})
+    ...(batch.manifest.sourceQuality ? { sourceQuality: batch.manifest.sourceQuality } : {}),
+    ...(batch.manifest.funnelHealth ? { funnelHealth: batch.manifest.funnelHealth } : {})
   });
   const dashboard = renderProgressDashboardHtml(snapshot);
   const summary = renderProgressChatSummaryMarkdown(snapshot);
@@ -314,11 +315,17 @@ function attachBrowserReceipts(
 
 function buildUatProgressNextActions(batch: SampleBatchResult): string[] {
   const configuredDailyTarget = configuredApplicationsPerDay(batch);
-  const actions = ["Review generated CVs, reconciliation reports, and browser receipts before enabling submit."];
+  const actions = [
+    ...(batch.manifest.funnelHealth?.suggestedActions ?? []),
+    "Review generated CVs, reconciliation reports, and browser receipts before enabling submit."
+  ];
   if (batch.applications.length < configuredDailyTarget) {
-    actions.unshift(
-      `Daily target short by ${configuredDailyTarget - batch.applications.length}; add or approve more sources, or widen search before increasing automation.`
-    );
+    const hasShortGuidance = actions.some((action) => action.toLowerCase().includes("daily target short"));
+    if (!hasShortGuidance) {
+      actions.unshift(
+        `Daily target short by ${configuredDailyTarget - batch.applications.length}; add or approve more sources, or widen search before increasing automation.`
+      );
+    }
   }
   return actions;
 }

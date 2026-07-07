@@ -64,12 +64,22 @@ const REQUIREMENT_TERMS: RequirementTerm[] = [
   { text: "chief of staff", category: "role" },
   { text: "leadership", category: "role" },
   { text: "fintech", category: "industry" },
+  { text: "payments", aliases: ["payment gateway", "digital payments", "embedded payments", "upi payments"], category: "industry" },
+  { text: "digital banking", aliases: ["banking", "neobank"], category: "industry" },
+  { text: "go to market", aliases: ["gtm", "gtm strategy", "commercial strategy"], category: "role" },
+  { text: "customer acquisition", aliases: ["digital acquisition"], category: "role" },
+  { text: "conversion", aliases: ["conversion optimization", "conversion optimisation"], category: "metric" },
+  { text: "retention", aliases: ["customer retention"], category: "metric" },
+  { text: "revenue optimization", aliases: ["revenue optimisation", "monetization", "monetisation", "pricing"], category: "metric" },
+  { text: "stakeholder management", aliases: ["stakeholder communication", "cross functional"], category: "role" },
+  { text: "zero to one", aliases: ["0 to 1", "zero-to-one"], category: "role" },
+  { text: "b2b saas", aliases: ["b2b2c", "b2b software"], category: "industry" },
   {
     text: "regulated industry",
     aliases: ["regulated", "compliance-sensitive", "compliance"],
     category: "industry"
   },
-  { text: "saas", category: "industry" },
+  { text: "saas", aliases: ["software as a service", "b2b saas", "chat saas"], category: "industry" },
   { text: "enterprise software", category: "industry" },
   { text: "python", category: "tool" },
   { text: "healthcare compliance", category: "industry" },
@@ -78,18 +88,6 @@ const REQUIREMENT_TERMS: RequirementTerm[] = [
   { text: "founder priorities", category: "role" },
   { text: "product operations", category: "role" }
 ];
-
-const MAJOR_CATEGORIES = new Set<FactCategory>([
-  "role",
-  "company",
-  "location",
-  "industry",
-  "metric",
-  "education",
-  "certification",
-  "work_authorization",
-  "compensation"
-]);
 
 export function generateJobSpecificCv(job: JobRecord, profile: UserProfile): CvGenerationResult {
   const contentPlan = createCvContentPlan(job, profile);
@@ -157,7 +155,7 @@ export function matchRequirement(requirement: JobRequirement, profile: UserProfi
   const status: RequirementMatchStatus = exactSupport
     ? "supported"
     : adjacentSupport
-      ? "adjacent"
+      ? "needs_confirmation"
       : "unsupported";
 
   return {
@@ -188,11 +186,11 @@ export function reconcileCvContentPlan(plan: CvContentPlan): ReconciliationRepor
       continue;
     }
 
-    if (match.status === "adjacent" && MAJOR_CATEGORIES.has(requirement.category)) {
+    if ((match.status === "adjacent" || match.status === "needs_confirmation") && requirement.required) {
       issues.push({
         id: `${match.requirementId}-needs-confirmation`,
         severity: "needs_confirmation",
-        message: `Major adjacent positioning needs user confirmation: ${match.requirement}`,
+        message: `Adjacent requirement evidence needs user confirmation before it can shape the CV: ${match.requirement}`,
         requirementId: match.requirementId,
         factIds: match.factIds ?? [],
         proofItemIds: match.proofItemIds
@@ -211,6 +209,7 @@ export function reconcileCvContentPlan(plan: CvContentPlan): ReconciliationRepor
     cvContentPlanId: plan.id,
     status,
     issues,
+    coverage: buildRequirementCoverage(plan.requirementMatches, plan.requirements),
     checkedAt: new Date().toISOString()
   };
 }
@@ -399,15 +398,15 @@ function createCvVariantFromPlan(
 
 function buildCvChanges(matches: JobRequirementMatch[], requirements: JobRequirement[]): CvChange[] {
   return matches
-    .filter((match) => match.status === "supported" || match.status === "adjacent")
+    .filter((match) => match.status === "supported" || match.status === "adjacent" || match.status === "needs_confirmation")
     .map((match) => {
       const requirement = requirements.find((item) => item.id === match.requirementId);
-      const needsApproval = match.status === "adjacent" && Boolean(requirement && MAJOR_CATEGORIES.has(requirement.category));
+      const needsApproval = match.status !== "supported" && Boolean(requirement?.required);
       return {
         section: "Experience",
         change: match.status === "supported"
           ? `Emphasize supported evidence for ${match.requirement}.`
-          : `Position adjacent evidence carefully for ${match.requirement}.`,
+          : `Hold adjacent evidence for ${match.requirement} until the user confirms it.`,
         proofItemIds: match.proofItemIds,
         ...(match.factIds ? { factIds: match.factIds } : {}),
         ...(needsApproval ? { requiresUserApproval: true } : {})
@@ -422,7 +421,7 @@ function findProofForRequirement(requirement: string, proofBank: ProofItem[]): P
   return proofBank.filter((proof) => {
     const proofText = normalizeText(`${proof.claim} ${proof.evidence} ${proof.tags.join(" ")}`);
     return requirementTerms.some((term) => proofText.includes(term)) ||
-      tokenOverlap(requirementTokens, significantTokens(proofText)) >= 0.5;
+      hasStrongTokenSupport(requirementTokens, significantTokens(proofText));
   });
 }
 
@@ -435,7 +434,7 @@ function findFactsForRequirement(requirement: string, facts: ProfileFact[]): Pro
     .filter((fact) => {
       const factText = normalizeText(fact.statement);
       return requirementTerms.some((term) => factText.includes(term)) ||
-        tokenOverlap(requirementTokens, significantTokens(factText)) >= 0.5;
+        hasStrongTokenSupport(requirementTokens, significantTokens(factText));
     });
 }
 
@@ -444,14 +443,14 @@ function proofMatchesText(text: string, proof: ProofItem): boolean {
   const proofText = normalizeText(`${proof.claim} ${proof.evidence} ${proof.tags.join(" ")}`);
   return proof.tags.some((tag) => normalizedText.includes(normalizeText(tag))) ||
     proofText.includes(normalizedText) ||
-    tokenOverlap(significantTokens(normalizedText), significantTokens(proofText)) >= 0.5;
+    hasStrongTokenSupport(significantTokens(normalizedText), significantTokens(proofText));
 }
 
 function factMatchesText(text: string, fact: ProfileFact): boolean {
   const normalizedText = normalizeText(text);
   const factText = normalizeText(fact.statement);
   return factText.includes(normalizedText) ||
-    tokenOverlap(significantTokens(normalizedText), significantTokens(factText)) >= 0.5;
+    hasStrongTokenSupport(significantTokens(normalizedText), significantTokens(factText));
 }
 
 function proofExactlySupports(requirement: string, proof: ProofItem): boolean {
@@ -493,6 +492,7 @@ function supportTerms(requirement: string): string[] {
       "vp product",
       "head of product"
     ],
+    "product roadmap": ["roadmap", "product roadmapping"],
     "regulated industry": [
       "regulated",
       "compliance",
@@ -503,7 +503,18 @@ function supportTerms(requirement: string): string[] {
       "lending",
       "financial services",
       "risk"
-    ]
+    ],
+    payments: ["payment gateway", "digital payments", "embedded payments", "upi", "upi autopay", "brand emi"],
+    "digital banking": ["banking", "neobank", "savings account", "facebook banking", "twitter banking", "e locker"],
+    saas: ["software as a service", "b2b saas", "chat saas", "saas fintech"],
+    "go to market": ["gtm", "gtm strategy", "commercial strategy", "market launch"],
+    "customer acquisition": ["digital acquisition"],
+    conversion: ["conversion optimization", "conversion optimisation"],
+    retention: ["customer retention"],
+    "revenue optimization": ["revenue optimisation", "monetization", "monetisation", "pricing", "cost reduction"],
+    "stakeholder management": ["stakeholder communication", "cross functional", "investor relations"],
+    "zero to one": ["0 to 1", "zero to one", "built from zero"],
+    "b2b saas": ["b2b2c", "b2b software", "saas fintech", "chat saas"]
   };
   return [normalized, ...(aliases[normalized] ?? []).map(normalizeText)];
 }
@@ -524,7 +535,26 @@ function createRequirementNote(
     const source = proofMatches[0]?.claim ?? factMatches[0]?.statement ?? requirement;
     return `Adjacent support only; do not state as direct experience without confirmation: ${source}`;
   }
+  if (status === "needs_confirmation") {
+    const source = proofMatches[0]?.claim ?? factMatches[0]?.statement ?? requirement;
+    return `Needs user confirmation before it can shape this CV: ${source}`;
+  }
   return "No approved fact or proof item supports this requirement.";
+}
+
+function buildRequirementCoverage(
+  matches: JobRequirementMatch[],
+  requirements: JobRequirement[]
+): ReconciliationReport["coverage"] {
+  const requiredIds = new Set(requirements.filter((requirement) => requirement.required).map((requirement) => requirement.id));
+  const requiredMatches = matches.filter((match) => requiredIds.has(match.requirementId));
+  return {
+    totalRequired: requiredMatches.length,
+    supported: requiredMatches.filter((match) => match.status === "supported").length,
+    needsConfirmation: requiredMatches.filter((match) => match.status === "needs_confirmation").length,
+    adjacent: requiredMatches.filter((match) => match.status === "adjacent").length,
+    unsupported: requiredMatches.filter((match) => match.status === "unsupported").length
+  };
 }
 
 function mergeRequirementTerms(profile?: UserProfile): RequirementTerm[] {
@@ -880,11 +910,13 @@ function renderContact(profile: UserProfile): string {
   return parts.length > 0 ? parts.join(" | ") : "";
 }
 
-function tokenOverlap(left: string[], right: string[]): number {
-  if (left.length === 0 || right.length === 0) return 0;
+function hasStrongTokenSupport(left: string[], right: string[]): boolean {
+  if (left.length === 0 || right.length === 0) return false;
   const rightSet = new Set(right);
   const matches = left.filter((token) => rightSet.has(token)).length;
-  return matches / left.length;
+  if (matches === 0) return false;
+  const requiredMatches = left.length <= 2 ? left.length : 2;
+  return matches >= requiredMatches && matches / left.length >= 0.67;
 }
 
 function significantTokens(value: string): string[] {

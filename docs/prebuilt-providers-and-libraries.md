@@ -118,6 +118,8 @@ Use JobSpy for:
 
 JobSpy is intentionally broad. Its output must pass through ApplyCue normalization, dedupe, and generated `searchProfile` filtering before ranking. In the current local UAT, approved and transiently widened sources produced 1135 fetched jobs, the source-quality layer kept 18 reviewable jobs, and the engine prepared 3 applications because the remaining roles were blocked by saved seniority/location policy.
 
+Use `funnelHealth` after every broad provider run. If discovered volume is huge but kept volume is tiny, tighten source/title filters before adding more feeds. If kept volume is low because seniority, location, work authorization, employment type, or experience gates dominate, ask the user for a reusable preference change instead of weakening gates in code.
+
 After source-quality filtering, daily and push runs also pass through scan history. Non-manual jobs already recorded as `prepared` or `closed` in the user's `data/local/scan-history.jsonl` are skipped before ranking/CV work. Review mode keeps them visible for inspection.
 
 Query budget rule:

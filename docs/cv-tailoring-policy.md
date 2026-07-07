@@ -24,6 +24,14 @@ Every claim in a generated CV or application answer must trace to at least one s
 
 If a job requirement has no support, ApplyCue should mark it as unsupported and either omit it or pause for user confirmation.
 
+Current engine rule:
+
+- `supported`: direct approved proof/fact exists. The requirement may shape the generated CV.
+- `needs_confirmation`: adjacent evidence exists, but the requirement is not directly proven. The candidate pauses before CV/application output can proceed.
+- `unsupported`: no approved proof/fact exists. The requirement must not be claimed.
+
+Required adjacent requirements are not treated as "good enough" by default. They are useful signals for asking the user, not permission to write a stronger CV.
+
 It should never turn:
 
 ```text
@@ -55,6 +63,18 @@ Action: do not claim it; optionally mention adjacent regulated-industry work if 
 ```
 
 This mapping is more important than the final prose. It is the safety layer.
+
+Reconciliation reports include coverage counts:
+
+```text
+total required
+supported
+needs confirmation
+adjacent
+unsupported
+```
+
+Use these counts to audit false positives and false negatives. A high `needs confirmation` count means the JD is close to the profile but not yet proven. A high `unsupported` count means the job should not get a tailored CV unless the user adds truthful approved facts.
 
 ## Format Strategy
 

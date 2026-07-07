@@ -190,6 +190,16 @@ Build this first:
 JD requirements -> requirement-to-proof map -> reconciliation report -> standard_ats_v1 CV
 ```
 
+Current implementation rule:
+
+```text
+exact/alias proof match -> supported
+strong adjacent evidence -> needs_confirmation
+missing evidence -> unsupported
+```
+
+Adjacent evidence can help the agent ask a better question, but it cannot create a CV claim or fill a daily application slot by itself.
+
 Then add hybrid search/ranking.
 
 Then add learning from outcomes.

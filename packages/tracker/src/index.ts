@@ -505,6 +505,7 @@ export function buildProgressSnapshot(input: {
   sourceScorecards?: ProgressSnapshot["sourceScorecards"];
   sourceOutcomes?: ProgressSnapshot["sourceOutcomes"];
   sourceQuality?: ProgressSnapshot["sourceQuality"];
+  funnelHealth?: ProgressSnapshot["funnelHealth"];
 }): ProgressSnapshot {
   const pendingQuestionItems = input.pendingQuestionItems ?? [];
   const snapshot: ProgressSnapshot = {
@@ -527,7 +528,8 @@ export function buildProgressSnapshot(input: {
     ...(input.scanHistory ? { scanHistory: input.scanHistory } : {}),
     ...(input.sourceScorecards ? { sourceScorecards: input.sourceScorecards } : {}),
     ...(input.sourceOutcomes ? { sourceOutcomes: input.sourceOutcomes } : {}),
-    ...(input.sourceQuality ? { sourceQuality: input.sourceQuality } : {})
+    ...(input.sourceQuality ? { sourceQuality: input.sourceQuality } : {}),
+    ...(input.funnelHealth ? { funnelHealth: input.funnelHealth } : {})
   };
 
   if (input.outputRoot) snapshot.outputRoot = input.outputRoot;
@@ -643,6 +645,64 @@ function renderSourceQuality(snapshot: ProgressSnapshot): string {
             <span class="chip ${sourceQuality.byReason.location > 0 ? "chip-warn" : "chip-ok"}">${sourceQuality.byReason.location} location</span>
             <span class="chip ${sourceQuality.byReason.content > 0 ? "chip-warn" : "chip-ok"}">${sourceQuality.byReason.content} content</span>
           </div>
+        </div>
+      </div>
+  </section>`;
+}
+
+function renderFunnelHealth(snapshot: ProgressSnapshot): string {
+  if (!snapshot.funnelHealth) return "";
+  const health = snapshot.funnelHealth;
+  const cards = [
+    {
+      label: "Target",
+      value: health.configuredDailyTarget,
+      tone: "neutral",
+      helper: "Applications per day"
+    },
+    {
+      label: "Prepared",
+      value: health.preparedApplications,
+      tone: health.preparedApplications >= health.configuredDailyTarget ? "ready" : "watch",
+      helper: health.message
+    },
+    {
+      label: "Kept",
+      value: health.keptForRanking,
+      tone: health.status === "high_volume" ? "watch" : "neutral",
+      helper: `${health.discoveredJobs} discovered`
+    }
+  ];
+  const filterItems = health.dominantFilters.length > 0
+    ? health.dominantFilters.map((item) => `<li>${escapeHtml(item.label)}: ${item.count}</li>`).join("")
+    : "<li>No dominant source filter.</li>";
+  const gateItems = health.dominantGateBlocks.length > 0
+    ? health.dominantGateBlocks
+        .map((item) => `<li>${escapeHtml(item.label)}: ${item.count}${item.examples[0] ? ` <small>${escapeHtml(item.examples[0])}</small>` : ""}</li>`)
+        .join("")
+    : "<li>No dominant preference blocker.</li>";
+  const actionItems = health.suggestedActions.length > 0
+    ? health.suggestedActions.map((action) => `<li>${escapeHtml(action)}</li>`).join("")
+    : "<li>No funnel guidance generated.</li>";
+
+  return `<section>
+      <div class="section-head">
+        <h2>Funnel Health</h2>
+        <p>${escapeHtml(health.message)}</p>
+      </div>
+      <div class="source-quality-layout">
+        ${cards.map(renderStatCard).join("")}
+        <div class="reason-panel">
+          <h3>Dominant Filters</h3>
+          <ul>${filterItems}</ul>
+        </div>
+        <div class="reason-panel">
+          <h3>Dominant Preference Gates</h3>
+          <ul>${gateItems}</ul>
+        </div>
+        <div class="reason-panel">
+          <h3>Suggested Path</h3>
+          <ul>${actionItems}</ul>
         </div>
       </div>
   </section>`;
@@ -1131,6 +1191,7 @@ export function renderProgressDashboardHtml(snapshot: ProgressSnapshot): string 
   const sourceOutcomes = renderSourceOutcomes(snapshot);
   const sourceScorecards = renderSourceScorecards(snapshot);
   const sourceQuality = renderSourceQuality(snapshot);
+  const funnelHealth = renderFunnelHealth(snapshot);
   const cvQuality = renderCvQuality(snapshot);
   const livePreflight = renderLivePreflight(snapshot);
   const pendingQuestions = renderPendingQuestions(snapshot);
@@ -1172,7 +1233,7 @@ export function renderProgressDashboardHtml(snapshot: ProgressSnapshot): string 
           detail: "Check the CV, reconciliation, browser plan, and receipt for each role."
         };
   const runWindow = `${escapeHtml(snapshot.periodStart)} to ${escapeHtml(snapshot.periodEnd)}`;
-  const diagnosticBlocks = [livePreflight, pendingQuestions, sourceQuality, sourceScorecards, cvQuality, scanHistory, sourceOutcomes].filter(Boolean).join("");
+  const diagnosticBlocks = [livePreflight, pendingQuestions, funnelHealth, sourceQuality, sourceScorecards, cvQuality, scanHistory, sourceOutcomes].filter(Boolean).join("");
   const statusLine = [
     `${preparedCount} prepared`,
     `${cvCount} CVs`,
@@ -1594,6 +1655,24 @@ export function renderProgressChatSummaryMarkdown(snapshot: ProgressSnapshot): s
         ""
       ].join("\n")
     : "";
+  const funnelHealth = snapshot.funnelHealth
+    ? [
+        "## Funnel Health",
+        "",
+        `- Status: ${escapeMarkdownLine(snapshot.funnelHealth.status)}`,
+        `- Summary: ${escapeMarkdownLine(snapshot.funnelHealth.message)}`,
+        `- Daily target: ${snapshot.funnelHealth.preparedApplications}/${snapshot.funnelHealth.configuredDailyTarget}`,
+        `- Jobs: ${snapshot.funnelHealth.discoveredJobs} discovered, ${snapshot.funnelHealth.keptForRanking} kept for ranking, ${snapshot.funnelHealth.watchOrSkippedJobs} watched/skipped`,
+        ...snapshot.funnelHealth.dominantFilters.slice(0, 3).map((item) =>
+          `- Filter: ${escapeMarkdownLine(item.label)} (${item.count})`
+        ),
+        ...snapshot.funnelHealth.dominantGateBlocks.slice(0, 3).map((item) =>
+          `- Gate: ${escapeMarkdownLine(item.label)} (${item.count})${item.examples[0] ? ` - ${escapeMarkdownLine(item.examples[0])}` : ""}`
+        ),
+        ...snapshot.funnelHealth.suggestedActions.slice(0, 4).map((action) => `- Suggested: ${escapeMarkdownLine(action)}`),
+        ""
+      ].join("\n")
+    : "";
   const sourceQuality = snapshot.sourceQuality
     ? [
         "## Source Quality",
@@ -1689,7 +1768,7 @@ Period: ${escapeMarkdownLine(snapshot.periodStart)} to ${escapeMarkdownLine(snap
 - Submitted or confirmed: ${submittedCount}
 - Pending questions: ${pendingQuestionCount}
 
-${livePreflight}${pendingQuestionSection}${sourceQuality}${sourceScorecards}${cvQuality}${scanHistory}${sourceOutcomes}## Prepared Queue
+${livePreflight}${pendingQuestionSection}${funnelHealth}${sourceQuality}${sourceScorecards}${cvQuality}${scanHistory}${sourceOutcomes}## Prepared Queue
 
 ${preparedQueue}
 ## Skipped Or Watch
