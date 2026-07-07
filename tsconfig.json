@@ -1,0 +1,17 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/core" },
+    { "path": "./packages/profile" },
+    { "path": "./packages/discovery" },
+    { "path": "./packages/normalizer" },
+    { "path": "./packages/ranker" },
+    { "path": "./packages/cv-tailor" },
+    { "path": "./packages/apply-assistant" },
+    { "path": "./packages/engine" },
+    { "path": "./packages/tracker" },
+    { "path": "./apps/web" },
+    { "path": "./apps/browser-agent" },
+    { "path": "./apps/worker" }
+  ]
+}

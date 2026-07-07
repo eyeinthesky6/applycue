@@ -1,0 +1,291 @@
+{
+  "profile": {
+    "id": "local-user",
+    "name": "",
+    "email": "",
+    "phone": "",
+    "location": "",
+    "headline": "",
+    "activeBaseCvId": "base-product-v1",
+    "baseCvPath": "../data/input/base-cv.md",
+    "links": [
+      {
+        "label": "LinkedIn",
+        "url": ""
+      }
+    ],
+    "currentCompany": "",
+    "currentDesignation": "",
+    "currentLevel": "",
+    "currentCountry": "",
+    "currentLocation": "",
+    "pastEmployers": [],
+    "applyToPastEmployers": null
+  },
+  "baseCvs": [
+    {
+      "id": "base-product-v1",
+      "label": "Product base CV",
+      "kind": "user_role_cv",
+      "status": "active",
+      "version": "2026-07-06",
+      "path": "../data/input/base-cv.md",
+      "roleFamilyTerms": ["product", "product management"],
+      "originalPath": "",
+      "createdAt": "2026-07-06T00:00:00.000Z",
+      "updatedAt": "2026-07-06T00:00:00.000Z",
+      "notes": ["Use this as the active source CV for product roles."]
+    }
+  ],
+  "assets": [
+    {
+      "id": "asset-product-base-cv-v1",
+      "label": "Product base CV source file",
+      "kind": "base_cv",
+      "path": "assets/base-cvs/product-base-cv-v1.md",
+      "contentType": "text/markdown",
+      "originalPath": "",
+      "createdAt": "2026-07-06T00:00:00.000Z",
+      "updatedAt": "2026-07-06T00:00:00.000Z",
+      "notes": ["Real user assets should live outside the repo under ~/.applycue."]
+    },
+    {
+      "id": "asset-profile-image",
+      "label": "Profile image",
+      "kind": "profile_image",
+      "path": "assets/images/profile.jpg",
+      "contentType": "image/jpeg",
+      "originalPath": "",
+      "createdAt": "2026-07-06T00:00:00.000Z",
+      "updatedAt": "2026-07-06T00:00:00.000Z",
+      "notes": []
+    }
+  ],
+  "preferences": {
+    "targetRoleTerms": [],
+    "adjacentRoleTerms": [],
+    "targetIndustries": [],
+    "excludedIndustries": [],
+    "preferredLocations": [],
+    "extraLocations": [],
+    "askBeforeLocations": [],
+    "acceptableWorkModes": ["remote", "hybrid", "onsite"],
+    "targetSeniorities": [],
+    "acceptableSeniorities": [],
+    "employmentTypes": ["full_time"],
+    "companyStages": [],
+    "preferredCompanyNames": [],
+    "blockedCompanyNames": [],
+    "noGoRoleTerms": [],
+    "requiredKeywords": [],
+    "niceToHaveKeywords": [],
+    "excludedKeywords": [],
+    "workAuthorizationCountries": [],
+    "visaSponsorshipRequired": false,
+    "noticePeriodDays": null,
+    "maxTravelPercent": null,
+    "preferredTimezones": [],
+    "remoteOnly": false,
+    "allowRelocation": false,
+    "minimumCompensation": null,
+    "targetCompensation": null,
+    "compensationCurrency": null
+  },
+  "matchSettings": {
+    "range": "normal",
+    "widenIfFewerThan": 20,
+    "relaxOrder": ["source", "title", "industry", "location", "recency", "minimum_fit"],
+    "minimumFitFloor": 0.55,
+    "allowAdjacentTitles": true,
+    "allowAdjacentIndustries": true
+  },
+  "searchSettings": {
+    "searchCountries": [],
+    "searchAreas": [],
+    "remoteRegions": [],
+    "agentMayExpandSearchArea": true,
+    "informUserOnSearchAreaChange": true,
+    "standardHoursOnly": true,
+    "preferredShifts": ["standard"],
+    "askBeforeShifts": ["night", "rotational", "weekend"]
+  },
+  "sourceSettings": {
+    "allowLoggedInBrowserAccess": false,
+    "defaultPortalApplyPolicy": "ask",
+    "trustedPortals": [],
+    "askBeforePortals": [],
+    "blockedPortals": [],
+    "fraudSignalTerms": ["payment required", "registration fee", "training fee", "deposit", "crypto wallet"]
+  },
+  "applySettings": {
+    "mode": "daily",
+    "applicationsPerDay": 20,
+    "minimumFitToApply": 0.75,
+    "allowedSourceKinds": [
+      "company_site",
+      "ats",
+      "job_board",
+      "social_post",
+      "community_post",
+      "newsletter",
+      "recruiter_message",
+      "email_alert",
+      "manual"
+    ],
+    "messagePolicy": "draft_only",
+    "trackEmailReplies": false,
+    "allowRecruiterDmDrafts": true,
+    "pauseReasons": [
+      "missing_required_answer",
+      "sensitive_personal_data",
+      "unsupported_cv_claim",
+      "work_authorization",
+      "compensation",
+      "relocation",
+      "platform_rule"
+    ]
+  },
+  "proofBank": [
+    {
+      "id": "proof-example",
+      "claim": "Replace this with a proof-backed work claim from the base CV.",
+      "evidence": "Point to the base CV, portfolio, project, metric, or user-confirmed source.",
+      "tags": ["example"],
+      "kind": "work"
+    }
+  ],
+  "facts": [],
+  "applicationAnswers": [],
+  "sources": {
+    "localJobsPath": "../data/input/jobs.jsonl",
+    "searches": [],
+    "jobBoards": [
+      {
+        "id": "example-jobspy-product-search",
+        "origin": "user_added",
+        "status": "active",
+        "kind": "job_board",
+        "label": "Example JobSpy product search",
+        "enabled": false,
+        "provider": "jobspy",
+        "query": "vp product",
+        "approvedAt": "2026-07-06T00:00:00.000Z",
+        "options": {
+          "siteNames": ["indeed", "google", "naukri"],
+          "location": "India",
+          "resultsWanted": 25,
+          "hoursOld": 72,
+          "jobType": "fulltime",
+          "countryIndeed": "india",
+          "descriptionFormat": "markdown"
+        }
+      },
+      {
+        "id": "example-remotive-product-search",
+        "origin": "user_added",
+        "status": "active",
+        "kind": "job_board",
+        "label": "Example Remotive product search",
+        "enabled": false,
+        "provider": "remotive",
+        "query": "product",
+        "approvedAt": "2026-07-06T00:00:00.000Z",
+        "options": {
+          "limit": 10
+        }
+      },
+      {
+        "id": "example-themuse-product-search",
+        "origin": "user_added",
+        "status": "active",
+        "kind": "job_board",
+        "label": "Example The Muse product search",
+        "enabled": false,
+        "provider": "themuse",
+        "query": "product",
+        "approvedAt": "2026-07-06T00:00:00.000Z",
+        "options": {
+          "limit": 25,
+          "pageLimit": 2
+        }
+      }
+    ],
+    "companyPages": [
+      {
+        "company": "Example Greenhouse Company",
+        "provider": "greenhouse",
+        "careersUrl": "https://job-boards.greenhouse.io/example",
+        "enabled": false
+      },
+      {
+        "company": "Example Lever Company",
+        "provider": "lever",
+        "careersUrl": "https://jobs.lever.co/example",
+        "enabled": false
+      },
+      {
+        "company": "Example Ashby Company",
+        "provider": "ashby",
+        "careersUrl": "https://jobs.ashbyhq.com/example",
+        "enabled": false
+      },
+      {
+        "company": "Example Workable Company",
+        "provider": "workable",
+        "careersUrl": "https://apply.workable.com/example",
+        "enabled": false
+      },
+      {
+        "company": "Example SmartRecruiters Company",
+        "provider": "smartrecruiters",
+        "careersUrl": "https://jobs.smartrecruiters.com/example",
+        "enabled": false
+      },
+      {
+        "company": "Example BambooHR Company",
+        "provider": "bamboohr",
+        "careersUrl": "https://example.bamboohr.com/careers",
+        "enabled": false
+      },
+      {
+        "company": "Example Breezy Company",
+        "provider": "breezy",
+        "careersUrl": "https://example.breezy.hr",
+        "enabled": false
+      },
+      {
+        "company": "Example Recruitee Company",
+        "provider": "recruitee",
+        "careersUrl": "https://example.recruitee.com",
+        "enabled": false
+      },
+      {
+        "company": "Example Pinpoint Company",
+        "provider": "pinpoint",
+        "careersUrl": "https://example.pinpointhq.com",
+        "enabled": false
+      },
+      {
+        "company": "Example Workday Company",
+        "provider": "workday",
+        "careersUrl": "https://example.wd3.myworkdayjobs.com/External",
+        "enabled": false
+      },
+      {
+        "company": "Example Personio Company",
+        "provider": "personio",
+        "careersUrl": "https://example.jobs.personio.de",
+        "enabled": false
+      },
+      {
+        "company": "Example Rippling Company",
+        "provider": "rippling",
+        "careersUrl": "https://ats.rippling.com/example-co/jobs",
+        "enabled": false
+      }
+    ],
+    "communities": [],
+    "newsletters": [],
+    "loggedInBrowserSources": []
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "name": "applycue",
+  "version": "0.0.0",
+  "private": true,
+  "description": "ApplyCue CV-to-offer agent.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "scripts": {
+    "build": "tsc -b",
+    "check": "pnpm typecheck && pnpm test",
+    "approve-answers": "pnpm build && node apps/worker/dist/index.js approve-answers",
+    "approve-sources": "pnpm build && node apps/worker/dist/index.js approve-sources",
+    "browser-live-apply": "pnpm build && node apps/worker/dist/index.js browser-live-apply",
+    "browser-live-preflight": "pnpm build && node apps/worker/dist/index.js browser-live-preflight",
+    "browser-preflight": "pnpm build && node apps/worker/dist/index.js browser-preflight",
+    "browser-uat": "pnpm build && node apps/worker/dist/index.js browser-uat",
+    "first-build": "pnpm build && node apps/worker/dist/index.js",
+    "record-outcome": "pnpm build && node apps/worker/dist/index.js record-outcome",
+    "setup-applycue": "pnpm build && node apps/worker/dist/index.js setup",
+    "status": "pnpm build && node apps/worker/dist/index.js status",
+    "uat": "pnpm build && node apps/worker/dist/index.js uat",
+    "typecheck": "tsc -b",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "playwright": "1.61.1",
+    "typescript": "^5.9.0",
+    "vitest": "^4.0.0"
+  }
+}
