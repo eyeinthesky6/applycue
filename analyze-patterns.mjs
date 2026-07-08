@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * analyze-patterns.mjs — Rejection Pattern Detector for career-ops
+ * analyze-patterns.mjs — Rejection Pattern Detector for ApplyCue
  *
  * Parses applications.md + all linked reports, extracts dimensions
  * (archetype, seniority, remote, gaps, scores), classifies outcomes,
@@ -18,11 +18,11 @@ import { fileURLToPath } from 'url';
 import { load as yamlLoad } from 'js-yaml';
 import { resolveColumns, parseTrackerRow } from './tracker-parse.mjs';
 
-const CAREER_OPS = dirname(fileURLToPath(import.meta.url));
-const APPS_FILE = existsSync(join(CAREER_OPS, 'data/applications.md'))
-  ? join(CAREER_OPS, 'data/applications.md')
-  : join(CAREER_OPS, 'applications.md');
-const REPORTS_DIR = join(CAREER_OPS, 'reports');
+const APPLYCUE = dirname(fileURLToPath(import.meta.url));
+const APPS_FILE = existsSync(join(APPLYCUE, 'data/applications.md'))
+  ? join(APPLYCUE, 'data/applications.md')
+  : join(APPLYCUE, 'applications.md');
+const REPORTS_DIR = join(APPLYCUE, 'reports');
 
 const MACHINE_SUMMARY_FIELDS = new Set([
   'company',
@@ -351,7 +351,7 @@ function analyze() {
   // Enrich entries with report data and classification
   const enriched = entries.map(e => {
     const reportMatch = e.report.match(/\]\(([^)]+)\)/);
-    const reportPath = reportMatch ? join(CAREER_OPS, reportMatch[1]) : null;
+    const reportPath = reportMatch ? join(APPLYCUE, reportMatch[1]) : null;
     const reportData = reportPath ? parseReport(reportPath) : null;
     const outcome = classifyOutcome(e.status);
     const trackerScore = parseFloat(e.score);

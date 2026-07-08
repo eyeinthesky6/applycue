@@ -108,4 +108,4 @@
 
 1. Оновити статус у `data/applications.md` з "Evaluated" на "Applied"
 2. Оновити секцію G звіту фінальними відповідями
-3. Запропонувати: `/career-ops contacto` для LinkedIn outreach
+3. Запропонувати: `/applycue contacto` для LinkedIn outreach

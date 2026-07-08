@@ -9,36 +9,36 @@
 # this list once there is more than one code owner.
 
 # Repo docs & governance
-/README*.md            @santifer
-/CONTRIBUTING.md       @santifer
-/MAINTAINERS.md        @santifer
-/ARCHITECTURE.md       @santifer
-/.github/CODEOWNERS    @santifer
+/README*.md            @eyeinthesky6
+/CONTRIBUTING.md       @eyeinthesky6
+/MAINTAINERS.md        @eyeinthesky6
+/ARCHITECTURE.md       @eyeinthesky6
+/.github/CODEOWNERS    @eyeinthesky6
 
 # Agent behavior & the multi-CLI contract (prompt layer — CI-blind)
-/CLAUDE.md             @santifer
-/AGENTS.md             @santifer
-/CODEX.md              @santifer
-/OPENCODE.md           @santifer
-/GEMINI.md             @santifer
+/CLAUDE.md             @eyeinthesky6
+/AGENTS.md             @eyeinthesky6
+/CODEX.md              @eyeinthesky6
+/OPENCODE.md           @eyeinthesky6
+/GEMINI.md             @eyeinthesky6
 
 # Scoring & the system/user data contract (CI-blind; silent-danger)
-/modes/_shared.md      @santifer
-/DATA_CONTRACT.md      @santifer
+/modes/_shared.md      @eyeinthesky6
+/DATA_CONTRACT.md      @eyeinthesky6
 
 # The self-updater (catastrophic if wrong — touches user installs)
-/update-system.mjs     @santifer
-/updater-migration-tests.mjs  @santifer
+/update-system.mjs     @eyeinthesky6
+/updater-migration-tests.mjs  @eyeinthesky6
 
 # Plugin governance chokepoint (a bad change here ships unreviewed code to
 # every user — the registry pin, the gates, and the CI must stay single-owner).
-/plugins-registry.json         @santifer
-/validate-plugin-registry.mjs  @santifer
-/plugin-install.mjs            @santifer
-/plugin-audit.mjs              @santifer
-/plugins/_engine.mjs           @santifer
-/plugins/_lock.mjs             @santifer
-/plugins/_net.mjs              @santifer
-/plugins/_registry.mjs         @santifer
-/.github/workflows/            @santifer
-/docs/PLUGIN_REVIEW.md         @santifer
+/plugins-registry.json         @eyeinthesky6
+/validate-plugin-registry.mjs  @eyeinthesky6
+/plugin-install.mjs            @eyeinthesky6
+/plugin-audit.mjs              @eyeinthesky6
+/plugins/_engine.mjs           @eyeinthesky6
+/plugins/_lock.mjs             @eyeinthesky6
+/plugins/_net.mjs              @eyeinthesky6
+/plugins/_registry.mjs         @eyeinthesky6
+/.github/workflows/            @eyeinthesky6
+/docs/PLUGIN_REVIEW.md         @eyeinthesky6

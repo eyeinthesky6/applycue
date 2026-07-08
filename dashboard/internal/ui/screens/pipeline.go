@@ -1,4 +1,4 @@
-﻿package screens
+package screens
 
 import (
 	"fmt"
@@ -12,9 +12,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/santifer/career-ops/dashboard/internal/data"
-	"github.com/santifer/career-ops/dashboard/internal/model"
-	"github.com/santifer/career-ops/dashboard/internal/theme"
+	"github.com/eyeinthesky6/applycue/dashboard/internal/data"
+	"github.com/eyeinthesky6/applycue/dashboard/internal/model"
+	"github.com/eyeinthesky6/applycue/dashboard/internal/theme"
 )
 
 // PipelineClosedMsg is emitted when the pipeline screen is dismissed.
@@ -41,13 +41,13 @@ type PipelineOpenPDFMsg struct {
 
 // PipelineGeneratePDFMsg requests a PDF regeneration via generate-pdf.mjs
 // from the application's recorded source HTML. Paths are relative to
-// CareerOpsPath (as recorded in the manifest).
+// applycuePath (as recorded in the manifest).
 type PipelineGeneratePDFMsg struct {
-	CareerOpsPath string
-	ReportNumber  string
-	HTMLPath      string
-	PDFPath       string
-	Format        string
+	ApplyCuePath string
+	ReportNumber string
+	HTMLPath     string
+	PDFPath      string
+	Format       string
 }
 
 // PipelinePDFGeneratedMsg reports the outcome of a regeneration. On success
@@ -59,15 +59,15 @@ type PipelinePDFGeneratedMsg struct {
 
 // PipelineLoadReportMsg requests lazy loading of a report summary.
 type PipelineLoadReportMsg struct {
-	CareerOpsPath string
-	ReportPath    string
+	ApplyCuePath string
+	ReportPath   string
 }
 
 // PipelineUpdateStatusMsg requests a status update for an application.
 type PipelineUpdateStatusMsg struct {
-	CareerOpsPath string
-	App           model.CareerApplication
-	NewStatus     string
+	ApplyCuePath string
+	App          model.CareerApplication
+	NewStatus    string
 }
 
 // PipelineRefreshMsg requests a full tracker reload from disk.
@@ -139,10 +139,10 @@ const (
 
 // colDef describes one optional column for the picker UI.
 type colDef struct {
-	id     ColumnID
-	header string
-	hint   string
-	width  int
+	id          ColumnID
+	header      string
+	hint        string
+	width       int
 	onByDefault bool
 }
 
@@ -172,7 +172,7 @@ type PipelineModel struct {
 	viewMode      string // "grouped" or "flat"
 	width, height int
 	theme         theme.Theme
-	careerOpsPath string
+	applycuePath  string
 	reportCache   map[string]reportSummary
 	// Status picker sub-state
 	statusPicker bool
@@ -195,23 +195,23 @@ type PipelineModel struct {
 }
 
 // NewPipelineModel creates a new pipeline screen.
-func NewPipelineModel(t theme.Theme, apps []model.CareerApplication, metrics model.PipelineMetrics, careerOpsPath string, width, height int) PipelineModel {
+func NewPipelineModel(t theme.Theme, apps []model.CareerApplication, metrics model.PipelineMetrics, applycuePath string, width, height int) PipelineModel {
 	visible := make(map[ColumnID]bool)
 	for _, col := range optionalCols {
 		visible[col.id] = col.onByDefault
 	}
 	m := PipelineModel{
-		apps:          apps,
-		metrics:       metrics,
-		sortMode:      sortScore,
-		activeTab:     0,
-		viewMode:      "grouped",
-		width:         width,
-		height:        height,
-		theme:         t,
-		careerOpsPath: careerOpsPath,
-		reportCache:   make(map[string]reportSummary),
-		visibleCols:   visible,
+		apps:         apps,
+		metrics:      metrics,
+		sortMode:     sortScore,
+		activeTab:    0,
+		viewMode:     "grouped",
+		width:        width,
+		height:       height,
+		theme:        t,
+		applycuePath: applycuePath,
+		reportCache:  make(map[string]reportSummary),
+		visibleCols:  visible,
 	}
 	m.applyFilterAndSort()
 	return m
@@ -263,7 +263,7 @@ func (m PipelineModel) WithReloadedData(apps []model.CareerApplication, metrics 
 		selectedRole = app.Role
 	}
 
-	reloaded := NewPipelineModel(m.theme, apps, metrics, m.careerOpsPath, m.width, m.height)
+	reloaded := NewPipelineModel(m.theme, apps, metrics, m.applycuePath, m.width, m.height)
 	reloaded.sortMode = m.sortMode
 	reloaded.activeTab = m.activeTab
 	reloaded.viewMode = m.viewMode
@@ -427,7 +427,7 @@ func (m PipelineModel) handleKey(msg tea.KeyMsg) (PipelineModel, tea.Cmd) {
 
 	case "enter":
 		if app, ok := m.CurrentApp(); ok && app.ReportPath != "" {
-			fullPath := filepath.Join(m.careerOpsPath, app.ReportPath)
+			fullPath := filepath.Join(m.applycuePath, app.ReportPath)
 			title := fmt.Sprintf("%s — %s", app.Company, app.Role)
 			jobURL := app.JobURL
 			return m, func() tea.Msg {
@@ -444,10 +444,10 @@ func (m PipelineModel) handleKey(msg tea.KeyMsg) (PipelineModel, tea.Cmd) {
 
 	case "d":
 		if app, ok := m.CurrentApp(); ok {
-			manifest := data.LoadPDFManifest(m.careerOpsPath)
-			candidates := data.ResolvePDFs(m.careerOpsPath, app, manifest)
+			manifest := data.LoadPDFManifest(m.applycuePath)
+			candidates := data.ResolvePDFs(m.applycuePath, app, manifest)
 			if len(candidates) == 0 {
-				m.flash = "No CV PDF found for this application — generate one with /career-ops pdf"
+				m.flash = "No CV PDF found for this application — generate one with /applycue pdf"
 			} else {
 				return m, m.openPDFCmd(candidates[0]) // newest first
 			}
@@ -455,13 +455,13 @@ func (m PipelineModel) handleKey(msg tea.KeyMsg) (PipelineModel, tea.Cmd) {
 
 	case "D":
 		if app, ok := m.CurrentApp(); ok {
-			manifest := data.LoadPDFManifest(m.careerOpsPath)
+			manifest := data.LoadPDFManifest(m.applycuePath)
 			entry, found := manifest.Lookup(app)
 			// Manifest lookup requires a report number; fall back to PDF-path
 			// index when the manifest was written without --report (common case).
 			if !found || entry.HTMLPath == "" {
-				byPath := data.LoadPDFEntriesByPath(m.careerOpsPath)
-				candidates := data.ResolvePDFs(m.careerOpsPath, app, manifest)
+				byPath := data.LoadPDFEntriesByPath(m.applycuePath)
+				candidates := data.ResolvePDFs(m.applycuePath, app, manifest)
 				for _, c := range candidates {
 					if e, ok := byPath[c]; ok && e.HTMLPath != "" {
 						entry = e
@@ -471,23 +471,23 @@ func (m PipelineModel) handleKey(msg tea.KeyMsg) (PipelineModel, tea.Cmd) {
 				}
 			}
 			if !found || entry.HTMLPath == "" {
-				m.flash = "No source HTML found for this application — run /career-ops pdf first"
+				m.flash = "No source HTML found for this application — run /applycue pdf first"
 				return m, nil
 			}
-			if _, err := os.Stat(filepath.Join(m.careerOpsPath, filepath.FromSlash(entry.HTMLPath))); err != nil {
+			if _, err := os.Stat(filepath.Join(m.applycuePath, filepath.FromSlash(entry.HTMLPath))); err != nil {
 				m.flash = "Source HTML missing: " + entry.HTMLPath
 				return m, nil
 			}
 			m.flash = "Regenerating PDF via generate-pdf.mjs — this takes a few seconds..."
-			path, report := m.careerOpsPath, entry.ReportNumber
+			path, report := m.applycuePath, entry.ReportNumber
 			html, pdf, format := entry.HTMLPath, entry.PDFPath, entry.Format
 			return m, func() tea.Msg {
 				return PipelineGeneratePDFMsg{
-					CareerOpsPath: path,
-					ReportNumber:  report,
-					HTMLPath:      html,
-					PDFPath:       pdf,
-					Format:        format,
+					ApplyCuePath: path,
+					ReportNumber: report,
+					HTMLPath:     html,
+					PDFPath:      pdf,
+					Format:       format,
 				}
 			}
 		}
@@ -635,9 +635,9 @@ func (m PipelineModel) handleStatusPicker(msg tea.KeyMsg) (PipelineModel, tea.Cm
 			newStatus := statusOptions[m.statusCursor]
 			return m, func() tea.Msg {
 				return PipelineUpdateStatusMsg{
-					CareerOpsPath: m.careerOpsPath,
-					App:           app,
-					NewStatus:     newStatus,
+					ApplyCuePath: m.applycuePath,
+					App:          app,
+					NewStatus:    newStatus,
 				}
 			}
 		}
@@ -701,12 +701,11 @@ func (m PipelineModel) handleColPicker(msg tea.KeyMsg) (PipelineModel, tea.Cmd) 
 
 // openPDFCmd emits a PipelineOpenPDFMsg for a root-relative PDF path.
 func (m PipelineModel) openPDFCmd(relPath string) tea.Cmd {
-	fullPath := filepath.Join(m.careerOpsPath, filepath.FromSlash(relPath))
+	fullPath := filepath.Join(m.applycuePath, filepath.FromSlash(relPath))
 	return func() tea.Msg {
 		return PipelineOpenPDFMsg{Path: fullPath}
 	}
 }
-
 
 func (m PipelineModel) loadCurrentReport() tea.Cmd {
 	app, ok := m.CurrentApp()
@@ -716,10 +715,10 @@ func (m PipelineModel) loadCurrentReport() tea.Cmd {
 	if _, cached := m.reportCache[app.ReportPath]; cached {
 		return nil
 	}
-	path := m.careerOpsPath
+	path := m.applycuePath
 	report := app.ReportPath
 	return func() tea.Msg {
-		return PipelineLoadReportMsg{CareerOpsPath: path, ReportPath: report}
+		return PipelineLoadReportMsg{ApplyCuePath: path, ReportPath: report}
 	}
 }
 
@@ -1500,7 +1499,7 @@ func (m PipelineModel) renderHelp() string {
 				keyStyle.Render("Esc") + descStyle.Render(" cancel"))
 	}
 
-	brand := lipgloss.NewStyle().Foreground(m.theme.Overlay).Render("career-ops by santifer.io")
+	brand := lipgloss.NewStyle().Foreground(m.theme.Overlay).Render("ApplyCue by applycue.local")
 
 	keys := keyStyle.Render("↑↓/jk") + descStyle.Render(" nav  ") +
 		keyStyle.Render("←→/hl") + descStyle.Render(" tabs  ") +

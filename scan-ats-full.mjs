@@ -41,7 +41,7 @@ import { buildTitleFilter, buildLocationFilter, loadSeenUrls, appendToPipeline, 
 
 // ── Config ──────────────────────────────────────────────────────────
 
-const PORTALS_PATH = process.env.CAREER_OPS_PORTALS || 'portals.yml';
+const PORTALS_PATH = process.env.APPLYCUE_PORTALS || 'portals.yml';
 const PIPELINE_PATH = 'data/pipeline.md';
 const CACHE_DIR = 'data/cache/ats-companies';
 const CACHE_TTL_HOURS = 24;
@@ -415,7 +415,7 @@ async function main() {
     log('\n(dry run — run without --dry-run to save results)');
     return;
   }
-  log(`\n→ Run /career-ops pipeline to evaluate new offers.`);
+  log(`\n→ Run /applycue pipeline to evaluate new offers.`);
 }
 
 // Only run main() when invoked directly, not when imported by tests.

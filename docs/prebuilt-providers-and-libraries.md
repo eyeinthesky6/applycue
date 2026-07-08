@@ -26,7 +26,7 @@ Simple rule:
 
 Agents should not call random scrapers directly during a run. They should approve sources, then run ApplyCue commands.
 
-The generated `searchProfile` is now part of discovery quality control. It filters broad provider output before shortlist preparation using title, location, and content rules generated from the user's profile/preferences. This is the career-ops lesson ApplyCue keeps: do not let every scraped job enter the expensive CV/application path.
+The generated `searchProfile` is now part of discovery quality control. It filters broad provider output before shortlist preparation using title, location, and content rules generated from the user's profile/preferences. This is the base workflow lesson ApplyCue keeps: do not let every scraped job enter the expensive CV/application path.
 
 ## Discovery Provider Order
 
@@ -86,7 +86,7 @@ Use these first for a single local user:
 | Workday | none for public tenant CXS endpoint | Good company/ATS source when a company uses `<tenant>.<wd-instance>.myworkdayjobs.com/<site>`; public CXS search returns active postings without credentials. |
 | Personio | none for public tenant XML feed | Good company/ATS source when a company uses `<tenant>.jobs.personio.(de|com)`; public XML returns active postings without credentials. |
 | Rippling | none for public tenant board API | Good company/ATS source when a company uses `ats.rippling.com/<slug>/jobs`; public board API returns active postings without credentials. |
-| Reverse ATS directory | none for public directory/API use | Good career-ops-inspired broad ATS discovery over Greenhouse, Lever, and Ashby without a fixed company list. |
+| Reverse ATS directory | none for public directory/API use | Good base-workflow-inspired broad ATS discovery over Greenhouse, Lever, and Ashby without a fixed company list. |
 | Remotive | none for public endpoint | Good remote-job source; obey attribution and low request frequency terms. |
 | The Muse | none for public jobs API | Good supplemental no-key job-board source. Keep capped and filtered before shortlist preparation because it is broad. |
 | Adzuna | user-owned app id/key | Good later broad API. Official default limits are enough for a single user if scheduled carefully. |
@@ -289,7 +289,7 @@ Do not add keys to env or config without explicit user permission.
 
 Decision: use an ApplyCue-owned reverse ATS directory source for broader discovery.
 
-career-ops has a useful `scan:full` pattern: walk public ATS company directories, fetch public postings, and filter before expensive evaluation. ApplyCue keeps that pattern behind `provider: "ats_directory"` instead of importing career-ops.
+The base workflow has a useful `scan:full` pattern: walk public ATS company directories, fetch public postings, and filter before expensive evaluation. ApplyCue keeps that pattern behind `provider: "ats_directory"` instead of importing base workflow.
 
 Current implementation:
 

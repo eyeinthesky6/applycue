@@ -6,7 +6,7 @@ Date: 2026-07-06
 
 ApplyCue is a CV-to-offer agent.
 
-It is forked from career-ops because career-ops already proves the local agent workflow can work. ApplyCue should preserve that attribution and build forward from it, not pretend the foundation was written from scratch.
+It builds on the current local workflow and turns it into an agent-led product with stronger profile storage, truth reconciliation, browser policy, UAT receipts, and outcome learning.
 
 Before changing code, read:
 
@@ -35,7 +35,7 @@ If the task touches job discovery or source adapters, also read:
 ## Simple Mental Model
 
 ```text
-source repo = career-ops-derived code, ApplyCue contracts, templates, docs, examples
+source repo = product code, ApplyCue contracts, templates, docs, examples
 user store = real user CVs, profile images, config, jobs, outputs
 engine = contracts, safety, truth checks, file generation, and apply policy
 agent = judgment, fuzzy role fit, preference learning, and user conversation
@@ -434,7 +434,7 @@ This is where discovery, shortlisting, CV generation, drafts, manifests, dashboa
 - Do not submit applications outside configured policy.
 - Do not edit env files or secrets without explicit permission.
 - Do not expose score obsession as the product UI.
-- Do not import a second job-search repo as another engine without a documented adoption decision. career-ops is the current upstream base for this branch.
+- Do not import another job-search repo as a second engine without a documented adoption decision.
 
 ## Application Run Boundary
 

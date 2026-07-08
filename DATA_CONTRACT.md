@@ -2,7 +2,7 @@
 
 This document defines which files belong to the **system** and which belong to the **user**.
 
-ApplyCue is currently a fork of career-ops. During the transition, the career-ops-compatible user layer still works inside this checkout. New ApplyCue engine outputs should prefer the external profile store:
+During the transition, the repo-local user layer still works inside this checkout. New ApplyCue engine outputs should prefer the external profile store:
 
 `~/.applycue/profiles/<profile>/`
 
@@ -22,7 +22,7 @@ Preferred ApplyCue profile-store files:
 | `~/.applycue/profiles/<profile>/sources/` | User-approved, agent-suggested, and system-generated source plans |
 | `~/.applycue/profiles/<profile>/outcomes/` | Replies, interviews, offers, rejections, and learning notes |
 
-Career-ops-compatible repo-local files:
+Repo-local user files:
 
 | File | Purpose |
 |------|---------|
@@ -33,7 +33,7 @@ Career-ops-compatible repo-local files:
 | `voice-dna.md` | Your writing voice guardrail — banned words, anti-AI-slop rules, tone (optional) |
 | `article-digest.md` | Your proof points from portfolio |
 | `interview-prep/story-bank.md` | Your accumulated STAR+R stories |
-| `interview-prep/{company}-{role}.md` | Company-specific interview prep reports (written by `/career-ops interview-prep`) |
+| `interview-prep/{company}-{role}.md` | Company-specific interview prep reports (written by interview-prep mode) |
 | `portals.yml` | Your customized company list |
 | `config/plugins.yml` | Your plugin activation toggles (opt-in; seeded from `config/plugins.example.yml`) |
 | `plugins.local/` | Your own / private plugins (never auto-updated) |
@@ -108,4 +108,4 @@ These files contain system logic, scripts, templates, and instructions that impr
 
 **If a file is in the User Layer, no update process may read, modify, or delete it.**
 
-**If a file is in the System Layer, it can be safely replaced with the latest version from the upstream repo.**
+**If a file is in the System Layer, it can be safely replaced by a product update.**

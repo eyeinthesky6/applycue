@@ -1,21 +1,27 @@
-# Frequently Asked Questions
+# FAQ
 
-Common questions from the community, answered in one place. For setup details see [docs/SETUP.md](SETUP.md). For anything not covered here, ask in [Discord](https://discord.gg/8pRpHETxa4) or open a [GitHub Discussion](https://github.com/santifer/career-ops/discussions).
+## Is ApplyCue a job board?
 
----
+No. ApplyCue is an agent-led CV-to-offer workflow. It helps the agent discover jobs, filter obvious misses, generate truthful CV variants, prepare applications, and track outcomes.
 
-## 1. Skills aren't loading on Windows — symlink error on install
+## Does the user need to edit files?
 
-Windows does not create symlinks by default, so Git checks out the CLI skill entrypoints (`.claude/skills/`, `.opencode/skills/`, etc.) as plain pointer files instead of real symlinks. The installer and updater both detect this automatically: run `node update-system.mjs apply` (or `npx @santifer/career-ops init` on a fresh install) and the `materializeSkillEntrypoints` step will replace the pointer files with the full canonical skill content. No manual `mklink` or Developer Mode changes are needed.
+No for normal use. The user should chat with the agent. The agent can update profile files, source approvals, and apply policy.
 
-## 2. What is the difference between `scan` and `scan:full`?
+## Where does user data live?
 
-`npm run scan` is the standard portal scanner — it reads the companies you have configured in `portals.yml`, hits their ATS APIs (Greenhouse, Ashby, Lever) directly, and consumes zero LLM tokens. Use it for your regular daily or weekly discovery run. `npm run scan:full` inverts the direction: instead of scanning your curated list, it walks public ATS company directories and surfaces any fresh postings that match your `title_filter` / `location_filter`, so you catch roles from companies you haven't manually added to `portals.yml`. Run `scan:full` when you want broader discovery beyond your tracked list.
+Prefer the external profile store:
 
-## 3. How do I avoid hitting token or rate limits during a batch run?
+```text
+~/.applycue/profiles/<profile>/
+```
 
-Pass `--limit <N>` to `batch-runner.sh` to cap the number of offers processed in a single run (e.g. `./batch/batch-runner.sh --limit 5`) — this lets you inspect output quality before committing to a larger run. If a run is interrupted mid-way by a rate limit or network error, do not restart from scratch; use `./batch/batch-runner.sh --resume-paused` to skip already-completed jobs and pick up where you left off, avoiding wasted tokens on work that finished successfully.
+Repo-local files still work during the transition, but real CVs and generated outputs should not be committed.
 
-## 4. Can I run career-ops on a cheaper or local model?
+## Can it apply automatically?
 
-Yes — career-ops is fully AI-agnostic and works with any AI coding CLI or standalone script. See [docs/RUNNING_ON_A_BUDGET.md](RUNNING_ON_A_BUDGET.md) for a full guide covering OpenCode, Qwen CLI, DeepSeek, OpenRouter, Ollama, and other local or low-cost providers, along with recommended model sizes and token-saving best practices.
+Yes, only inside the user's configured policy. It must pause on unclear answers, sensitive fields, unsupported claims, unknown portals, payment requests, or anything that changes a public profile.
+
+## Should scores be shown to users?
+
+Usually no. Scores are backend prioritization signals. The user needs plain decisions: apply, review, watch, or skip.

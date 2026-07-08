@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * ollama-eval.mjs — Ollama-powered Job Offer Evaluator for career-ops
+ * ollama-eval.mjs — Ollama-powered Job Offer Evaluator for ApplyCue
  *
  * Local, free, private alternative to the Claude-based pipeline.
  * Reads evaluation logic from modes/oferta.md + modes/_shared.md,
@@ -51,7 +51,7 @@ const args = process.argv.slice(2);
 if (args.length === 0 || args[0] === '--help' || args[0] === '-h') {
   console.log(`
 ╔══════════════════════════════════════════════════════════════════╗
-║           career-ops — Ollama Evaluator (local / free)          ║
+║           ApplyCue — Ollama Evaluator (local / free)          ║
 ╚══════════════════════════════════════════════════════════════════╝
 
   Evaluate a job offer using a local Ollama model instead of Claude.
@@ -209,7 +209,7 @@ const cvContent     = readFile(PATHS.cv,     'cv.md');
 // ---------------------------------------------------------------------------
 // Build system prompt
 // ---------------------------------------------------------------------------
-const systemPrompt = `You are career-ops, an AI-powered job search assistant.
+const systemPrompt = `You are ApplyCue, an AI-powered job search assistant.
 You evaluate job offers against the user's CV using a structured A-G scoring system.
 
 Your evaluation methodology is defined below. Follow it exactly.
@@ -305,7 +305,7 @@ try {
 // Display evaluation
 // ---------------------------------------------------------------------------
 console.log('\n' + '═'.repeat(66));
-console.log('  CAREER-OPS EVALUATION — powered by Ollama (' + modelName + ')');
+console.log('  ApplyCue EVALUATION — powered by Ollama (' + modelName + ')');
 console.log('═'.repeat(66) + '\n');
 console.log(evaluationText);
 

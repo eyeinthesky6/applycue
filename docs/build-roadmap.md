@@ -212,7 +212,7 @@ Current implementation status:
 - `apps/browser-agent` now exposes a browser execution kernel: generated plan + browser page snapshot + browser controller -> preflight -> fill/upload/pause/submit -> receipt. Chrome, Playwright, Stagehand, or other adapters should plug into that controller interface instead of bypassing ApplyCue policy.
 - `apps/browser-agent` also exposes `createPlaywrightBrowserApplyController`, a small Playwright-style page adapter that can inspect the visible page, fill standard fields, upload the generated DOCX, submit only when the plan allows it, and capture a receipt. It is duck-typed so Playwright stays an adapter, not an engine dependency.
 - `pnpm browser-uat` now runs an optional safe local browser proof. It selects a generated browser plan, creates a fake application form under the active user store, forces a review-mode copy of the plan, opens it through the Playwright adapter when the browser tool is installed, fills fields, uploads the DOCX, writes a receipt/report, and pauses before submit. If the browser tool is not installed, it writes a skipped report instead of failing normal UAT.
-- `setup-applycue` now reports browser tool status and can verify/install the Playwright Chromium runtime for agent-driven UAT. This follows career-ops's useful browser-proof pattern without making browser control the source of truth.
+- `setup-applycue` now reports browser tool status and can verify/install the Playwright Chromium runtime for agent-driven UAT. This follows the base workflow's useful browser-proof pattern without making browser control the source of truth.
 - `pnpm browser-live-preflight` now opens a real application page from a generated browser plan, captures a page snapshot, runs ApplyCue preflight, writes a report, and stops before fill/upload/submit. This is the first live-portal compatibility gate before controlled application execution.
 - `pnpm browser-live-apply` now gives agents the next controlled execution step after a current passing live preflight. It refuses missing/stale/non-passing preflight evidence, resolves the generated DOCX from the user store, creates a review-mode execution copy by default, fills planned fields, uploads the generated CV, writes a live apply report and browser receipt, refreshes progress, and pauses before final submit.
 - Reusable approved application answers now live on the profile as `applicationAnswers`. Drafts consume them through the engine, preference-derived notice period and expected salary answers are added only when explicitly configured, and browser preflight treats sensitive required fields as clear only when the plan already has a matching approved answer.
@@ -280,7 +280,7 @@ Useful product patterns:
 - Applicant tracking systems: normalize every job/application into a lifecycle state.
 - Sales CRM: pipeline, follow-ups, outcomes, and source performance.
 - JSON Resume: structured resume schema inspiration.
-- career-ops-style agent evaluation: CV + profile + JD + user goals -> concise shortlist reasoning.
+- base-workflow-style agent evaluation: CV + profile + JD + user goals -> concise shortlist reasoning.
 - Source adapters: fetch enough jobs from approved places without making the user search manually.
 - Truth reconciliation: map CV/application claims back to approved facts and proof.
 - Outcome learning: show the agent which sources and patterns are producing replies/interviews.
@@ -338,7 +338,7 @@ The generated source plan and approval route are now in place:
 source-plan.generated.json -> pnpm approve-sources -> editable applycue.json source config
 ```
 
-career-ops parity improvement now in place:
+base workflow parity improvement now in place:
 
 ```text
 profile/preferences -> generated searchProfile -> richer ATS/job-board search suggestions -> source-quality filter
@@ -346,7 +346,7 @@ profile/preferences -> generated searchProfile -> richer ATS/job-board search su
 
 This gives the agent a visible title/location/content filter plan before jobs enter the batch. It must stay generated from user config, not hardcoded to one market or one candidate. The engine now uses it before shortlist preparation so broad job-board sources do not flood the review queue with weak roles.
 
-career-ops-inspired source coverage improvement now in place:
+base-workflow-inspired source coverage improvement now in place:
 
 ```text
 approved company ATS source -> Greenhouse/Lever/Ashby/Workable/SmartRecruiters/BambooHR/Breezy/Recruitee/Pinpoint/Workday/Personio adapter -> JobRecord
@@ -384,7 +384,7 @@ local progress Markdown -> chat-ready run summary
 source quality -> CV quality -> batch health -> prepared queue -> decision queue -> next actions and operator notes
 ```
 
-This keeps career-ops's useful pipeline visibility pattern, but fits ApplyCue's chat-first product shape. The dashboard shows source quality, CV quality, decisions, artifacts, and next steps; the Markdown summary gives the agent a short handoff for chat. Neither makes raw scores the user-facing product.
+This keeps the base workflow's useful pipeline visibility pattern, but fits ApplyCue's chat-first product shape. The dashboard shows source quality, CV quality, decisions, artifacts, and next steps; the Markdown summary gives the agent a short handoff for chat. Neither makes raw scores the user-facing product.
 
 CV artifact parity improvement now in place:
 
@@ -392,17 +392,17 @@ CV artifact parity improvement now in place:
 reconciled standard_ats_v1 CV -> Markdown audit file + HTML preview + DOCX upload file
 ```
 
-career-ops's useful lesson is that the CV artifact must be application-ready, not just a text report. ApplyCue now writes a real `.docx` file for browser upload plans while preserving HTML for preview and Markdown for audit/debug. Browser plans should upload the DOCX artifact, not Markdown.
+the base workflow's useful lesson is that the CV artifact must be application-ready, not just a text report. ApplyCue now writes a real `.docx` file for browser upload plans while preserving HTML for preview and Markdown for audit/debug. Browser plans should upload the DOCX artifact, not Markdown.
 
 The CV renderer also preserves base-CV career structure and suppresses near-duplicate bullets when proof-bank claims and base-CV bullets describe the same work. Generated CVs must remain full CVs with contact, summary, skills, employer sections, awards, and education when those facts exist.
 
-career-ops parity / UAT volume improvement now in place:
+base workflow parity / UAT volume improvement now in place:
 
 ```text
 source jobs -> source-quality filter -> hard gates -> agent shortlist -> cleaned JD requirements -> truth reconciliation -> daily batch filled when enough eligible roles exist
 ```
 
-The first real UAT exposed the career-ops gap clearly: broad job-board discovery found many roles, but weak source filtering and over-mechanical ordering prepared too few useful applications. ApplyCue should keep weak-role matches capped, map requirements only to approved evidence, and strip common non-requirement job-post metadata before CV reconciliation. The goal is better batch fill without lowering the truth gate or pretending math knows the user's real opportunity.
+The first real UAT exposed the base workflow gap clearly: broad job-board discovery found many roles, but weak source filtering and over-mechanical ordering prepared too few useful applications. ApplyCue should keep weak-role matches capped, map requirements only to approved evidence, and strip common non-requirement job-post metadata before CV reconciliation. The goal is better batch fill without lowering the truth gate or pretending math knows the user's real opportunity.
 
 Current UAT evidence:
 
@@ -438,7 +438,7 @@ generated source plan + approved public job-board sources -> wider no-config-edi
 
 This can rerun approved public JobSpy/remote-board queries with wider `resultsWanted`, `hoursOld`, or `limit` values. It does not edit source config, generated source plans, CVs, or user assets.
 
-career-ops parity / repeat-control improvement now in place:
+base workflow parity / repeat-control improvement now in place:
 
 ```text
 post-filter jobs -> scan-history filter -> skip already prepared/closed non-manual jobs in daily/push -> record seen/prepared/closed -> detect repost signals
@@ -446,14 +446,14 @@ post-filter jobs -> scan-history filter -> skip already prepared/closed non-manu
 
 The scan history file lives in the user store at `data/local/scan-history.jsonl`. Review mode keeps repeated jobs visible for UAT and manual inspection; daily and push runs avoid re-preparing jobs already handled from automated sources. Repost clusters are shown as source-quality warnings and do not block applications by themselves.
 
-career-ops parity / outcome-learning improvement now in place:
+base workflow parity / outcome-learning improvement now in place:
 
 ```text
 applications + scan history + outcome events -> source learning -> dashboard and chat summary
 fetched/kept/filtered jobs + outcomes -> source scorecards -> future source budget choices
 ```
 
-career-ops analyzes tracker/report outcomes to find patterns. ApplyCue now keeps the first version in structured contracts: outcome events live in `data/local/outcomes.jsonl`, the engine records them through `pnpm record-outcome`, and each run summarizes which sources are producing replies, interviews, offers, or rejections. This should later influence source weights and search expansion, but it does not expose raw scores as the product UI.
+The base workflow analyzes tracker/report outcomes to find patterns. ApplyCue now keeps the first version in structured contracts: outcome events live in `data/local/outcomes.jsonl`, the engine records them through `pnpm record-outcome`, and each run summarizes which sources are producing replies, interviews, offers, or rejections. This should later influence source weights and search expansion, but it does not expose raw scores as the product UI.
 
 Source scorecards now add the missing upstream view: fetched jobs, kept jobs, filtered jobs, prepared applications, precision, yield, and positive outcomes by source. Use this for backend source allocation and agent diagnostics, not as a user-facing worth score.
 
@@ -545,7 +545,7 @@ Status update:
 pnpm status -> profile/config/run/UAT/dashboard/summary/source-quality checkpoint -> agent handoff -> agent next action
 ```
 
-This is the first agent-first usability bridge: agents can start from one checkpoint instead of manually inspecting output folders. It follows career-ops's useful doctor/tracker pattern without making career-ops the runtime base.
+This is the first agent-first usability bridge: agents can start from one checkpoint instead of manually inspecting output folders. It follows the base workflow's useful doctor/tracker pattern without making base workflow the runtime base.
 
 Current implementation status:
 
@@ -558,7 +558,7 @@ Current implementation status:
   - next steps
   - evidence paths
 - When live browser preflight pauses on form questions, status shows the prompt count, reusable-vs-one-off split, first questions to ask in chat, and links to the answer review page and Markdown prompt file.
-- Agent CLI skill bridges now expose the canonical `skills/applycue/SKILL.md` router through `.agents`, `.claude`, `.opencode`, `.qwen`, `.antigravitycli`, and `.grok` folders. This is a career-ops-inspired usability pattern, but all ApplyCue behavior stays in one canonical skill and the engine commands behind it.
+- Agent CLI skill bridges now expose the canonical `skills/applycue/SKILL.md` router through `.agents`, `.claude`, `.opencode`, `.qwen`, `.antigravitycli`, and `.grok` folders. This is a base-workflow-inspired usability pattern, but all ApplyCue behavior stays in one canonical skill and the engine commands behind it.
 - Status now checks whether the latest live preflight report still matches a browser plan in the current prepared run. If not, it marks the report as stale evidence and does not route the agent into old form questions for a job that is no longer in today's prepared queue.
 
 The user should hear the plain handoff. The agent can still open the dashboard or summary for deeper inspection.

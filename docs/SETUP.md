@@ -2,92 +2,70 @@
 
 ## Prerequisites
 
-- An AI coding CLI — [Claude Code](https://claude.ai/code), Gemini CLI, Codex, Qwen Code, OpenCode, GitHub Copilot CLI, Antigravity CLI, or Grok Build CLI (see [Supported CLIs](SUPPORTED_CLIS.md))
-- [Node.js](https://nodejs.org) 18+ and `git` (`npx` ships with Node — the installer refuses to run without them) — note: the Gemini CLI integration requires Node.js 20+
-- (Optional) Go 1.21+ (for the dashboard TUI)
+- Node.js 18+.
+- `pnpm`.
+- An agent CLI such as Codex, Claude Code, OpenCode, Qwen, Antigravity CLI, or Grok Build CLI.
+- Optional: Go 1.21+ for the terminal dashboard.
 
-## Quick Start
-
-### Recommended — one command
-
-```bash
-npx @santifer/career-ops init
-```
-
-`npx` ships with Node.js — it runs the installer once without installing anything globally. This clones the latest release into `./career-ops` and installs dependencies. Then move into the workspace and open your AI CLI:
+## Local Setup
 
 ```bash
-cd career-ops
-claude   # or gemini / codex / qwen / opencode / agy / grok
+git clone https://github.com/eyeinthesky6/applycue.git
+cd applycue
+pnpm install
+node doctor.mjs --json
 ```
 
-**On first launch, career-ops walks you through setup by chatting** — it asks for your CV, your details (name, target roles, salary), and sets up the job scanner with pre-configured companies. Nothing to edit by hand: just answer its questions. Then paste a job offer URL or description and it evaluates it, writes a report, generates a tailored PDF, and tracks it.
-
-If you are using Codex, start the interactive session with `codex`. Slash commands are not guaranteed in Codex, so use the same mode names in a prompt if `/career-ops` is unavailable:
-
-```text
-Evaluate this JD with career-ops auto-pipeline: https://company.com/jobs/123
-Run the career-ops scan mode.
-Run the career-ops pipeline mode.
-Run the career-ops pdf mode.
-Run the career-ops tracker mode.
-```
-
-For one-shot workers or batch tasks in Codex, use `codex exec`. See [docs/CODEX.md](CODEX.md) for the full guide.
+Then open your agent CLI in the repo:
 
 ```bash
-codex exec "Evaluate this JD with career-ops auto-pipeline: https://company.com/jobs/123"
-codex exec "Run career-ops scan mode in this repo."
-codex exec "Run career-ops pipeline mode for data/pipeline.md."
-codex exec "Run career-ops pdf mode for the latest evaluated role."
-codex exec "Run career-ops tracker mode and summarize the current statuses."
+codex
+# or claude / opencode / qwen / agy / grok
 ```
 
-### Advanced — clone manually
-
-<details>
-<summary>Prefer to clone the repo yourself?</summary>
+Codex slash commands are not guaranteed. Use plain language prompts, or use headless `codex exec`:
 
 ```bash
-git clone https://github.com/santifer/career-ops.git
-cd career-ops
-npm install
+codex exec "Run ApplyCue status in this repo."
+codex exec "Run ApplyCue UAT and summarize blockers."
 ```
 
-Then open your AI CLI in the folder — the same first-run onboarding applies. Use this path if you want to track a specific branch, contribute, or audit the code before installing dependencies.
+## ApplyCue Commands
 
-</details>
+```bash
+pnpm applycue:setup
+pnpm applycue:status
+pnpm applycue:uat
+pnpm applycue:first-build
+pnpm applycue:browser-uat
+```
 
-### PDF rendering (one-time)
+## Base Workflow Commands
 
-PDFs are rendered with a headless Chromium. Install it once per machine:
+```bash
+npm run doctor
+npm run scan
+npm run tracker
+npm run build:dashboard
+```
+
+## First User Flow
+
+The user should not edit code. The agent should:
+
+1. Load or create the user profile.
+2. Import the base CV.
+3. Confirm target roles, locations, compensation, work mode, and apply policy.
+4. Generate or approve sources.
+5. Run the first discovery batch.
+6. Generate truthful CV artifacts for approved roles.
+7. Prepare browser apply plans and pause before risky actions.
+8. Track outcomes.
+
+## Browser Runtime
+
+PDFs and browser UAT use Chromium through Playwright:
 
 ```bash
 npx playwright install chromium
-```
-
-## Available Commands
-
-| Action | How |
-|--------|-----|
-| Evaluate an offer | Paste a URL or JD text |
-| Search for offers | `/career-ops scan` or ask the agent to run `scan` |
-| Process pending URLs | `/career-ops pipeline` or ask the agent to run `pipeline` |
-| Generate a PDF | `/career-ops pdf` or ask the agent to run `pdf` |
-| Batch evaluate | `/career-ops batch` or use `codex exec "Run career-ops batch mode ..."` |
-| Check tracker status | `/career-ops tracker` or ask the agent to run `tracker` |
-| Fill application form | `/career-ops apply` or ask the agent to run `apply` |
-
-## Verify Setup
-
-```bash
-node cv-sync-check.mjs      # Check configuration
-node verify-pipeline.mjs     # Check pipeline integrity
-```
-
-## Build Dashboard (Optional)
-
-```bash
-npm run serve:dashboard     # Opens TUI pipeline viewer
-npm run build:dashboard     # Optional: build the standalone binary
 ```

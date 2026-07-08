@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/santifer/career-ops/dashboard/internal/model"
+	"github.com/eyeinthesky6/applycue/dashboard/internal/model"
 )
 
 // The tracker's Notes column is free-text, but evaluations write it with stable
@@ -14,7 +14,7 @@ import (
 // 2026-06-04"). These regexes lift that structure back out so the dashboard can
 // show Location / Pay / Last-contact columns without a tracker schema change.
 var (
-	// Pay amounts across the currencies career-ops users actually see, optionally
+	// Pay amounts across the currencies ApplyCue users actually see, optionally
 	// a range: "$140-210K", "€130-160K", "£175-225K", "CHF 165-185K",
 	// "$174,986-209,983", "~$124.2-198.7K". payCeiling stays currency-naive (it
 	// reads the numbers), so PayMax sorts by magnitude across currencies.

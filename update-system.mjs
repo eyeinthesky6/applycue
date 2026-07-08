@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * update-system.mjs — Safe auto-updater for career-ops
+ * update-system.mjs — Safe auto-updater for ApplyCue
  *
  * Updates ONLY system layer files (modes, scripts, dashboard, templates).
  * NEVER touches user data (cv.md, profile.yml, _profile.md, data/, reports/).
@@ -29,12 +29,12 @@ export { materializeSkillEntrypoints, ensureSkillEntrypoints };
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
 
-const CANONICAL_REPO = 'https://github.com/santifer/career-ops.git';
-const RAW_VERSION_URL = 'https://raw.githubusercontent.com/santifer/career-ops/main/VERSION';
-const RELEASES_API = 'https://api.github.com/repos/santifer/career-ops/releases/latest';
+const CANONICAL_REPO = 'https://github.com/eyeinthesky6/applycue.git';
+const RAW_VERSION_URL = 'https://raw.githubusercontent.com/eyeinthesky6/applycue/main/VERSION';
+const RELEASES_API = 'https://api.github.com/repos/eyeinthesky6/applycue/releases/latest';
 
 // Matches a semver, with or without a leading `v` and an optional
-// Release Please component prefix (e.g. `career-ops-v1.9.0` → `1.9.0`).
+// Release Please component prefix (e.g. `ApplyCue-v1.9.0` → `1.9.0`).
 // Anchoring on `(?:^|-)` lets the releases-API fallback parse our tags,
 // which Release Please always prefixes with the component name.
 export const SEMVER_RE = /(?:^|-)v?(\d+\.\d+\.\d+)$/i;
@@ -193,6 +193,13 @@ const SYSTEM_PATHS = [
   'plugin-audit.mjs',
   'validate-plugin-registry.mjs',
   'config/plugins.example.yml',
+  'apps/',
+  'packages/',
+  'pnpm-lock.yaml',
+  'pnpm-workspace.yaml',
+  'tsconfig.base.json',
+  'tsconfig.json',
+  'vitest.config.ts',
 ];
 
 // User layer paths — NEVER touch these (safety check)
@@ -483,7 +490,7 @@ async function check() {
     curlGet(RAW_VERSION_URL),
     curlGet(RELEASES_API, [
       '--header', 'Accept: application/vnd.github.v3+json',
-      '--header', 'User-Agent: career-ops-update-checker',
+      '--header', 'User-Agent: ApplyCue-update-checker',
     ]),
   ]);
 
@@ -547,7 +554,7 @@ async function check() {
 async function apply() {
   const local = localVersion();
   const initialStatusPaths = new Set(gitStatusEntries().map(entry => entry.path));
-  const isReexec = process.env.CAREER_OPS_UPDATE_REEXEC === '1';
+  const isReexec = process.env.APPLYCUE_UPDATE_REEXEC === '1';
 
   // Check for lock
   const lockFile = join(ROOT, '.update-lock');
@@ -567,7 +574,7 @@ async function apply() {
     // invisible to `git branch` and can be lost if the update aborts.
     // `git stash create` builds a stash object without touching the stash
     // stack, giving a recoverable ref for WIP even if the update fails.
-    const backupBranch = process.env.CAREER_OPS_UPDATE_BACKUP_BRANCH || updateBackupBranchName(local);
+    const backupBranch = process.env.APPLYCUE_UPDATE_BACKUP_BRANCH || updateBackupBranchName(local);
     if (!isReexec) {
       try {
         const wip = git('stash', 'create');
@@ -600,8 +607,8 @@ async function apply() {
           timeout: 120000,
           env: {
             ...process.env,
-            CAREER_OPS_UPDATE_REEXEC: '1',
-            CAREER_OPS_UPDATE_BACKUP_BRANCH: backupBranch,
+            APPLYCUE_UPDATE_REEXEC: '1',
+            APPLYCUE_UPDATE_BACKUP_BRANCH: backupBranch,
           },
         });
         return;

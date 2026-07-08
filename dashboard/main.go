@@ -10,10 +10,10 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/santifer/career-ops/dashboard/internal/data"
-	"github.com/santifer/career-ops/dashboard/internal/model"
-	"github.com/santifer/career-ops/dashboard/internal/theme"
-	"github.com/santifer/career-ops/dashboard/internal/ui/screens"
+	"github.com/eyeinthesky6/applycue/dashboard/internal/data"
+	"github.com/eyeinthesky6/applycue/dashboard/internal/model"
+	"github.com/eyeinthesky6/applycue/dashboard/internal/theme"
+	"github.com/eyeinthesky6/applycue/dashboard/internal/ui/screens"
 )
 
 type viewState int
@@ -29,13 +29,13 @@ type appModel struct {
 	viewer          screens.ViewerModel
 	progress        screens.ProgressModel
 	state           viewState
-	careerOpsPath   string
+	applycuePath    string
 	theme           theme.Theme
 	progressMetrics model.ProgressMetrics
 }
 
 func (m *appModel) reloadPipelineData() {
-	apps := data.ParseApplications(m.careerOpsPath)
+	apps := data.ParseApplications(m.applycuePath)
 	metrics := data.ComputeMetrics(apps)
 	m.progressMetrics = data.ComputeProgressMetrics(apps)
 	m.pipeline = m.pipeline.WithReloadedData(apps, metrics)
@@ -63,12 +63,12 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case screens.PipelineLoadReportMsg:
-		archetype, tldr, remote, comp := data.LoadReportSummary(msg.CareerOpsPath, msg.ReportPath)
+		archetype, tldr, remote, comp := data.LoadReportSummary(msg.ApplyCuePath, msg.ReportPath)
 		m.pipeline.EnrichReport(msg.ReportPath, archetype, tldr, remote, comp)
 		return m, nil
 
 	case screens.PipelineUpdateStatusMsg:
-		err := data.UpdateApplicationStatus(msg.CareerOpsPath, msg.App, msg.NewStatus)
+		err := data.UpdateApplicationStatus(msg.ApplyCuePath, msg.App, msg.NewStatus)
 		if err != nil {
 			// Log the error but still reload data to keep UI consistent
 			fmt.Fprintf(os.Stderr, "WARN: status update failed: %v\n", err)
@@ -83,7 +83,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case screens.PipelineOpenReportMsg:
 		m.viewer = screens.NewViewerModel(
 			m.theme,
-			m.careerOpsPath,
+			m.applycuePath,
 			msg.Path, msg.Title,
 			m.pipeline.Width(), m.pipeline.Height(),
 			msg.App,
@@ -105,7 +105,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case screens.ViewerUpdateStatusMsg:
-		err := data.UpdateApplicationStatus(m.careerOpsPath, msg.App, msg.NewStatus)
+		err := data.UpdateApplicationStatus(m.applycuePath, msg.App, msg.NewStatus)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "WARN: status update failed: %v\n", err)
 		}
@@ -163,7 +163,7 @@ func openCmd(target string) tea.Cmd {
 	}
 }
 
-// runGeneratePDF shells out to node generate-pdf.mjs in the career-ops root,
+// runGeneratePDF shells out to node generate-pdf.mjs in the ApplyCue root,
 // opens the resulting PDF on success, and reports the outcome back to the
 // pipeline screen as a PipelinePDFGeneratedMsg. Runs in a tea.Cmd goroutine,
 // so the UI stays responsive while Chromium renders.
@@ -177,12 +177,12 @@ func runGeneratePDF(msg screens.PipelineGeneratePDFMsg) tea.Cmd {
 			args = append(args, "--report="+msg.ReportNumber)
 		}
 		cmd := exec.Command("node", args...)
-		cmd.Dir = msg.CareerOpsPath
+		cmd.Dir = msg.ApplyCuePath
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			return screens.PipelinePDFGeneratedMsg{Err: summarizeCmdError(err, out)}
 		}
-		pdfAbs := filepath.Join(msg.CareerOpsPath, filepath.FromSlash(msg.PDFPath))
+		pdfAbs := filepath.Join(msg.ApplyCuePath, filepath.FromSlash(msg.PDFPath))
 		if err := openWithDefaultApp(pdfAbs); err != nil {
 			return screens.PipelinePDFGeneratedMsg{Err: fmt.Sprintf("PDF generated but could not open: %v", err)}
 		}
@@ -215,15 +215,15 @@ func (m appModel) View() string {
 }
 
 func main() {
-	pathFlag := flag.String("path", ".", "Path to career-ops directory")
+	pathFlag := flag.String("path", ".", "Path to ApplyCue directory")
 	flag.Parse()
 
-	careerOpsPath := *pathFlag
+	applycuePath := *pathFlag
 
 	// Load applications
-	apps := data.ParseApplications(careerOpsPath)
+	apps := data.ParseApplications(applycuePath)
 	if apps == nil {
-		fmt.Fprintf(os.Stderr, "Error: could not find applications.md in %s or %s/data/\n", careerOpsPath, careerOpsPath)
+		fmt.Fprintf(os.Stderr, "Error: could not find applications.md in %s or %s/data/\n", applycuePath, applycuePath)
 		os.Exit(1)
 	}
 
@@ -233,13 +233,13 @@ func main() {
 
 	// Batch-load all report summaries
 	t := theme.NewTheme("auto")
-	pm := screens.NewPipelineModel(t, apps, metrics, careerOpsPath, 120, 40)
+	pm := screens.NewPipelineModel(t, apps, metrics, applycuePath, 120, 40)
 
 	for _, app := range apps {
 		if app.ReportPath == "" {
 			continue
 		}
-		archetype, tldr, remote, comp := data.LoadReportSummary(careerOpsPath, app.ReportPath)
+		archetype, tldr, remote, comp := data.LoadReportSummary(applycuePath, app.ReportPath)
 		if archetype != "" || tldr != "" || remote != "" || comp != "" {
 			pm.EnrichReport(app.ReportPath, archetype, tldr, remote, comp)
 		}
@@ -247,7 +247,7 @@ func main() {
 
 	m := appModel{
 		pipeline:        pm,
-		careerOpsPath:   careerOpsPath,
+		applycuePath:    applycuePath,
 		theme:           t,
 		progressMetrics: progressMetrics,
 	}

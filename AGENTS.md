@@ -2,9 +2,7 @@
 
 ## Origin
 
-ApplyCue is forked from [career-ops](https://github.com/santifer/career-ops), which is MIT licensed. Keep the upstream attribution intact. The inherited career-ops system was built and used by [santifer](https://santifer.io) to evaluate 740+ job offers, generate 100+ tailored CVs, and land a Head of Applied AI role.
-
-ApplyCue's direction is broader and more agent-led: from a user's CV, preferences, source access, and feedback, the agent should discover roles, prepare truthful role-specific CVs, drive browser applications under policy, and track outcomes until interviews and offers.
+ApplyCue is an agent-led CV-to-offer system. From a user's CV, preferences, source access, and feedback, the agent should discover roles, prepare truthful role-specific CVs, drive browser applications under policy, and track outcomes until interviews and offers.
 
 Core invariant: ApplyCue exists so agents can help a user get a job from the thousands of roles posted every day. It is not trying to become a generic job board, search engine, or "Google for jobs." If an agent can do a fuzzy task better by reading the CV, JD, preferences, and feedback, do not build complex code for that task. Code should enforce contracts, safety, truth, storage, source adapters, browser policy, and repeatable outputs.
 
@@ -45,7 +43,7 @@ Anything not in this list is **out of scope for content generation**, including:
 - Cross-session inferences about the user's work that have not been written into one of the in-scope files
 - Knowledge from other Claude Code projects on the same machine
 
-**Rule from the original design (santifer's case study):** *"Keywords get reformulated, never fabricated."* Reorder, reframe, emphasise — but never invent. If a claim isn't backed by an in-scope file, ask the user. If they cannot or do not want to add it, the output goes without it. Silence on a topic is fine; manufactured detail is not.
+**Truth rule:** Keywords get reformulated, never fabricated. Reorder, reframe, emphasise — but never invent. If a claim isn't backed by an in-scope file, ask the user. If they cannot or do not want to add it, the output goes without it. Silence on a topic is fine; manufactured detail is not.
 
 **Authorship claims are non-negotiable.** Never claim the user authored a project, repo, library, tool, framework, or open-source artefact unless explicitly attributed to them in `cv.md` or `article-digest.md`. Tool-of-trade conflation (the user uses X → the user built X) is the most common fabrication pattern and is explicitly forbidden.
 
@@ -66,11 +64,11 @@ Rules belong in files the harness reads automatically — `CLAUDE.md`, `CODEX.md
 
 ## Update Check
 
-Do **not** run the inherited upstream updater automatically in the ApplyCue fork. `update-system.mjs` still points at career-ops behavior and can overwrite fork-owned system files if used casually.
+Do **not** run the legacy updater automatically. `update-system.mjs` has not yet been made ApplyCue-aware and can overwrite product-owned system files if used casually.
 
-If the user explicitly asks to check upstream career-ops updates, first explain that this is a fork merge decision. Then inspect the diff from upstream and merge selectively.
+If the user explicitly asks to check external base updates, first explain that this is a product merge decision. Then inspect the diff and merge selectively.
 
-The old career-ops flow was:
+The old update flow was:
 
 ```bash
 node update-system.mjs check
@@ -78,14 +76,14 @@ node update-system.mjs check
 
 Parse the JSON output:
 - `{"status": "update-available", "local": "1.0.0", "remote": "1.1.0", "changelog": "..."}` → tell the user:
-  > "career-ops update available (v{local} → v{remote}). Your data (CV, profile, tracker, reports) will NOT be touched. Want me to update?"
+  > "ApplyCue update available (v{local} → v{remote}). Your data (CV, profile, tracker, reports) will NOT be touched. Want me to update?"
   If yes → run `node update-system.mjs apply`. If no → run `node update-system.mjs dismiss`.
 - `{"status": "up-to-date"}` → say nothing
 - `{"status": "dismissed"}` → say nothing
 - `{"status": "offline"}` → say nothing
 - `{"status": "no-remote-version"}` → say nothing (checker reached GitHub but neither VERSION nor the latest release tag parsed as semver — treat as a silent non-failure, same as offline)
 
-Keep that as reference only until ApplyCue has a fork-aware updater.
+Keep that as reference only until ApplyCue has a product-aware updater.
 
 ## What is ApplyCue
 
@@ -93,7 +91,7 @@ AI-powered, CLI-agnostic job search automation: source discovery, pipeline track
 
 ### Codex invocation
 
-- **Interactive Codex:** run `codex` in the repo root. Slash commands are not guaranteed in Codex, so ask Codex to run the requested mode directly if `/career-ops` is unavailable.
+- **Interactive Codex:** run `codex` in the repo root. Slash commands are not guaranteed in Codex, so ask Codex to run the requested mode directly if a slash command is unavailable.
 - **Headless Codex:** use `codex exec "prompt"` for one-shot workers.
 - **Examples:** `Run ApplyCue scan mode`, `Run ApplyCue pipeline mode for data/pipeline.md`, `Run ApplyCue pdf mode`, `Run ApplyCue tracker mode`, `Evaluate this JD with ApplyCue auto-pipeline: https://company.com/jobs/123`
 
@@ -142,7 +140,7 @@ Output: `{"onboardingNeeded": <bool>, "missing": [...], "warnings": [...]}`, whe
 
 If the user mentions cost, pricing, budget, or asks about free alternatives during onboarding, proactively surface the free path:
 
-> "career-ops works fully on Antigravity CLI's free tier — no API key or paid subscription needed. See [FREE_TIER.md](docs/FREE_TIER.md) for setup (`agy auth login`, daily limits, and batch tips)."
+> "ApplyCue can run on Antigravity CLI's free tier — no API key or paid subscription needed. See [FREE_TIER.md](docs/FREE_TIER.md) for setup (`agy auth login`, daily limits, and batch tips)."
 
 If the user is already on a paid plan (Claude Max, Google AI, etc.) or does not mention cost, skip this step silently.
 
@@ -205,17 +203,17 @@ Store any insights the user shares in `config/profile.yml` (under narrative), `m
 Once all files exist, confirm:
 > "You're all set! You can now:
 > - Paste a job URL to evaluate it
-> - Run the scan entrypoint for your CLI to search portals: `/career-ops scan`, `/career-ops-scan`, or ask Codex to run `scan`
-> - Open the command menu for your CLI: `/career-ops`, the CLI-specific alias, or ask Codex to show the available career-ops modes
+> - Run the scan entrypoint for your CLI to search portals, or ask Codex to run `scan`
+> - Open the command menu for your CLI, or ask Codex to show the available ApplyCue modes
 >
 > Everything is customizable — just ask me to change anything.
 >
-> Tip: Having a personal portfolio dramatically improves your job search. If you don't have one yet, the author's portfolio is also open source: github.com/santifer/cv-santiago — feel free to fork it and make it yours."
+> Tip: Having a personal portfolio dramatically improves your job search. If you don't have one yet, ask me to help create a simple one."
 
 Then suggest automation:
 > "Want me to scan for new offers automatically? I can set up a recurring scan every few days so you don't miss anything. Just say 'scan every 3 days' and I'll configure it."
 
-If the user accepts, use the `/loop` or `/schedule` skill (if available) to set up a recurring scan entrypoint for their CLI (`/career-ops scan`, `/career-ops-scan`, or the equivalent Codex prompt). If those aren't available, suggest adding a cron job or remind them to run the scan mode periodically.
+If the user accepts, use the `/loop` or `/schedule` skill (if available) to set up a recurring scan entrypoint for their CLI. If those aren't available, suggest adding a cron job or remind them to run the scan mode periodically.
 
 ### Personalization
 

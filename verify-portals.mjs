@@ -32,7 +32,7 @@ import yaml from 'js-yaml';
 
 import { fetchJson as defaultFetchJson } from './providers/_http.mjs';
 
-const DEFAULT_PORTALS_PATH = process.env.CAREER_OPS_PORTALS || 'portals.yml';
+const DEFAULT_PORTALS_PATH = process.env.APPLYCUE_PORTALS || 'portals.yml';
 
 // How to turn a slug into a probe URL, and where the job list lives in the
 // response, for each supported ATS. Greenhouse/Ashby wrap jobs in `{ jobs }`;

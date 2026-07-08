@@ -178,7 +178,7 @@ If `provider` is omitted, ApplyCue will try to infer it from `careersUrl`.
 
 Use `sources.searches` with `provider: "ats_directory"` when the user has target roles but has not curated a company list yet.
 
-This is the ApplyCue version of career-ops-style broad ATS discovery:
+This is the ApplyCue version of base-workflow-style broad ATS discovery:
 
 ```text
 public ATS company directory -> public ATS API -> JobRecord -> source-quality filter -> hard gates/shortlist
@@ -252,7 +252,7 @@ Approved active sources live in editable user config, such as `sources.companyPa
 
 When a generated suggestion duplicates an approved source, ApplyCue should mark it with `duplicateOf` instead of creating another active source.
 
-The generated plan also includes a reviewable `searchProfile`. This is ApplyCue's equivalent of career-ops-style title, location, and content filters, but generated from the user's profile instead of a fixed `portals.yml`.
+The generated plan also includes a reviewable `searchProfile`. This is ApplyCue's equivalent of base-workflow-style title, location, and content filters, but generated from the user's profile instead of a fixed `portals.yml`.
 
 Example shape:
 

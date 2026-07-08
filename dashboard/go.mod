@@ -1,4 +1,4 @@
-module github.com/santifer/career-ops/dashboard
+module github.com/eyeinthesky6/applycue/dashboard
 
 go 1.24.2
 

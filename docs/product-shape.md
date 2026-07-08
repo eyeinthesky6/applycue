@@ -4,9 +4,9 @@ Date: 2026-07-05
 
 ## Position
 
-ApplyCue is a career-ops-derived CV-to-offer agent for discovery, fit prioritization, truthful CV tailoring, autonomous batch applications, reply tracking, interview support, and offer follow-through.
+ApplyCue is a CV-to-offer agent for discovery, fit prioritization, truthful CV tailoring, autonomous batch applications, reply tracking, interview support, and offer follow-through.
 
-The fork should keep career-ops' proven local workflow and attribution, while making the product more agent-led, profile-store based, browser-aware, and outcome-driven.
+The product should be agent-led, profile-store based, browser-aware, and outcome-driven.
 
 Core invariant:
 

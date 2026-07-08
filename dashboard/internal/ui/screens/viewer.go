@@ -11,9 +11,9 @@ import (
 	"github.com/charmbracelet/lipgloss/table"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/santifer/career-ops/dashboard/internal/data"
-	"github.com/santifer/career-ops/dashboard/internal/model"
-	"github.com/santifer/career-ops/dashboard/internal/theme"
+	"github.com/eyeinthesky6/applycue/dashboard/internal/data"
+	"github.com/eyeinthesky6/applycue/dashboard/internal/model"
+	"github.com/eyeinthesky6/applycue/dashboard/internal/theme"
 )
 
 // ViewerClosedMsg is emitted when the viewer is dismissed.

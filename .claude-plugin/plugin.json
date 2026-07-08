@@ -1,9 +1,9 @@
 {
-  "name": "career-ops",
+  "name": "ApplyCue",
   "version": "1.6.0",
   "description": "AI job search command center — evaluate offers, generate CVs, scan portals, track applications",
   "author": {
-    "name": "santifer",
-    "url": "https://santifer.io"
+    "name": "eyeinthesky6",
+    "url": "https://applycue.local"
   }
 }

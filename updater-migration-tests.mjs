@@ -103,7 +103,7 @@ for (const path of requiredBootstrapPaths) {
 const twoPassManifestChecks = [
   {
     name: 'apply has a re-exec guard',
-    pattern: /CAREER_OPS_UPDATE_REEXEC/,
+    pattern: /APPLYCUE_UPDATE_REEXEC/,
   },
   {
     name: 'apply resolves the re-exec checkout closure from FETCH_HEAD (#1245)',
@@ -123,7 +123,7 @@ const twoPassManifestChecks = [
   },
   {
     name: 'apply carries the original backup branch across re-exec',
-    pattern: /CAREER_OPS_UPDATE_BACKUP_BRANCH/,
+    pattern: /APPLYCUE_UPDATE_BACKUP_BRANCH/,
   },
   {
     name: 'apply reads the target updater manifest from FETCH_HEAD',

@@ -1,15 +1,15 @@
 {
-  "name": "career-ops",
+  "name": "ApplyCue",
   "metadata": {
     "description": "AI job search command center — evaluate offers, generate CVs, scan portals, track applications"
   },
   "owner": {
-    "name": "santifer",
-    "url": "https://santifer.io"
+    "name": "eyeinthesky6",
+    "url": "https://applycue.local"
   },
   "plugins": [
     {
-      "name": "career-ops",
+      "name": "ApplyCue",
       "source": "./",
       "description": "AI job search pipeline — evaluate offers, generate CVs, scan portals, track applications",
       "category": "productivity"

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * verify-pipeline.mjs — Health check for career-ops pipeline integrity
+ * verify-pipeline.mjs — Health check for ApplyCue pipeline integrity
  *
  * Checks:
  * 1. All statuses are canonical (per states.yml)
@@ -11,29 +11,29 @@
  * 6. No pending TSVs in tracker-additions/ (only in merged/ or archived/)
  * 7. states.yml canonical IDs for cross-system consistency
  *
- * Run: node career-ops/verify-pipeline.mjs
+ * Run: node ApplyCue/verify-pipeline.mjs
  */
 
 import { readFileSync, readdirSync, existsSync, mkdirSync, unlinkSync, statSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
-const CAREER_OPS = dirname(fileURLToPath(import.meta.url));
+const APPLYCUE = dirname(fileURLToPath(import.meta.url));
 // Support both layouts: data/applications.md (boilerplate) and applications.md (original).
-// CAREER_OPS_TRACKER overrides the path (used by tests and non-standard layouts).
-const APPS_FILE = process.env.CAREER_OPS_TRACKER
-  ? process.env.CAREER_OPS_TRACKER
-  : existsSync(join(CAREER_OPS, 'data/applications.md'))
-    ? join(CAREER_OPS, 'data/applications.md')
-    : join(CAREER_OPS, 'applications.md');
-const ADDITIONS_DIR = join(CAREER_OPS, 'batch/tracker-additions');
-const REPORTS_DIR = join(CAREER_OPS, 'reports');
-const STATES_FILE = existsSync(join(CAREER_OPS, 'templates/states.yml'))
-  ? join(CAREER_OPS, 'templates/states.yml')
-  : join(CAREER_OPS, 'states.yml');
+// APPLYCUE_TRACKER overrides the path (used by tests and non-standard layouts).
+const APPS_FILE = process.env.APPLYCUE_TRACKER
+  ? process.env.APPLYCUE_TRACKER
+  : existsSync(join(APPLYCUE, 'data/applications.md'))
+    ? join(APPLYCUE, 'data/applications.md')
+    : join(APPLYCUE, 'applications.md');
+const ADDITIONS_DIR = join(APPLYCUE, 'batch/tracker-additions');
+const REPORTS_DIR = join(APPLYCUE, 'reports');
+const STATES_FILE = existsSync(join(APPLYCUE, 'templates/states.yml'))
+  ? join(APPLYCUE, 'templates/states.yml')
+  : join(APPLYCUE, 'states.yml');
 
 // Ensure required directories exist (fresh setup)
-mkdirSync(join(CAREER_OPS, 'data'), { recursive: true });
+mkdirSync(join(APPLYCUE, 'data'), { recursive: true });
 mkdirSync(REPORTS_DIR, { recursive: true });
 
 const CANONICAL_STATUSES = [
@@ -170,7 +170,7 @@ for (const e of entries) {
   const match = e.report.match(/\]\(([^)]+)\)/);
   if (!match) continue;
   const link = match[1];
-  if (!existsSync(join(TRACKER_DIR, link)) && !existsSync(join(CAREER_OPS, link))) {
+  if (!existsSync(join(TRACKER_DIR, link)) && !existsSync(join(APPLYCUE, link))) {
     error(`#${e.num}: Report not found: ${link}`);
     brokenReports++;
   }

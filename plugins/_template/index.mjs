@@ -1,6 +1,6 @@
 // @ts-check
-// {{NAME}} — a career-ops plugin.
-// Guide: https://github.com/santifer/career-ops/blob/main/docs/PLUGINS.md
+// {{NAME}} — a ApplyCue plugin.
+// Guide: https://github.com/eyeinthesky6/applycue/blob/main/docs/PLUGINS.md
 //
 // Rules the engine enforces for you:
 //  - Egress ONLY through ctx.fetch / ctx.fetchJson / ctx.fetchText (your manifest

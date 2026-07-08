@@ -4,7 +4,7 @@
  * generate-pdf.mjs — HTML → PDF via Playwright
  *
  * Usage:
- *   node career-ops/generate-pdf.mjs <input.html> <output.pdf> [--format=letter|a4] [--report=NNN]
+ *   node ApplyCue/generate-pdf.mjs <input.html> <output.pdf> [--format=letter|a4] [--report=NNN]
  *
  * --report links the generated PDF to its tracker/report number and records
  * the linkage in data/pdf-index.tsv so downstream tools (e.g. the TUI
@@ -180,7 +180,7 @@ function validateCvSectionOrder(html, cvMarkdown) {
 
 /**
  * Convert a path to a repo-relative manifest entry, or blank if it is unknown
- * or outside the career-ops repository.
+ * or outside the ApplyCue repository.
  *
  * @param {string} pathValue - Absolute or cwd-relative filesystem path.
  * @returns {string} Repo-relative path using forward slashes, or an empty string.
@@ -197,7 +197,7 @@ export function repoRelativeManifestPath(pathValue) {
  * report number to the exact PDF (and its source HTML for regeneration).
  *
  * Columns: report \t pdf \t html \t format \t date — paths relative to the
- * career-ops root with forward slashes. One row per PDF path; when a report
+ * ApplyCue root with forward slashes. One row per PDF path; when a report
  * number is given, older rows for that report are dropped too (regenerated
  * CVs supersede stale entries). The file is gitignored: it references
  * gitignored output/ artifacts and is meaningless on another machine.
@@ -379,7 +379,7 @@ export async function renderHtmlToPdf(html, outputPath, opts = {}) {
 
   // Write HTML to a temp file in baseDir so page.goto() gives a file://
   // origin that can load local images, fonts, and other resources.
-  const tmpHtmlPath = resolve(baseDir, `.career-ops-render-${randomUUID()}.html`);
+  const tmpHtmlPath = resolve(baseDir, `.ApplyCue-render-${randomUUID()}.html`);
   const { writeFile, unlink } = await import('fs/promises');
   await writeFile(tmpHtmlPath, html, 'utf-8');
 

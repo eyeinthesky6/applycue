@@ -1,16 +1,12 @@
-# ApplyCue Fork Plan
+# ApplyCue Build Decision
 
 Date: 2026-07-08
 
 ## Decision
 
-ApplyCue will start from a fork of career-ops instead of replacing it from scratch.
+ApplyCue will build on the current working local job-search workflow instead of restarting from scratch.
 
-Reason: career-ops already has a working agent workflow for scanning, evaluating, reporting, tracking, and generating tailored CV artifacts. ApplyCue should build on proven behavior first, then replace or reshape internals only when the real workflow demands it.
-
-## Attribution
-
-career-ops is MIT licensed and remains the upstream base for this branch. Preserve license and attribution. Do not present this branch as if the career-ops foundation was written from scratch by ApplyCue.
+Reason: the existing workflow already has scanning, evaluation, reporting, tracking, and CV artifact generation. ApplyCue should prove the full CV-to-offer loop first, then replace or reshape internals only when the real workflow demands it.
 
 ## Product Direction
 
@@ -27,7 +23,7 @@ The default workflow is:
 7. Prepare browser application steps and pause on policy exceptions.
 8. Track applications and outcomes so future searches improve.
 
-## What To Keep From career-ops
+## What To Keep
 
 - Agent modes and repo-local onboarding flow.
 - Portal scanning and provider library.

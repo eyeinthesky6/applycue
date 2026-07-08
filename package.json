@@ -1,7 +1,7 @@
 {
   "name": "applycue",
   "version": "0.1.0",
-  "description": "ApplyCue: an agent-led CV-to-offer pipeline, forked from career-ops.",
+  "description": "ApplyCue: an agent-led CV-to-offer pipeline.",
   "private": true,
   "packageManager": "pnpm@11.7.0",
   "scripts": {
@@ -63,8 +63,6 @@
     "claude-code",
     "opencode",
     "career",
-    "career-ops",
-    "careerops",
     "automation"
   ],
   "author": "ApplyCue contributors",

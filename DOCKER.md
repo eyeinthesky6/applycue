@@ -1,4 +1,4 @@
-# Running career-ops in Docker
+# Running ApplyCue in Docker
 
 Use this when the host can't install Playwright/Chromium directly (e.g. Ubuntu
 26.04, NixOS without the `playwright-driver` shell, locked-down corporate
@@ -94,7 +94,7 @@ Nothing important is stored inside the container. `./cops down` is safe.
 
 ## Updating
 
-Career-ops updates work the same as native:
+ApplyCue updates work the same as native:
 
 ```bash
 ./cops update:check

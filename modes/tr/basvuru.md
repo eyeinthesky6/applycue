@@ -105,7 +105,7 @@ Notlar:
 Aday başvuruyu gönderdiğini onaylarsa:
 1. `applications.md`'de durumu `Evaluated`'dan `Applied`'a güncelle
 2. Blok G'yi final yanıtlarla güncelle
-3. Sonraki adımı öner: İşe alım sorumlusuna LinkedIn erişimi için `/career-ops contacto`
+3. Sonraki adımı öner: İşe alım sorumlusuna LinkedIn erişimi için `/applycue contacto`
 
 ## Scroll Yönetimi
 

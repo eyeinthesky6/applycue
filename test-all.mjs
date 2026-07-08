@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * test-all.mjs — Comprehensive test suite for career-ops
+ * test-all.mjs — Comprehensive test suite for ApplyCue
  *
  * Run before merging any PR or pushing changes.
  * Tests: syntax, scripts, dashboard, data contract, personal data, paths.
@@ -31,7 +31,7 @@ let warnings = 0;
  * Record and print one passing test assertion.
  *
  * The suite uses these small counters instead of a framework so it can run in
- * any freshly cloned career-ops checkout with only Node.js available.
+ * any freshly cloned ApplyCue checkout with only Node.js available.
  *
  * @param {string} msg - Human-readable success message for the terminal log.
  * @returns {void}
@@ -86,30 +86,36 @@ function run(cmd, args = [], opts = {}) {
 /**
  * Check whether a repo-relative file exists.
  *
- * @param {string} path - Path relative to the career-ops repository root.
+ * @param {string} path - Path relative to the ApplyCue repository root.
  * @returns {boolean} True when the file exists.
  */
 function fileExists(path) { return existsSync(join(ROOT, path)); }
 
 function toBashPath(wpath) {
   if (process.platform !== 'win32') return wpath;
+  let normalized = wpath;
   try {
-    const forwardSlashed = wpath.replace(/\\/g, '/');
+    normalized = realpathSync.native(wpath);
+  } catch {
+    try { normalized = realpathSync(wpath); } catch {}
+  }
+  try {
+    const forwardSlashed = normalized.replace(/\\/g, '/');
     const out = execSync(`wsl wslpath -u "${forwardSlashed}"`, { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
     if (out) return out;
   } catch {}
   try {
-    const forwardSlashed = wpath.replace(/\\/g, '/');
+    const forwardSlashed = normalized.replace(/\\/g, '/');
     const out = execSync(`cygpath -u "${forwardSlashed}"`, { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim();
     if (out) return out;
   } catch {}
-  return wpath.replace(/^[A-Za-z]:/, m => '/' + m[0].toLowerCase()).replace(/\\/g, '/');
+  return normalized.replace(/^[A-Za-z]:/, m => '/' + m[0].toLowerCase()).replace(/\\/g, '/');
 }
 
 /**
  * Read a repo-relative text file as UTF-8.
  *
- * @param {string} path - Path relative to the career-ops repository root.
+ * @param {string} path - Path relative to the ApplyCue repository root.
  * @returns {string} File contents.
  */
 function readFile(path) {
@@ -124,7 +130,7 @@ function readFile(path) {
   return content;
 }
 
-console.log('\n🧪 career-ops test suite\n');
+console.log('\n🧪 ApplyCue test suite\n');
 
 // ── 1. SYNTAX CHECKS ────────────────────────────────────────────
 
@@ -151,7 +157,7 @@ const scripts = [
   // data/applications.md (or data/pipeline.md) in place. On a provisioned working
   // copy with a real tracker present, running them without --dry-run mutates user
   // data. Harmless in this repo (no tracker shipped), risky for end users who run
-  // tests inside their active career-ops workspace.
+  // tests inside their active ApplyCue workspace.
   { name: 'normalize-statuses.mjs --dry-run', expectExit: 0 },
   { name: 'dedup-tracker.mjs --dry-run', expectExit: 0 },
   { name: 'merge-tracker.mjs --dry-run', expectExit: 0 },
@@ -471,11 +477,11 @@ const systemFiles = [
   'modes/oferta.md', 'modes/pdf.md', 'modes/scan.md',
   'modes/heuristics/recruiter-side.md',
   'templates/states.yml', 'templates/cv-template.html',
-  '.claude/skills/career-ops/SKILL.md',
-  '.opencode/skills/career-ops/SKILL.md',
-  '.qwen/skills/career-ops/SKILL.md',
-  '.antigravitycli/skills/career-ops/SKILL.md',
-  '.grok/skills/career-ops/SKILL.md',
+  '.claude/skills/applycue/SKILL.md',
+  '.opencode/skills/applycue/SKILL.md',
+  '.qwen/skills/applycue/SKILL.md',
+  '.antigravitycli/skills/applycue/SKILL.md',
+  '.grok/skills/applycue/SKILL.md',
 ];
 
 for (const f of systemFiles) {
@@ -553,13 +559,13 @@ if (
 console.log('\n6. Personal data leak check');
 
 const leakPatterns = [
-  'Santiago', 'santifer.io', 'Santifer iRepair', 'Zinkee', 'ALMAS',
-  'hi@santifer.io', '688921377', '/Users/santifer/',
+  'applycue', 'applycue.local', 'Santifer iRepair', 'Zinkee', 'ALMAS',
+  'security-contact@example.com', '688921377',
 ];
 
 const scanExtensions = ['md', 'yml', 'html', 'mjs', 'sh', 'go', 'json'];
 const allowedFiles = [
-  // English README + localized translations (all legitimately credit Santiago)
+  // English README + localized translations (all legitimately credit ApplyCue)
   'README.md', 'README.da.md', 'README.de.md', 'README.es.md', 'README.fr.md', 'README.ja.md', 'README.ko-KR.md',
   'README.pt-BR.md', 'README.ru.md', 'README.cn.md', 'README.zh-TW.md',
   // Standard project files
@@ -714,16 +720,16 @@ if (shared.includes('_profile.md')) {
   fail('_shared.md does NOT reference _profile.md');
 }
 
-for (const skillPath of ['.claude/skills/career-ops/SKILL.md', '.agents/skills/career-ops/SKILL.md']) {
+for (const skillPath of ['.claude/skills/applycue/SKILL.md', '.agents/skills/applycue/SKILL.md']) {
   if (!fileExists(skillPath)) {
     fail(`${skillPath} is missing`);
     continue;
   }
   const skill = readFile(skillPath);
-  if (skill.includes('/career-ops latex')) {
-    pass(`${skillPath} exposes /career-ops latex in discovery menu`);
+  if (skill.includes('/applycue latex')) {
+    pass(`${skillPath} exposes /applycue latex in discovery menu`);
   } else {
-    fail(`${skillPath} does not expose /career-ops latex in discovery menu`);
+    fail(`${skillPath} does not expose /applycue latex in discovery menu`);
   }
 }
 
@@ -862,7 +868,7 @@ try {
 
 try {
   const { appendToPipeline } = await import(pathToFileURL(join(ROOT, 'scan.mjs')).href);
-  const fixtureRoot = mkdtempSync(join(tmpdir(), 'career-ops-missing-pipeline-'));
+  const fixtureRoot = mkdtempSync(join(tmpdir(), 'applycue-missing-pipeline-'));
   const originalCwd = process.cwd();
   try {
     mkdirSync(join(fixtureRoot, 'data'), { recursive: true });
@@ -1053,7 +1059,7 @@ try {
 console.log('\n10. Portals config validator');
 
 try {
-  const tmp = mkdtempSync(join(tmpdir(), 'career-ops-portals-validator-'));
+  const tmp = mkdtempSync(join(tmpdir(), 'applycue-portals-validator-'));
   const validPath = join(tmp, 'valid.yml');
   const invalidProviderPath = join(tmp, 'invalid-provider.yml');
   const emptyKeywordPath = join(tmp, 'empty-keyword.yml');
@@ -1278,13 +1284,13 @@ if (
 
 console.log('\n12. Skill symlink integrity');
 
-const canonicalSkill = '.agents/skills/career-ops/SKILL.md';
+const canonicalSkill = '.agents/skills/applycue/SKILL.md';
 const symlinks = [
-  '.claude/skills/career-ops/SKILL.md',
-  '.opencode/skills/career-ops/SKILL.md',
-  '.qwen/skills/career-ops/SKILL.md',
-  '.antigravitycli/skills/career-ops/SKILL.md',
-  '.grok/skills/career-ops/SKILL.md',
+  '.claude/skills/applycue/SKILL.md',
+  '.opencode/skills/applycue/SKILL.md',
+  '.qwen/skills/applycue/SKILL.md',
+  '.antigravitycli/skills/applycue/SKILL.md',
+  '.grok/skills/applycue/SKILL.md',
 ];
 
 let canonicalReal = null;
@@ -1328,11 +1334,11 @@ if (
   /`codex`/.test(canonicalContent ?? '') &&
   /`codex exec/.test(canonicalContent ?? '') &&
   /prompt/i.test(canonicalContent ?? '') &&
-  /\/career-ops/.test(canonicalContent ?? '')
+  /\/applycue/.test(canonicalContent ?? '')
 ) {
-  pass('career-ops skill router documents the Codex invocation model');
+  pass('ApplyCue skill router documents the Codex invocation model');
 } else {
-  fail('career-ops skill router is missing Codex invocation guidance');
+  fail('ApplyCue skill router is missing Codex invocation guidance');
 }
 
 console.log('\n12c. Codex documentation guidance');
@@ -1365,7 +1371,7 @@ if (
   /CODEX\.md/.test(agentsDoc) &&
   /codex exec/.test(agentsDoc) &&
   /Codex/i.test(agentsDoc) &&
-  /(slash commands?.*not guaranteed|prompt|\/career-ops.*unavailable)/i.test(agentsDoc)
+  /(slash commands?.*not guaranteed|prompt|\/applycue.*unavailable)/i.test(agentsDoc)
 ) {
   pass('AGENTS.md includes CODEX.md and Codex-specific command guidance');
 } else {
@@ -1375,17 +1381,17 @@ if (
 console.log('\n12a. Skill entrypoint materialization');
 
 {
-  const fixtureRoot = mkdtempSync(join(tmpdir(), 'career-ops-skills-'));
+  const fixtureRoot = mkdtempSync(join(tmpdir(), 'applycue-skills-'));
   try {
-    const canonicalDir = join(fixtureRoot, '.agents', 'skills', 'career-ops');
-    const claudeDir = join(fixtureRoot, '.claude', 'skills', 'career-ops');
-    const opencodeDir = join(fixtureRoot, '.opencode', 'skills', 'career-ops');
+    const canonicalDir = join(fixtureRoot, '.agents', 'skills', 'applycue');
+    const claudeDir = join(fixtureRoot, '.claude', 'skills', 'applycue');
+    const opencodeDir = join(fixtureRoot, '.opencode', 'skills', 'applycue');
     mkdirSync(canonicalDir, { recursive: true });
     mkdirSync(claudeDir, { recursive: true });
     mkdirSync(opencodeDir, { recursive: true });
 
-    const fixtureSkill = '---\nname: career-ops\n---\n\n# canonical skill\n';
-    const pointer = '../../../.agents/skills/career-ops/SKILL.md';
+    const fixtureSkill = '---\nname: ApplyCue\n---\n\n# canonical skill\n';
+    const pointer = '../../../.agents/skills/applycue/SKILL.md';
     writeFileSync(join(canonicalDir, 'SKILL.md'), fixtureSkill);
     writeFileSync(join(claudeDir, 'SKILL.md'), pointer);
     writeFileSync(join(opencodeDir, 'SKILL.md'), pointer);
@@ -1393,8 +1399,8 @@ console.log('\n12a. Skill entrypoint materialization');
     const updater = await import(pathToFileURL(join(ROOT, 'update-system.mjs')).href);
     const materialized = updater.materializeSkillEntrypoints(fixtureRoot).sort();
     const expected = [
-      '.claude/skills/career-ops/SKILL.md',
-      '.opencode/skills/career-ops/SKILL.md',
+      '.claude/skills/applycue/SKILL.md',
+      '.opencode/skills/applycue/SKILL.md',
     ];
 
     if (JSON.stringify(materialized) === JSON.stringify(expected)) {
@@ -1420,26 +1426,26 @@ console.log('\n12a. Skill entrypoint materialization');
 console.log('\n12b. Skill entrypoint bootstrap (npx / old releases)');
 
 {
-  const fixtureRoot = mkdtempSync(join(tmpdir(), 'career-ops-ensure-skills-'));
+  const fixtureRoot = mkdtempSync(join(tmpdir(), 'ApplyCue-ensure-skills-'));
   try {
-    const canonicalDir = join(fixtureRoot, '.agents', 'skills', 'career-ops');
-    const claudeDir = join(fixtureRoot, '.claude', 'skills', 'career-ops');
+    const canonicalDir = join(fixtureRoot, '.agents', 'skills', 'applycue');
+    const claudeDir = join(fixtureRoot, '.claude', 'skills', 'applycue');
     mkdirSync(canonicalDir, { recursive: true });
     mkdirSync(claudeDir, { recursive: true });
 
-    const fixtureSkill = '---\nname: career-ops\n---\n\n# canonical skill\n';
-    const pointer = '../../../.agents/skills/career-ops/SKILL.md';
+    const fixtureSkill = '---\nname: ApplyCue\n---\n\n# canonical skill\n';
+    const pointer = '../../../.agents/skills/applycue/SKILL.md';
     writeFileSync(join(canonicalDir, 'SKILL.md'), fixtureSkill);
     writeFileSync(join(claudeDir, 'SKILL.md'), pointer);
 
     const skills = await import(pathToFileURL(join(ROOT, 'scaffolder/bin/skill-entrypoints.mjs')).href);
     const touched = skills.ensureSkillEntrypoints(fixtureRoot).sort();
     const expectedTouched = [
-      '.antigravitycli/skills/career-ops/SKILL.md',
-      '.claude/skills/career-ops/SKILL.md',
-      '.grok/skills/career-ops/SKILL.md',
-      '.opencode/skills/career-ops/SKILL.md',
-      '.qwen/skills/career-ops/SKILL.md',
+      '.antigravitycli/skills/applycue/SKILL.md',
+      '.claude/skills/applycue/SKILL.md',
+      '.grok/skills/applycue/SKILL.md',
+      '.opencode/skills/applycue/SKILL.md',
+      '.qwen/skills/applycue/SKILL.md',
     ];
 
     if (JSON.stringify(touched) === JSON.stringify(expectedTouched)) {
@@ -1448,7 +1454,7 @@ console.log('\n12b. Skill entrypoint bootstrap (npx / old releases)');
       fail(`unexpected bootstrapped skill entrypoints: ${JSON.stringify(touched)}`);
     }
 
-    const grokSkill = readFileSync(join(fixtureRoot, '.grok', 'skills', 'career-ops', 'SKILL.md'), 'utf-8');
+    const grokSkill = readFileSync(join(fixtureRoot, '.grok', 'skills', 'applycue', 'SKILL.md'), 'utf-8');
     const claudeSkill = readFileSync(join(claudeDir, 'SKILL.md'), 'utf-8');
     if (grokSkill === fixtureSkill && claudeSkill === fixtureSkill) {
       pass('ensureSkillEntrypoints materializes canonical skill content');
@@ -1501,14 +1507,14 @@ console.log('\n12b. Skill entrypoint bootstrap (npx / old releases)');
 }
 
 {
-  const fixtureRoot = mkdtempSync(join(tmpdir(), 'career-ops-skills-unreadable-'));
+  const fixtureRoot = mkdtempSync(join(tmpdir(), 'applycue-skills-unreadable-'));
   try {
-    const canonicalDir = join(fixtureRoot, '.agents', 'skills', 'career-ops');
-    const claudeDir = join(fixtureRoot, '.claude', 'skills', 'career-ops');
+    const canonicalDir = join(fixtureRoot, '.agents', 'skills', 'applycue');
+    const claudeDir = join(fixtureRoot, '.claude', 'skills', 'applycue');
     mkdirSync(canonicalDir, { recursive: true });
     mkdirSync(claudeDir, { recursive: true });
 
-    const pointer = '../../../.agents/skills/career-ops/SKILL.md';
+    const pointer = '../../../.agents/skills/applycue/SKILL.md';
     mkdirSync(join(canonicalDir, 'SKILL.md'));
     writeFileSync(join(claudeDir, 'SKILL.md'), pointer);
 
@@ -1528,17 +1534,17 @@ console.log('\n12b. Skill entrypoint bootstrap (npx / old releases)');
 }
 
 {
-  const fixtureRoot = mkdtempSync(join(tmpdir(), 'career-ops-skills-entry-dir-'));
+  const fixtureRoot = mkdtempSync(join(tmpdir(), 'applycue-skills-entry-dir-'));
   try {
-    const canonicalDir = join(fixtureRoot, '.agents', 'skills', 'career-ops');
-    const claudeDir = join(fixtureRoot, '.claude', 'skills', 'career-ops');
-    const opencodeDir = join(fixtureRoot, '.opencode', 'skills', 'career-ops');
+    const canonicalDir = join(fixtureRoot, '.agents', 'skills', 'applycue');
+    const claudeDir = join(fixtureRoot, '.claude', 'skills', 'applycue');
+    const opencodeDir = join(fixtureRoot, '.opencode', 'skills', 'applycue');
     mkdirSync(canonicalDir, { recursive: true });
     mkdirSync(claudeDir, { recursive: true });
     mkdirSync(opencodeDir, { recursive: true });
 
-    const fixtureSkill = '---\nname: career-ops\n---\n\n# canonical skill\n';
-    const pointer = '../../../.agents/skills/career-ops/SKILL.md';
+    const fixtureSkill = '---\nname: ApplyCue\n---\n\n# canonical skill\n';
+    const pointer = '../../../.agents/skills/applycue/SKILL.md';
     writeFileSync(join(canonicalDir, 'SKILL.md'), fixtureSkill);
     mkdirSync(join(claudeDir, 'SKILL.md'));
     writeFileSync(join(opencodeDir, 'SKILL.md'), pointer);
@@ -1546,7 +1552,7 @@ console.log('\n12b. Skill entrypoint bootstrap (npx / old releases)');
     const updater = await import(pathToFileURL(join(ROOT, 'update-system.mjs')).href);
     const materialized = updater.materializeSkillEntrypoints(fixtureRoot);
     const opencodeSkill = readFileSync(join(opencodeDir, 'SKILL.md'), 'utf-8');
-    if (JSON.stringify(materialized) === JSON.stringify(['.opencode/skills/career-ops/SKILL.md']) && opencodeSkill === fixtureSkill) {
+    if (JSON.stringify(materialized) === JSON.stringify(['.opencode/skills/applycue/SKILL.md']) && opencodeSkill === fixtureSkill) {
       pass('update-system skips non-file skill entrypoints while materializing valid pointers');
     } else {
       fail(`non-file skill entrypoint handling was unexpected: ${JSON.stringify(materialized)}`);
@@ -1561,7 +1567,7 @@ console.log('\n12b. Skill entrypoint bootstrap (npx / old releases)');
 console.log('\n12c. Materialized skill index mode');
 
 {
-  const fixtureRoot = mkdtempSync(join(tmpdir(), 'career-ops-skill-git-'));
+  const fixtureRoot = mkdtempSync(join(tmpdir(), 'ApplyCue-skill-git-'));
   const gitRun = (args, opts = {}) => execFileSync('git', args, {
     cwd: fixtureRoot,
     encoding: 'utf-8',
@@ -1575,15 +1581,15 @@ console.log('\n12c. Materialized skill index mode');
   });
 
   try {
-    const canonicalDir = join(fixtureRoot, '.agents', 'skills', 'career-ops');
-    const claudeDir = join(fixtureRoot, '.claude', 'skills', 'career-ops');
-    const opencodeDir = join(fixtureRoot, '.opencode', 'skills', 'career-ops');
+    const canonicalDir = join(fixtureRoot, '.agents', 'skills', 'applycue');
+    const claudeDir = join(fixtureRoot, '.claude', 'skills', 'applycue');
+    const opencodeDir = join(fixtureRoot, '.opencode', 'skills', 'applycue');
     mkdirSync(canonicalDir, { recursive: true });
     mkdirSync(claudeDir, { recursive: true });
     mkdirSync(opencodeDir, { recursive: true });
 
-    const fixtureSkill = '---\nname: career-ops\n---\n\n# canonical skill\n';
-    const pointer = '../../../.agents/skills/career-ops/SKILL.md';
+    const fixtureSkill = '---\nname: ApplyCue\n---\n\n# canonical skill\n';
+    const pointer = '../../../.agents/skills/applycue/SKILL.md';
 
     gitRun(['init']);
     gitRun(['config', 'core.symlinks', 'false']);
@@ -1593,27 +1599,27 @@ console.log('\n12c. Materialized skill index mode');
     writeFileSync(join(canonicalDir, 'SKILL.md'), fixtureSkill);
     writeFileSync(join(claudeDir, 'SKILL.md'), pointer);
     writeFileSync(join(opencodeDir, 'SKILL.md'), pointer);
-    gitRun(['add', '--', '.agents/skills/career-ops/SKILL.md']);
+    gitRun(['add', '--', '.agents/skills/applycue/SKILL.md']);
 
     const pointerBlob = gitRun(['hash-object', '-w', '--stdin'], { input: pointer });
-    gitRun(['update-index', '--add', '--cacheinfo', `120000,${pointerBlob},.claude/skills/career-ops/SKILL.md`]);
-    gitRun(['update-index', '--add', '--cacheinfo', `120000,${pointerBlob},.opencode/skills/career-ops/SKILL.md`]);
+    gitRun(['update-index', '--add', '--cacheinfo', `120000,${pointerBlob},.claude/skills/applycue/SKILL.md`]);
+    gitRun(['update-index', '--add', '--cacheinfo', `120000,${pointerBlob},.opencode/skills/applycue/SKILL.md`]);
 
     const updater = await import(pathToFileURL(join(ROOT, 'update-system.mjs')).href);
     const materialized = updater.materializeSkillEntrypoints(fixtureRoot);
     updater.prepareMaterializedSkillEntrypointsForStage(materialized, fixtureRoot);
     gitRun(['add', '--', '.claude/skills/', '.opencode/skills/']);
 
-    const claudeIndex = gitRun(['ls-files', '-s', '--', '.claude/skills/career-ops/SKILL.md']);
-    const opencodeIndex = gitRun(['ls-files', '-s', '--', '.opencode/skills/career-ops/SKILL.md']);
+    const claudeIndex = gitRun(['ls-files', '-s', '--', '.claude/skills/applycue/SKILL.md']);
+    const opencodeIndex = gitRun(['ls-files', '-s', '--', '.opencode/skills/applycue/SKILL.md']);
     if (claudeIndex.startsWith('100644 ') && opencodeIndex.startsWith('100644 ')) {
       pass('materialized skill entrypoints stage as regular files, not symlink blobs');
     } else {
       fail(`materialized skill entrypoints staged with wrong modes: ${JSON.stringify([claudeIndex, opencodeIndex])}`);
     }
 
-    const claudeBlob = gitRaw(['show', ':.claude/skills/career-ops/SKILL.md']);
-    const opencodeBlob = gitRaw(['show', ':.opencode/skills/career-ops/SKILL.md']);
+    const claudeBlob = gitRaw(['show', ':.claude/skills/applycue/SKILL.md']);
+    const opencodeBlob = gitRaw(['show', ':.opencode/skills/applycue/SKILL.md']);
     if (claudeBlob === fixtureSkill && opencodeBlob === fixtureSkill) {
       pass('materialized skill blobs contain canonical skill content');
     } else {
@@ -2671,7 +2677,7 @@ try {
   }
 
   // End-to-end migration against a fictional fixture tracker (no personal data)
-  const tmpDir = mkdtempSync(join(tmpdir(), 'career-ops-migrate-'));
+  const tmpDir = mkdtempSync(join(tmpdir(), 'applycue-migrate-'));
   try {
     mkdirSync(join(tmpDir, 'data'));
     mkdirSync(join(tmpDir, 'reports'));
@@ -2684,7 +2690,7 @@ try {
       '| 12 | 2026-01-04 | Acme | Engineer | 4.2/5 | Evaluated | ✅ | [12](reports/012-acme-2026-01-04.md) | ok |\n');
 
     // Migrate by pointing the script at the fixture tracker via env override.
-    run(NODE, ['merge-tracker.mjs', '--migrate'], { env: { ...process.env, CAREER_OPS_TRACKER: tracker } });
+    run(NODE, ['merge-tracker.mjs', '--migrate'], { env: { ...process.env, APPLYCUE_TRACKER: tracker } });
     const after = readFileSync(tracker, 'utf-8');
     if (after.includes('[12](../reports/012-acme-2026-01-04.md)')) {
       pass('migration rewrites fixture tracker links to ../reports/...');
@@ -2696,7 +2702,7 @@ try {
   }
 
   const { resolveReportPath } = await import(pathToFileURL(join(ROOT, 'followup-cadence.mjs')).href);
-  const followupTmp = mkdtempSync(join(tmpdir(), 'career-ops-followup-link-'));
+  const followupTmp = mkdtempSync(join(tmpdir(), 'applycue-followup-link-'));
   try {
     mkdirSync(join(followupTmp, 'data'), { recursive: true });
     mkdirSync(join(followupTmp, 'reports'), { recursive: true });
@@ -2751,7 +2757,7 @@ try {
     fail('role matcher ignored a real short-acronym overlap');
   }
 
-  const dedupTmp = mkdtempSync(join(tmpdir(), 'career-ops-dedup-'));
+  const dedupTmp = mkdtempSync(join(tmpdir(), 'applycue-dedup-'));
   try {
     mkdirSync(join(dedupTmp, 'data'));
     const tracker = join(dedupTmp, 'data', 'applications.md');
@@ -2770,7 +2776,7 @@ try {
       '| 29 | 2026-01-08 | Acme | Data Engineer, Search | 3.1/5 | Applied | ❌ | [29](../reports/029-search-old.md) | malformed duplicate-number old row |\n' +
       '| 29 | 2026-01-09 | Acme | Data Engineer, Search | 4.1/5 | Evaluated | ❌ | [30](../reports/030-search-new.md) | malformed duplicate-number new row |\n');
 
-    const dedupResult = run(NODE, ['dedup-tracker.mjs'], { env: { ...process.env, CAREER_OPS_TRACKER: tracker } });
+    const dedupResult = run(NODE, ['dedup-tracker.mjs'], { env: { ...process.env, APPLYCUE_TRACKER: tracker } });
     if (dedupResult === null) {
       fail('dedup-tracker.mjs crashed during shared role matcher safety test');
     } else {
@@ -2823,7 +2829,7 @@ try {
 // when promoting a keeper's status during dedup. rebuildRow() now preserves it.
 console.log('\n🧪 Testing dedup row rebuild preserves notes on no-trailing-pipe rows...');
 try {
-  const rebuildTmp = mkdtempSync(join(tmpdir(), 'career-ops-rebuild-'));
+  const rebuildTmp = mkdtempSync(join(tmpdir(), 'applycue-rebuild-'));
   try {
     mkdirSync(join(rebuildTmp, 'data'));
     const tracker = join(rebuildTmp, 'data', 'applications.md');
@@ -2838,7 +2844,7 @@ try {
       '| 50 | 2026-02-01 | Globex | Widget Engineer | 4.5/5 | Rejected | ❌ | [50](../reports/050-widget.md) | KEEPER_NOTE_SENTINEL\n' +
       '| 51 | 2026-02-02 | Globex | Widget Engineer | 3.0/5 | Evaluated | ❌ | [51](../reports/051-widget.md) | dup row |\n');
 
-    const r = run(NODE, ['dedup-tracker.mjs'], { env: { ...process.env, CAREER_OPS_TRACKER: tracker } });
+    const r = run(NODE, ['dedup-tracker.mjs'], { env: { ...process.env, APPLYCUE_TRACKER: tracker } });
     if (r === null) {
       fail('dedup-tracker.mjs crashed during notes-preservation test');
     } else {
@@ -2943,7 +2949,7 @@ try {
 // promotion must target the Status cell, not fixed parts[6].
 console.log('\n🧪 Testing dedup-tracker with an inserted Location column...');
 try {
-  const locTmp = mkdtempSync(join(tmpdir(), 'career-ops-dedup-loc-'));
+  const locTmp = mkdtempSync(join(tmpdir(), 'applycue-dedup-loc-'));
   try {
     mkdirSync(join(locTmp, 'data'));
     const tracker = join(locTmp, 'data', 'applications.md');
@@ -2956,7 +2962,7 @@ try {
       '| 60 | 2026-02-01 | Globex | Widget Engineer | Berlin | 4.5/5 | Rejected | ❌ | [60](r.md) | LOC_SENTINEL |\n' +
       '| 61 | 2026-02-02 | Globex | Widget Engineer | Berlin | 3.0/5 | Evaluated | ❌ | [61](r.md) | dup |\n');
 
-    const r = run(NODE, ['dedup-tracker.mjs'], { env: { ...process.env, CAREER_OPS_TRACKER: tracker } });
+    const r = run(NODE, ['dedup-tracker.mjs'], { env: { ...process.env, APPLYCUE_TRACKER: tracker } });
     if (r === null) {
       fail('dedup-tracker crashed on a Location-column tracker');
     } else {
@@ -2987,7 +2993,7 @@ try {
 // distinct specialties fall below the 0.6 threshold.
 console.log('\n🧪 Testing merge-tracker fuzzy dedup (distinct roles vs reposts)...');
 try {
-  const mergeTmp = mkdtempSync(join(tmpdir(), 'career-ops-merge-'));
+  const mergeTmp = mkdtempSync(join(tmpdir(), 'applycue-merge-'));
   try {
     mkdirSync(join(mergeTmp, 'data'));
     mkdirSync(join(mergeTmp, 'reports'));
@@ -3011,7 +3017,7 @@ try {
     writeFileSync(join(additionsDir, '005-streamco.tsv'),
       '5\t2026-01-06\tStreamCo\tFull Stack Engineer 5, Ads Reporting\tEvaluated\t4.5/5\t❌\t[5](reports/005-streamco-2026-01-06.md)\trepost\n');
 
-    const mergeResult = run(NODE, ['merge-tracker.mjs'], { env: { ...process.env, CAREER_OPS_TRACKER: tracker, CAREER_OPS_ADDITIONS: additionsDir } });
+    const mergeResult = run(NODE, ['merge-tracker.mjs'], { env: { ...process.env, APPLYCUE_TRACKER: tracker, APPLYCUE_ADDITIONS: additionsDir } });
     if (mergeResult === null) {
       fail('merge-tracker.mjs crashed during fuzzy dedup regression test');
     } else {
@@ -3052,7 +3058,7 @@ try {
 // update it in-place instead of appending NewCo as a new row.
 console.log('\n🧪 Testing merge-tracker report-number cross-company collision (#912)...');
 try {
-  const col912Tmp = mkdtempSync(join(tmpdir(), 'career-ops-merge-912-'));
+  const col912Tmp = mkdtempSync(join(tmpdir(), 'applycue-merge-912-'));
   try {
     mkdirSync(join(col912Tmp, 'data'));
     mkdirSync(join(col912Tmp, 'reports'));
@@ -3073,7 +3079,7 @@ try {
       '1\t2026-01-05\tNewCo\tNew Role\tEvaluated\t2.7/5\t❌\t[1](reports/001-newco-2026-01-05.md)\tcollision\n');
 
     const col912Result = run(NODE, ['merge-tracker.mjs'], {
-      env: { ...process.env, CAREER_OPS_TRACKER: col912Tracker, CAREER_OPS_ADDITIONS: col912Additions },
+      env: { ...process.env, APPLYCUE_TRACKER: col912Tracker, APPLYCUE_ADDITIONS: col912Additions },
     });
     if (col912Result === null) {
       fail('merge-tracker crashed during report-number collision test (#912)');
@@ -3117,7 +3123,7 @@ try {
 // tracker, making the old race deterministic.
 console.log('\n🧪 Testing merge-tracker concurrent writes...');
 try {
-  const mergeTmp = mkdtempSync(join(tmpdir(), 'career-ops-merge-lock-'));
+  const mergeTmp = mkdtempSync(join(tmpdir(), 'applycue-merge-lock-'));
   /**
    * Spawn one isolated `merge-tracker.mjs` process against the temporary fixture.
    *
@@ -3142,11 +3148,11 @@ try {
         cwd: ROOT,
         env: {
           ...process.env,
-          CAREER_OPS_TRACKER: join(mergeTmp, 'data', 'applications.md'),
-          CAREER_OPS_ADDITIONS: additionsDir,
-          CAREER_OPS_TRACKER_LOCK: join(mergeTmp, 'career-ops-merge-tracker-fixture.lock'),
-          CAREER_OPS_MERGE_HOLD_MS: String(holdMs),
-          CAREER_OPS_MERGE_READY_IPC: '1',
+          APPLYCUE_TRACKER: join(mergeTmp, 'data', 'applications.md'),
+          APPLYCUE_ADDITIONS: additionsDir,
+          APPLYCUE_TRACKER_LOCK: join(mergeTmp, 'applycue-merge-tracker-fixture.lock'),
+          APPLYCUE_MERGE_HOLD_MS: String(holdMs),
+          APPLYCUE_MERGE_READY_IPC: '1',
         },
         stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
       });
@@ -3298,10 +3304,10 @@ if (!sqliteAvailable) {
   warn('node:sqlite unavailable (Node < 22.5) — tracker index tests skipped');
 } else {
   try {
-    const idxTmp = mkdtempSync(join(tmpdir(), 'career-ops-index-'));
+    const idxTmp = mkdtempSync(join(tmpdir(), 'applycue-index-'));
     try {
       const md = join(idxTmp, 'applications.md');
-      const env = { ...process.env, CAREER_OPS_TRACKER: md };
+      const env = { ...process.env, APPLYCUE_TRACKER: md };
       const trackerRun = (args) => run(NODE, ['tracker.mjs', ...args], { env, stdio: ['pipe', 'pipe', 'pipe'] });
 
       // 1. Round trip: clean canonical input must export byte-identical.
@@ -3455,7 +3461,7 @@ try {
   else fail(`solidjobs.id is ${JSON.stringify(sj.id)}`);
 
   // detect() matches valid SolidJobs API URL
-  const hit = sj.detect({ name: 'SJ', careers_url: 'https://solid.jobs/public-api/offers/it?campaign=career-ops' });
+  const hit = sj.detect({ name: 'SJ', careers_url: 'https://solid.jobs/public-api/offers/it?campaign=ApplyCue' });
   if (hit && hit.url) pass('solidjobs.detect() matches valid API URL');
   else fail('solidjobs.detect() should match solid.jobs public-api URL');
 
@@ -3490,12 +3496,12 @@ try {
   // fetch() parses { jobs: [...] } response with company from API
   const fakeJobs = {
     jobs: [
-      { title: 'Senior Dev', url: 'https://solid.jobs/o/abc123/career-ops', company: 'Acme Corp', locations: ['Warszawa', 'Remote'] },
-      { title: 'Junior Dev', url: 'https://solid.jobs/o/def456/career-ops', company: 'Beta Inc', locations: ['Kraków'] },
+      { title: 'Senior Dev', url: 'https://solid.jobs/o/abc123/applycue', company: 'Acme Corp', locations: ['Warszawa', 'Remote'] },
+      { title: 'Junior Dev', url: 'https://solid.jobs/o/def456/applycue', company: 'Beta Inc', locations: ['Kraków'] },
     ],
   };
   const parsed = await sj.fetch(
-    { name: 'SolidJobs IT', careers_url: 'https://solid.jobs/public-api/offers/it?campaign=career-ops' },
+    { name: 'SolidJobs IT', careers_url: 'https://solid.jobs/public-api/offers/it?campaign=ApplyCue' },
     { transport: 'http', fetchJson: async () => fakeJobs, fetchText: async () => '' },
   );
   if (parsed.length === 2) pass('solidjobs.fetch() returns 2 jobs from mock response');
@@ -3507,16 +3513,16 @@ try {
   if (parsed[0].location === 'Warszawa, Remote') pass('solidjobs.fetch() joins locations array');
   else fail(`solidjobs.fetch() location is ${JSON.stringify(parsed[0].location)}, expected "Warszawa, Remote"`);
 
-  if (parsed[0].title === 'Senior Dev' && parsed[0].url === 'https://solid.jobs/o/abc123/career-ops') {
+  if (parsed[0].title === 'Senior Dev' && parsed[0].url === 'https://solid.jobs/o/abc123/applycue') {
     pass('solidjobs.fetch() maps title and url correctly');
   } else {
     fail(`solidjobs.fetch() title/url wrong: ${JSON.stringify(parsed[0])}`);
   }
 
   // fetch() falls back to entry.name when j.company is missing
-  const noCompanyJobs = { jobs: [{ title: 'Tester', url: 'https://solid.jobs/o/xyz/career-ops', locations: [] }] };
+  const noCompanyJobs = { jobs: [{ title: 'Tester', url: 'https://solid.jobs/o/xyz/applycue', locations: [] }] };
   const fallback = await sj.fetch(
-    { name: 'SolidJobs IT', careers_url: 'https://solid.jobs/public-api/offers/it?campaign=career-ops' },
+    { name: 'SolidJobs IT', careers_url: 'https://solid.jobs/public-api/offers/it?campaign=ApplyCue' },
     { transport: 'http', fetchJson: async () => noCompanyJobs, fetchText: async () => '' },
   );
   if (fallback[0].company === 'SolidJobs IT') pass('solidjobs.fetch() falls back to entry.name when j.company missing');
@@ -3594,7 +3600,7 @@ try {
     let threw = false;
     try {
       await sj.fetch(
-        { name: 'SolidJobs IT', careers_url: 'https://solid.jobs/public-api/offers/it?campaign=career-ops' },
+        { name: 'SolidJobs IT', careers_url: 'https://solid.jobs/public-api/offers/it?campaign=ApplyCue' },
         { transport: 'http', fetchJson: async () => resp, fetchText: async () => '' },
       );
     } catch (e) {
@@ -3608,22 +3614,22 @@ try {
   // fetch() filters out jobs with empty/missing url
   const mixedJobs = {
     jobs: [
-      { title: 'Has URL', url: 'https://solid.jobs/o/1/career-ops', company: 'A', locations: [] },
+      { title: 'Has URL', url: 'https://solid.jobs/o/1/applycue', company: 'A', locations: [] },
       { title: 'No URL', url: '', company: 'B', locations: [] },
       { title: 'Missing URL', company: 'C', locations: [] },
     ],
   };
   const filtered = await sj.fetch(
-    { name: 'SolidJobs IT', careers_url: 'https://solid.jobs/public-api/offers/it?campaign=career-ops' },
+    { name: 'SolidJobs IT', careers_url: 'https://solid.jobs/public-api/offers/it?campaign=ApplyCue' },
     { transport: 'http', fetchJson: async () => mixedJobs, fetchText: async () => '' },
   );
   if (filtered.length === 1 && filtered[0].title === 'Has URL') pass('solidjobs.fetch() filters out jobs with empty/missing url');
   else fail(`solidjobs.fetch() should filter empty URLs, got ${filtered.length} jobs: ${JSON.stringify(filtered)}`);
 
   // fetch() handles string locations (non-array)
-  const stringLocJobs = { jobs: [{ title: 'Dev', url: 'https://solid.jobs/o/2/career-ops', company: 'X', locations: 'Warsaw' }] };
+  const stringLocJobs = { jobs: [{ title: 'Dev', url: 'https://solid.jobs/o/2/applycue', company: 'X', locations: 'Warsaw' }] };
   const strLoc = await sj.fetch(
-    { name: 'SolidJobs IT', careers_url: 'https://solid.jobs/public-api/offers/it?campaign=career-ops' },
+    { name: 'SolidJobs IT', careers_url: 'https://solid.jobs/public-api/offers/it?campaign=ApplyCue' },
     { transport: 'http', fetchJson: async () => stringLocJobs, fetchText: async () => '' },
   );
   if (strLoc[0].location === 'Warsaw') pass('solidjobs.fetch() handles string locations');
@@ -3639,19 +3645,19 @@ try {
   // fetch() passes redirect:'error' to fetchJson
   let capturedOpts = null;
   await sj.fetch(
-    { name: 'SolidJobs IT', careers_url: 'https://solid.jobs/public-api/offers/it?campaign=career-ops' },
+    { name: 'SolidJobs IT', careers_url: 'https://solid.jobs/public-api/offers/it?campaign=ApplyCue' },
     { transport: 'http', fetchJson: async (_url, opts) => { capturedOpts = opts; return { jobs: [] }; }, fetchText: async () => '' },
   );
   if (capturedOpts && capturedOpts.redirect === 'error') pass('solidjobs.fetch() passes redirect:"error" to fetchJson');
   else fail(`solidjobs.fetch() should pass redirect:"error", got: ${JSON.stringify(capturedOpts)}`);
 
   // fetch() tolerates malformed array members without crashing
-  const malformedMembers = { jobs: [null, 7, { title: 'OK', url: 'https://solid.jobs/o/3/career-ops', company: 'Z' }] };
+  const malformedMembers = { jobs: [null, 7, { title: 'OK', url: 'https://solid.jobs/o/3/applycue', company: 'Z' }] };
   const safeParsed = await sj.fetch(
-    { name: 'SolidJobs IT', careers_url: 'https://solid.jobs/public-api/offers/it?campaign=career-ops' },
+    { name: 'SolidJobs IT', careers_url: 'https://solid.jobs/public-api/offers/it?campaign=ApplyCue' },
     { transport: 'http', fetchJson: async () => malformedMembers, fetchText: async () => '' },
   );
-  if (safeParsed.length === 1 && safeParsed[0].url === 'https://solid.jobs/o/3/career-ops') {
+  if (safeParsed.length === 1 && safeParsed[0].url === 'https://solid.jobs/o/3/applycue') {
     pass('solidjobs.fetch() skips malformed jobs members without crashing');
   } else {
     fail(`solidjobs.fetch() malformed members handling failed: ${JSON.stringify(safeParsed)}`);
@@ -3816,11 +3822,25 @@ try {
   }
 
   const env = { ...process.env, PATH: `${fakeBin}${delimiter}${process.env.PATH}` };
-  const out = run('bash', [toBashPath(join(batchDir, 'batch-runner.sh')), '--parallel', '1', '--max-retries', '3', '--rate-limit-sleep', '0'], {
-    cwd: tmp,
-    env,
-    stdio: ['pipe', 'pipe', 'pipe'],
-  }) || '';
+  const bashScript = toBashPath(join(batchDir, 'batch-runner.sh'));
+  const bashFakeBin = toBashPath(fakeBin);
+  const shQuote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
+  const runBatch = (args) => {
+    if (process.platform === 'win32') {
+      const argText = args.map(shQuote).join(' ');
+      return run('bash', ['-lc', `PATH=${shQuote(bashFakeBin)}:$PATH ${shQuote(bashScript)} ${argText}`], {
+        cwd: tmp,
+        env,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+    }
+    return run('bash', [bashScript, ...args], {
+      cwd: tmp,
+      env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+  };
+  const out = runBatch(['--parallel', '1', '--max-retries', '3', '--rate-limit-sleep', '0']) || '';
   const state = readFileSync(join(batchDir, 'batch-state.tsv'), 'utf-8').trim().split('\n');
   const first = state[1]?.split('\t') || [];
 
@@ -3835,11 +3855,7 @@ try {
     '1\thttps://example.com/one\tpaused_rate_limit\t2026-01-01T00:00:00Z\t2026-01-01T00:00:01Z\t001\t-\tsession-limit; paused\t0',
     '2\thttps://example.com/two\tfailed\t2026-01-01T00:00:00Z\t2026-01-01T00:00:01Z\t002\t-\tworker-crash\t1',
   ].join('\n') + '\n');
-  const dry = run('bash', [toBashPath(join(batchDir, 'batch-runner.sh')), '--resume-paused', '--dry-run'], {
-    cwd: tmp,
-    env,
-    stdio: ['pipe', 'pipe', 'pipe'],
-  }) || '';
+  const dry = runBatch(['--resume-paused', '--dry-run']) || '';
   if (dry.includes('#1: https://example.com/one') && !dry.includes('#2: https://example.com/two')) {
     pass('--resume-paused dry-run selects paused jobs only');
   } else {
@@ -3855,11 +3871,7 @@ try {
     '2\thttps://example.com/two\tcompleted\t2026-01-01T00:00:00Z\t2026-01-01T00:00:01Z\t002\tbad);system("oops")\t-\t0',
     '3\thttps://example.com/three\tskipped\t2026-01-01T00:00:00Z\t2026-01-01T00:00:01Z\t003\t3.5\tbelow-min-score\t0',
   ].join('\n') + '\n');
-  const statusOnly = run('bash', [toBashPath(join(batchDir, 'batch-runner.sh')), '--status'], {
-    cwd: tmp,
-    env,
-    stdio: ['pipe', 'pipe', 'pipe'],
-  }) || '';
+  const statusOnly = runBatch(['--status']) || '';
   if (statusOnly.includes('Average score: 4.5/5 (1 scored)') && statusOnly.includes('bad);system("oops")')) {
     pass('--status reads existing state without full batch prerequisites');
   } else {
@@ -3902,12 +3914,12 @@ try {
   const { SEMVER_RE } = await import(pathToFileURL(join(ROOT, 'update-system.mjs')).href);
   const parse = (tag) => String(tag).trim().match(SEMVER_RE)?.[1] ?? null;
 
-  // Release Please tags carry the component prefix (career-ops-v1.9.0); the
+  // Release Please tags carry the component prefix (ApplyCue-v1.9.0); the
   // prefix must be stripped or the releases-API fallback is dead code (#923).
-  if (parse('career-ops-v1.9.0') === '1.9.0') {
-    pass('SEMVER_RE parses Release Please component-prefixed tag (career-ops-v1.9.0 → 1.9.0)');
+  if (parse('ApplyCue-v1.9.0') === '1.9.0') {
+    pass('SEMVER_RE parses Release Please component-prefixed tag (ApplyCue-v1.9.0 → 1.9.0)');
   } else {
-    fail(`SEMVER_RE failed on career-ops-v1.9.0 (got ${parse('career-ops-v1.9.0')}) — releases-API fallback is dead code (#923)`);
+    fail(`SEMVER_RE failed on ApplyCue-v1.9.0 (got ${parse('ApplyCue-v1.9.0')}) — releases-API fallback is dead code (#923)`);
   }
 
   // No regression on plain tags.
@@ -3918,10 +3930,10 @@ try {
   }
 
   // Non-semver input must not match.
-  if (parse('career-ops') === null && parse('v1.9') === null) {
+  if (parse('applycue') === null && parse('v1.9') === null) {
     pass('SEMVER_RE rejects non-semver input');
   } else {
-    fail(`SEMVER_RE matched non-semver input (career-ops → ${parse('career-ops')}, v1.9 → ${parse('v1.9')})`);
+    fail(`SEMVER_RE matched non-semver input (ApplyCue → ${parse('applycue')}, v1.9 → ${parse('v1.9')})`);
   }
 } catch (e) {
   fail(`update-system SEMVER_RE test crashed: ${e.message}`);
@@ -8125,21 +8137,21 @@ try {
   if (vreg.validateRegistry(ROOT).length === 0) pass('registry: shipped plugins-registry.json validates clean');
   else fail('registry: shipped registry should be valid');
 
-  const goodEntry = { name: 'career-ops-plugin-x', id: 'x', repo: 'https://github.com/a/career-ops-plugin-x', author: 'a', hooks: ['ingest'], requiredEnv: [], allowedHosts: ['api.x.com'], license: 'MIT', version: '1.0.0', sha: 'a'.repeat(40) };
+  const goodEntry = { name: 'applycue-plugin-x', id: 'x', repo: 'https://github.com/a/applycue-plugin-x', author: 'a', hooks: ['ingest'], requiredEnv: [], allowedHosts: ['api.x.com'], license: 'MIT', version: '1.0.0', sha: 'a'.repeat(40) };
   if (reg.validateRegistryEntry(goodEntry, regOpts).length === 0) pass('registry: a well-formed entry validates');
   else fail('registry: a good entry should validate');
-  if (reg.validateRegistryEntry({ ...goodEntry, name: 'evil-x' }, regOpts).length > 0) pass('registry: name must start with career-ops-plugin-');
+  if (reg.validateRegistryEntry({ ...goodEntry, name: 'evil-x' }, regOpts).length > 0) pass('registry: name must start with applycue-plugin-');
   else fail('registry: a bad name should fail');
   if (reg.validateRegistryEntry({ ...goodEntry, requiredEnv: ['GEMINI_API_KEY'] }, regOpts).length > 0) pass('registry: a reserved/core env var is rejected');
   else fail('registry: reserved env should fail');
 
-  if (install.parseRepoArg('alice/career-ops-plugin-foo').id === 'foo') pass('install: owner/career-ops-plugin-foo parses to id "foo"');
+  if (install.parseRepoArg('alice/applycue-plugin-foo').id === 'foo') pass('install: owner/applycue-plugin-foo parses to id "foo"');
   else fail('install: should parse owner/repo');
   let extRej = false; try { install.parseRepoArg('ext::sh -c whoami'); } catch { extRej = true; }
   if (extRej) pass('install: refuses a non-GitHub / ext:: repo URL (clone-RCE guard)');
   else fail('install: should refuse an ext:: URL');
   let nameRej = false; try { install.parseRepoArg('alice/not-a-plugin'); } catch { nameRej = true; }
-  if (nameRej) pass('install: refuses a repo not named career-ops-plugin-*');
+  if (nameRej) pass('install: refuses a repo not named applycue-plugin-*');
   else fail('install: should refuse a bad repo name');
 
   const auditTmp = mkdtempSync(join(tmpdir(), 'co-audit-'));

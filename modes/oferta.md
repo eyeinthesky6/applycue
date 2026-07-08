@@ -26,7 +26,7 @@ Hard limits for Blocks D and G combined:
 - Do not spawn subagents or delegate research to another agent.
 - Do not continue researching after the query cap is reached; summarize the evidence found and explicitly mark missing data as unavailable.
 
-If deeper company research is useful, recommend running `/career-ops deep` separately after the evaluation.
+If deeper company research is useful, recommend running `/applycue deep` separately after the evaluation.
 
 ## Step 0 — Archetype Detection
 
@@ -170,7 +170,7 @@ Analyze the job posting for signals that indicate whether this is a real, active
 
 ## Cover Letter Draft (auto-generated after Block G)
 
-After saving the report and recording in the tracker, append a cover letter draft to the report file under `## Cover Letter Draft`. This is a starting point — not the final letter. The user completes it via `/career-ops cover {slug}`.
+After saving the report and recording in the tracker, append a cover letter draft to the report file under `## Cover Letter Draft`. This is a starting point — not the final letter. The user completes it via `/applycue cover {slug}`.
 
 **How to generate the draft:**
 
@@ -186,7 +186,7 @@ After saving the report and recording in the tracker, append a cover letter draf
 ```markdown
 ## Cover Letter Draft
 
-> Draft generated at evaluation time. Complete via `/career-ops cover {slug}` to fill in angles, confirm research, and generate the PDF.
+> Draft generated at evaluation time. Complete via `/applycue cover {slug}` to fill in angles, confirm research, and generate the PDF.
 > Gaps flagged below — address them during the cover flow.
 
 ---
@@ -218,7 +218,7 @@ I am happy to discuss further at your convenience.
 {8-10 exact phrases from the JD}
 
 ---
-*Run `/career-ops cover {slug}` to complete angles, confirm company research, and generate the PDF.*
+*Run `/applycue cover {slug}` to complete angles, confirm company research, and generate the PDF.*
 ```
 
 Apply all language rules from `_shared.md` Professional Writing section to the draft content. No em dashes, no buzzwords, active voice, concrete claims only.

@@ -145,7 +145,7 @@ It must expose actions in user language:
 
 Each action calls code. The skill must not contain business logic that forks the product.
 
-The skill should also include a simple mode router, similar to career-ops's useful command-router pattern but ApplyCue-owned and chat-first:
+The skill should also include a simple mode router, similar to the base workflow's useful command-router pattern but ApplyCue-owned and chat-first:
 
 | User intent | Skill mode |
 | --- | --- |
@@ -185,7 +185,7 @@ Compatibility bridge files expose that same router to common agent CLI layouts:
 
 The bridge files must stay thin. They only tell the agent to read the canonical skill. Do not put separate setup rules, scoring rules, CV rules, or browser rules in those bridge files, because that would create drift.
 
-Root wrappers such as `CLAUDE.md`, `CODEX.md`, and `OPENCODE.md` import `AGENTS.md` and point agents to the same canonical skill. This follows career-ops's useful multi-agent discoverability pattern without copying career-ops's product logic or creating multiple ApplyCue routers.
+Root wrappers such as `CLAUDE.md`, `CODEX.md`, and `OPENCODE.md` import `AGENTS.md` and point agents to the same canonical skill. This follows the base workflow's useful multi-agent discoverability pattern without copying base workflow's product logic or creating multiple ApplyCue routers.
 
 ## Setup Tooling
 
@@ -283,11 +283,11 @@ If a later batch no longer prepares the same job or browser plan, the old live p
 
 If live preflight passes for the current prepared browser plan, the next safe action is `pnpm browser-live-apply`. The agent runs it from chat. By default it fills known fields, uploads the generated DOCX, writes a receipt, refreshes progress, and pauses before final submit. The user should hear the plain result, not the command.
 
-Use the Agent command center like career-ops's useful router pattern, but keep it agent-only. The user should hear the outcome in chat, not be asked to run those commands.
+Use the Agent command center like the base workflow's useful router pattern, but keep it agent-only. The user should hear the outcome in chat, not be asked to run those commands.
 
 When live answer prompts exist, use the `Copy This To Chat` section from `outputs/live-preflight/live-answer-prompts.md` as the user-facing message. It should name the company, role, and page before asking questions. After the user answers, save only explicitly approved reusable values with `pnpm approve-answers -- --from-live --set field=value --dry-run`, then rerun without `--dry-run`. Use the detailed prompt records to choose field names and inspect one-off fields. The JSON approval template is fallback evidence, not the normal editing path.
 
-Use it like career-ops's useful doctor/tracker habit, but keep it ApplyCue-owned and chat-first. The user should hear the plain outcome, not the command.
+Use it like the base workflow's useful doctor/tracker habit, but keep it ApplyCue-owned and chat-first. The user should hear the plain outcome, not the command.
 
 ## Browser Preflight Command
 

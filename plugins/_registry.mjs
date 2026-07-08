@@ -24,11 +24,11 @@ export function loadRegistry(root) {
   }
 }
 
-/** Find a registry entry by bare id, full name, or `career-ops-plugin-<id>`. */
+/** Find a registry entry by bare id, full name, or `applycue-plugin-<id>`. */
 export function findInRegistry(root, nameOrId) {
   const reg = loadRegistry(root);
   return reg.plugins.find(p =>
-    p.id === nameOrId || p.name === nameOrId || p.name === `career-ops-plugin-${nameOrId}`) || null;
+    p.id === nameOrId || p.name === nameOrId || p.name === `applycue-plugin-${nameOrId}`) || null;
 }
 
 /**
@@ -66,9 +66,9 @@ export function sourceBadge(source) {
  */
 export function validateRegistryEntry(e, { idRe, hookKinds, reservedEnv }) {
   const errs = [];
-  if (typeof e.name !== 'string' || !e.name.startsWith('career-ops-plugin-')) errs.push('name must start with "career-ops-plugin-"');
+  if (typeof e.name !== 'string' || !e.name.startsWith('applycue-plugin-')) errs.push('name must start with "applycue-plugin-"');
   if (typeof e.id !== 'string' || !idRe.test(e.id)) errs.push('invalid id');
-  if (e.name && e.id && e.name !== `career-ops-plugin-${e.id}`) errs.push('name must equal career-ops-plugin-<id>');
+  if (e.name && e.id && e.name !== `applycue-plugin-${e.id}`) errs.push('name must equal applycue-plugin-<id>');
   if (!/^https:\/\/github\.com\/[^/]+\/[^/]+$/.test(e.repo || '')) errs.push('repo must be a https://github.com/<owner>/<repo> URL');
   if (!/^[0-9a-f]{40}$/.test(e.sha || '')) errs.push('sha must be a 40-hex commit');
   if (!Array.isArray(e.hooks) || e.hooks.length === 0 || e.hooks.some(h => !hookKinds.includes(h))) errs.push('hooks must be a non-empty subset of the hook kinds');

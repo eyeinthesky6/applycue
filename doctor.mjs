@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * doctor.mjs — Setup validation for career-ops
+ * doctor.mjs — Setup validation for ApplyCue
  * Checks all prerequisites and prints a pass/fail checklist.
  */
 
@@ -120,7 +120,7 @@ function checkPlaywrightMcp(root) {
       'Browser-driven JD fetching and liveness checks (scan / pipeline / apply) need the',
       'Playwright MCP server. No project-level MCP config was detected in `.mcp.json`',
       'or `.claude/settings*.json`, so SPA job boards may return empty or stale content.',
-      'Tracking: https://github.com/santifer/career-ops/issues/506',
+      'Tracking: https://github.com/eyeinthesky6/applycue/issues/506',
     ],
   };
 }
@@ -247,7 +247,7 @@ async function checkPortalSlugs(root) {
 
 const PIPELINE_SKELETON = `# Pipeline — Pending URLs
 
-Paste job URLs below as \`- [ ] {url}\` then run \`/career-ops pipeline\`.
+Paste job URLs below as \`- [ ] {url}\` then run \`/applycue pipeline\`.
 
 ## Pending
 
@@ -298,7 +298,7 @@ function checkPlugins(root) {
 }
 
 async function main() {
-  console.log('\ncareer-ops doctor');
+  console.log('\nApplyCue doctor');
   console.log('================\n');
 
   const checks = [
