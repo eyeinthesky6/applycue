@@ -38,7 +38,7 @@ configured source -> provider fetch -> normalized job -> filters -> dedupe -> pi
 ApplyCue should use the same broad shape, but with our own contracts:
 
 ```text
-source adapter -> JobRecord -> ranker -> CV engine -> apply assistant -> tracker
+source adapter -> JobRecord -> hard gates -> agent shortlist -> CV engine -> apply assistant -> tracker
 ```
 
 ## What To Avoid From Career OS
@@ -157,7 +157,7 @@ Current local run evidence:
 1135 discovered jobs -> 18 source-quality kept -> 3 CVs -> 3 application drafts -> 3 browser plans
 ```
 
-The source-quality filter currently runs before ranking. Manual jobs are not filtered by this generated plan, because manual imports are deliberate user/agent inputs and should remain reviewable.
+The source-quality filter currently runs before shortlist preparation. Manual jobs are not filtered by this generated plan, because manual imports are deliberate user/agent inputs and should remain reviewable.
 
 ## Career OS Parity Lessons From UAT
 
@@ -166,12 +166,12 @@ Status: implemented on 2026-07-06 for the local UAT path.
 Career OS gets useful outcomes because noisy jobs are cleaned before expensive evaluation. ApplyCue now mirrors that lesson in its own contracts:
 
 ```text
-broad source results -> source-quality filter -> role-forward ranking -> metadata-cleaned JD requirements -> reconciliation -> truth-checked review batch
+broad source results -> source-quality filter -> hard gates -> agent shortlist -> metadata-cleaned JD requirements -> reconciliation -> truth-checked review batch
 ```
 
 Applied fixes:
 
-- use weighted backend priority instead of a flat average, with role fit as the strongest signal
+- keep backend ordering subordinate to apply/review/watch/skip decisions
 - hard-block low role-fit, adjacent-only, description-only, and wrong-family matches before CV work
 - keep adjacent-only terms out of default source queries and source-quality title positives unless they are also target terms
 - strip reporting-line and provider appendix noise before requirement extraction
@@ -189,7 +189,7 @@ The engine still warns when the prepared batch does not fill `applicationsPerDay
 The local dashboard now has a typed Source Quality panel fed from the run manifest:
 
 ```text
-discovered -> kept before ranking -> filtered before CV work -> filtered-by reason
+discovered -> kept before shortlist -> filtered before CV work -> filtered-by reason
 ```
 
 This copies Career OS's useful pipeline visibility pattern without making raw scores the user-facing product.
@@ -200,8 +200,8 @@ The job-board source plan now spends its query budget on distinct target role na
 
 Current status from UAT:
 
-- Too much broad job-board noise entered the batch. Fixed by applying generated `searchProfile` filters before ranking.
-- Ranking was too flat. Fixed by making role-objective fit the strongest backend priority signal.
+- Too much broad job-board noise entered the batch. Fixed by applying generated `searchProfile` filters before shortlist preparation.
+- Ordering was too mechanical. The new stance is that the agent judges fuzzy fit while code keeps hard gates and backend ordering simple.
 - Adjacent jobs could look stronger than real product-leadership matches because descriptions contained product words. Fixed by capping weak title matches unless explicitly targeted.
 - CV artifacts were at risk of becoming extracts. Fixed by preserving full `standard_ats_v1` CVs with contact, summary, skills, employer history, awards, education, Markdown, HTML, and DOCX outputs.
 - Agents still needed too much repo awareness. Partly fixed by source approval and UAT commands; still a live gap until the setup skill hides repo commands from normal users.
@@ -280,7 +280,7 @@ companyStage: scaleup
 Full job description goes here.
 ```
 
-If metadata is missing, the import should still create a reviewable `JobRecord` with safe placeholders and source kind `manual`. The ranker and apply assistant can then pause or skip as needed.
+If metadata is missing, the import should still create a reviewable `JobRecord` with safe placeholders and source kind `manual`. Hard gates, agent review, and the apply assistant can then pause or skip as needed.
 
 Local imports and future browser extractors can set `liveState` to `live`, `closed`, or `unknown`. Career OS's useful liveness lesson now exists as an ApplyCue UAT invariant: a `closed` job may stay in the decision log, but it must not receive a generated CV, application draft, or browser plan.
 
@@ -299,7 +299,7 @@ dead posting is removed before expensive evaluation
 ApplyCue now keeps that pattern in its own contracts:
 
 ```text
-page text/browser verifier -> JobLiveState -> ranker live gate -> no CV/draft/browser plan for closed jobs
+page text/browser verifier -> JobLiveState -> closed-job hard gate -> no CV/draft/browser plan for closed jobs
 ```
 
 Implementation shape:
@@ -308,7 +308,7 @@ Implementation shape:
 - `packages/engine` accepts an optional `livenessVerifier`.
 - The local engine does not fetch live web pages by default.
 - Browser-visible extraction, Playwright, Crawl4AI, or connector code can inject page text later.
-- If a verifier marks a job `closed`, the existing ranker live gate blocks CV and application preparation.
+- If a verifier marks a job `closed`, the closed-job hard gate blocks CV and application preparation.
 - Browser apply preflight must prefer high-signal role evidence such as page title and the top job heading over lower-signal related-job widgets. False mismatch pauses are treated as browser extraction bugs, not user questions.
 
 This is a Career OS parity move without copying Career OS as the runtime engine and without making UAT flaky on live network access.
@@ -322,7 +322,7 @@ Career OS has an important scanner habit: it remembers URLs it has already seen,
 ApplyCue keeps that pattern in an ApplyCue-owned contract:
 
 ```text
-source-quality jobs -> scan-history filter -> ranking -> CV engine -> application draft
+source-quality jobs -> scan-history filter -> hard gates/shortlist -> CV engine -> application draft
 ```
 
 Implementation shape:
@@ -352,9 +352,9 @@ Rules:
 - same URL repeats do not count as reposts
 - manual entries are excluded because pasted jobs are deliberate user or agent input
 - closed entries are excluded because they are dead-posting evidence, not repost evidence
-- repost signals do not block ranking, CV generation, or applications yet
+- repost signals do not block CV generation or applications yet
 
-Use repost signals to diagnose stale openings, ghost-job-heavy sources, and source quality. Later outcome learning can use these signals to down-rank sources that repeatedly generate stale clusters.
+Use repost signals to diagnose stale openings, ghost-job-heavy sources, and source quality. Later outcome learning can tell the agent to spend less search budget on sources that repeatedly generate stale clusters.
 
 ## Source Outcome Learning
 
@@ -378,7 +378,7 @@ Agents record them through:
 pnpm record-outcome -- --application <application-id> --type interview --note "Interview request received"
 ```
 
-The current Source Learning summary shows prepared applications, submitted applications, replies, interviews, offers, rejections, positive outcomes, and top sources. It does not change ranking yet. Use it to understand which sources deserve more search budget, which ones are noisy, and whether lower-ranked jobs are unexpectedly producing interviews.
+The current Source Learning summary shows prepared applications, submitted applications, replies, interviews, offers, rejections, positive outcomes, and top sources. It does not change ordering by itself. Use it to understand which sources deserve more search budget, which ones are noisy, and whether lower-priority jobs are unexpectedly producing interviews.
 
 ## Reverse ATS Directory Scan
 
@@ -393,7 +393,7 @@ public ATS company directory -> public ATS provider fetch -> title/location filt
 ApplyCue keeps the pattern in its own source contract:
 
 ```text
-provider: "ats_directory" -> Greenhouse/Lever/Ashby public APIs -> JobRecord -> source-quality filter -> ranker
+provider: "ats_directory" -> Greenhouse/Lever/Ashby public APIs -> JobRecord -> source-quality filter -> hard gates/shortlist
 ```
 
 Implementation shape:
@@ -403,7 +403,7 @@ Implementation shape:
 - setup may auto-approve it because it needs no login or shared key
 - the adapter validates directory slugs and canonical ATS hosts before fetch
 - directory sampling is deterministic and spread across the list to avoid alphabetic bias
-- source-quality filtering now includes broad ATS postings before ranking
+- source-quality filtering now includes broad ATS postings before shortlist preparation
 
 This closes the biggest discovery-shape gap with Career OS without using Career OS as the engine and without making a fixed company list the product.
 

@@ -6,6 +6,14 @@ Date: 2026-07-05
 
 ApplyCue is an independent CV-to-offer agent for discovery, fit prioritization, truthful CV tailoring, autonomous batch applications, reply tracking, interview support, and offer follow-through.
 
+Core invariant:
+
+```text
+agents help a user get a job from thousands of postings every day
+```
+
+ApplyCue is not a generic job board, a search engine, or "Google for jobs." Anything new should be judged against the question: does this help the agent get the user closer to interviews and offers? If the agent can do the work more efficiently by reading the CV, JD, preferences, and feedback, keep it out of code.
+
 It helps a person answer:
 
 - what roles are worth applying to
@@ -36,7 +44,7 @@ Risks: 3 useful issues max
 Next step: Submit in batch / Ask user / Save / Ignore
 ```
 
-Raw scores are backend signals for ordering, audit, and learning.
+Backend ordering signals are for routing, audit, and learning. They should not become the user-facing product.
 
 ## Core Flow
 
@@ -44,15 +52,16 @@ Raw scores are backend signals for ordering, audit, and learning.
 2. Build a profile model with proof-backed claims.
 3. Discover jobs and leads from approved sources.
 4. Normalize jobs into one schema.
-5. Remove obvious bad matches with deterministic hard gates.
-6. Rank remaining roles by priority.
-7. Widen soft filters when the batch is too small.
-8. Check source trust and fraud signals.
-9. Generate truthful role-specific CVs and application answers.
-10. Apply automatically when the role and form match the user's apply settings.
-11. Pause for exceptions, sensitive fields, unsupported claims, unknown portals, or unclear answers.
-12. Track replies, interviews, rejections, offers, and follow-ups.
-13. Learn from outcomes and adjust future batches.
+5. Remove obvious no-go roles with hard gates.
+6. Let the agent evaluate messy fit: role shape, domain, seniority, company context, and JD quality.
+7. Create a shortlist and batch plan.
+8. Widen sources or soft preferences when the batch is too small, with user-visible reasoning.
+9. Check source trust and fraud signals.
+10. Generate truthful role-specific CVs and application answers.
+11. Apply automatically when the role and form match the user's apply settings.
+12. Pause for exceptions, sensitive fields, unsupported claims, unknown portals, or unclear answers.
+13. Track replies, interviews, rejections, offers, and follow-ups.
+14. Learn from outcomes and adjust future batches.
 
 ## Parked For Next Version
 
@@ -68,3 +77,5 @@ The later version can search the user's allowed social and contact sources for p
 - Do not show scores as personal worth.
 - Do not make users edit code for normal workflows.
 - Do not make manual copy-paste the core workflow.
+- Do not build complex matching/search code for work the agent can do better.
+- Do not turn ApplyCue into a generic job board or search engine.

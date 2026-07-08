@@ -23,7 +23,7 @@ If the task touches product behavior, also read:
 - `docs/product-operating-plan.md`
 - `docs/end-to-end-user-flow.md`
 
-If the task touches ranking or math, also read:
+If the task touches hard gates, ordering, matching, or ranking, also read:
 
 - `docs/research-math-and-oss.md`
 
@@ -37,13 +37,34 @@ If the task touches job discovery or source adapters, also read:
 ```text
 source repo = code, contracts, templates, docs, examples
 user store = real user CVs, profile images, config, jobs, outputs
-engine = deterministic product behavior
-agent = operator of the engine
+engine = contracts, safety, truth checks, file generation, and apply policy
+agent = judgment, fuzzy role fit, preference learning, and user conversation
 browser = apply assistant, not source of truth
 chat = user interface
 ```
 
 Do not mix those layers.
+
+## Core Product Invariant
+
+ApplyCue is not a generic job board, search engine, or "Google for jobs."
+
+The objective is simpler:
+
+```text
+agents help one user get a job from thousands of daily postings
+```
+
+Build code only when it gives the agent durable leverage:
+
+- fetch and normalize jobs from approved sources
+- apply hard blockers from user rules
+- dedupe, track, and record evidence
+- generate truthful CVs and application answers from approved facts
+- pause browser/application work when policy, trust, or truth is unclear
+- write manifests, receipts, dashboards, and chat summaries
+
+Do not build complex matching, ranking, or search infrastructure for work an agent can do better by reading the CV, JD, preferences, and feedback. The agent may update user config, target-role profiles, source approvals, proof bank entries, and reusable answers. The agent must not patch source code or hand-edit final CV artifacts for one application.
 
 Normal users should not operate the repo. They chat with an agent. The agent may run commands, install local helper tools, edit config, and inspect outputs on their behalf. Developer commands in this guide are for agents and builders, not for the normal user journey. See `docs/agent-first-installation-and-usage.md`.
 
@@ -63,7 +84,7 @@ Contains:
 - `packages/profile`: profile/config loading and user settings
 - `packages/discovery`: job source adapters
 - `packages/normalizer`: job normalization and stable IDs
-- `packages/ranker`: hard gates and backend scoring
+- `packages/ranker`: hard gates and simple backend ordering
 - `packages/cv-tailor`: requirement map, reconciliation, CV rendering
 - `packages/apply-assistant`: form/application draft policy
 - `packages/engine`: orchestration, batch runs, manifests, output writing
@@ -238,7 +259,7 @@ pnpm approve-sources -- --ids <suggestion-id>
 
 This reads the generated plan and writes accepted sources into the editable profile config. It must not modify the generated source-plan file.
 
-### Ranking
+### Hard Gates And Shortlisting
 
 Use:
 
@@ -247,13 +268,15 @@ packages/ranker
 docs/research-math-and-oss.md
 ```
 
-Hard gates first. Scores are backend prioritization signals, not user-facing judgment.
+Hard gates first. Agent judgment handles fuzzy role fit. Backend ordering signals are routing hints, not user-facing judgment and not a claim that the system knows the user's real chances.
 
-Wrong role family, explicit out-of-range seniority, and clear out-of-range experience are hard blockers. Adjacent roles are not default application targets. If a user wants a pivot, store that role in `preferences.targetRoleTerms` or an approved user config change; do not make one-off code edits for a single job.
+Wrong role family, current company, explicit blocked company, impossible work authorization, blocked location/work mode, and clear junior/intern mismatch are hard blockers. Ambiguous seniority, role shape, domain fit, and company-level differences should be routed to agent review or reusable user config, not solved with new math.
 
 Company title levels can be adjusted only through reusable evidence: `companyMarketGrade`, `companyStage`, normalized seniority evidence, or `preferences.companySeniorityOverrides`. Do not hardcode one company name in ranker logic.
 
 Senior title variants may match when both pieces are true: the title has an accepted seniority signal such as VP, Vice President, Director, or Chief, and the title also has the target role anchor such as product. Do not let unrelated senior titles such as VP Sales pass for a product-leadership search.
+
+Do not add embeddings, cross-encoders, learning-to-rank, or broad search-engine features unless a later product decision proves they help the agent get the user interviews better than agent evaluation plus simple guardrails.
 
 ### CV Tailoring
 
@@ -382,7 +405,7 @@ packages/engine
 apps/worker
 ```
 
-This is where discovery, ranking, CV generation, drafts, manifests, dashboard, and output roots come together.
+This is where discovery, shortlisting, CV generation, drafts, manifests, dashboard, and output roots come together.
 
 ## Do
 
@@ -395,7 +418,7 @@ This is where discovery, ranking, CV generation, drafts, manifests, dashboard, a
 - Run `pnpm check`.
 - Run `pnpm first-build` when changing the local pipeline.
 - Keep generated outputs reproducible from config, assets, jobs, and code.
-- Keep raw scores in backend unless explicitly asked.
+- Keep backend ordering signals hidden unless explicitly asked.
 - Treat unknown portals and unsupported CV claims as pause conditions.
 
 ## Do Not

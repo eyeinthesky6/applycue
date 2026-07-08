@@ -1,6 +1,6 @@
 # ApplyCue
 
-ApplyCue is a CV-to-offer agent. It helps a user discover opportunities, rank them by fit, create truthful role-specific CVs, apply in batches under user-defined rules, track replies, prepare interviews, and move toward offers.
+ApplyCue is a CV-to-offer agent. It helps a user discover opportunities, shortlist what is worth applying to, create truthful role-specific CVs, apply in batches under user-defined rules, track replies, prepare interviews, and move toward offers.
 
 This repo is the clean ApplyCue foundation. It is not a fork, wrapper, or hosted version of another job-search tool.
 
@@ -19,7 +19,7 @@ How many applications per day should it run?
 How wide should the match be if there are not enough roles?
 ```
 
-The user sees decisions and reasons. Raw scores stay in the backend for ordering, audit, and learning.
+The user sees decisions and reasons. Backend ordering signals are only for routing, audit, and learning; they are not the product.
 
 ## Intended User Experience
 
@@ -61,7 +61,7 @@ Local UAT loop:
 - profile store outside the repo
 - generated source plan and safe source approval
 - JobSpy and public no-key job-board adapters
-- source-quality filtering before ranking
+- source-quality filtering before shortlist preparation
 - scan history under the user store so daily/push runs avoid already prepared or closed roles and flag possible reposts
 - closed-job safety gate before CV/application/browser preparation
 - injectable liveness verifier hook for browser/page checks without live network defaults
@@ -108,7 +108,7 @@ For real user runs, generated CVs, reconciliation reports, dashboards, and local
 ```text
 apps/
   web/                  local or hosted UI
-  worker/               scheduled discovery and ranking
+  worker/               scheduled discovery and batch preparation
   browser-agent/        controlled application assistant
 
 packages/
@@ -116,7 +116,7 @@ packages/
   profile/              CV, preferences, proof bank
   discovery/            source adapters
   normalizer/           job schema and dedupe
-  ranker/               deterministic gates and scoring
+  ranker/               hard gates and simple backend ordering
   cv-tailor/            CV variant generation
   apply-assistant/      form filling and answer drafting
   engine/               sample run orchestration and output writer
@@ -144,3 +144,5 @@ config/
 - No pretending manual copy-paste is the core workflow.
 - No visible score obsession.
 - No dependency on another product's codebase as the ApplyCue engine.
+- No building "Google for jobs". The goal is agents helping one user get hired from thousands of daily postings.
+- No code feature when an agent can do the work better by reading the CV, JD, preferences, and feedback.

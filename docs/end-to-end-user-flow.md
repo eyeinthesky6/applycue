@@ -9,7 +9,7 @@ ApplyCue is a CV-to-offer agent.
 It runs the job-search operation for a user after setup:
 
 ```text
-profile -> discover -> rank -> tailor -> apply -> track -> reply -> interview -> offer -> learn
+profile -> discover -> shortlist -> tailor -> apply -> track -> reply -> interview -> offer -> learn
 ```
 
 The core value is not manual job search. The core value is automation plus customization:
@@ -142,7 +142,7 @@ Examples:
 Use this at the start or whenever the user wants full control.
 
 - ApplyCue discovers jobs.
-- ApplyCue ranks jobs.
+- ApplyCue shortlists jobs.
 - ApplyCue creates CV variants.
 - ApplyCue prepares applications.
 - User reviews each application before submit.
@@ -163,7 +163,7 @@ Use this when the user needs interviews quickly.
 - ApplyCue runs daily or scheduled batches.
 - User sets applications per day.
 - User sets source mix.
-- User sets minimum fit to apply.
+- User sets how strict the batch should be.
 - User gets a daily report and exception queue.
 
 Default for personal power use can be `daily` after initial calibration. `push` is for urgent searches.
@@ -205,7 +205,7 @@ The user also sets `applicationsPerDay`. If ApplyCue cannot find enough roles to
 Default relax order:
 
 ```text
-source -> title -> industry -> location -> recency -> minimum_fit
+source -> title -> industry -> location -> recency -> batch strictness
 ```
 
 Geography example:
@@ -244,11 +244,11 @@ Then: job boards
 Then: social posts, communities, newsletters, recruiter messages
 ```
 
-Fit example:
+Batch strictness example:
 
 ```text
-Start: minimum fit 0.75
-Then: lower gradually to the user's floor, for example 0.55
+Start: tight agent-reviewed fit
+Then: allow sensible adjacent roles the user has approved
 Never relax: unsupported CV claims or fake experience
 ```
 
@@ -389,7 +389,7 @@ What is user-controlled:
 
 ## 10. Ranking And Batch Selection
 
-Ranking chooses what gets applied to first.
+Shortlist and batch planning choose what gets applied to first.
 
 Signals:
 
@@ -407,7 +407,7 @@ Signals:
 - user interest
 - past outcome performance by source and role type
 
-The score is for ordering and learning. It is not the product UI.
+These signals help the agent order work. They are not the product UI and should not be treated as a precise chance of success.
 
 Batch output:
 
@@ -552,14 +552,14 @@ Signals:
 - offer received
 - user manually rejected a role
 - user overrode a gate
-- low-ranked role produced an interview
-- high-ranked role produced nothing
+- lower-priority role produced an interview
+- top-priority role produced nothing
 
 This updates:
 
 - search terms
-- source weights
-- ranking weights
+- source focus
+- reusable preference notes
 - CV strategy
 - proof-bank emphasis
 - daily batch plan
@@ -571,7 +571,7 @@ This updates:
 - running autonomous daily or scheduled batches
 - making source discovery core
 - supporting job boards, posts, communities, email, and connectors
-- using deterministic gates and ranking
+- using hard gates and agent-led shortlisting
 - generating truthful custom CVs at volume
 - applying on the user's behalf within configured rules
 - tracking replies and outcomes
@@ -623,7 +623,7 @@ First useful local version:
 - source discovery from public pages, job boards where available, and logged-in browser sessions where the user allows it
 - email tracking through connector or browser control if available
 - deterministic hard gates
-- batch ranking
+- batch shortlisting
 - applications per day
 - CV generation per role
 - browser application execution

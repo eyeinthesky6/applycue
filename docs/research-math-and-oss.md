@@ -1,406 +1,205 @@
-# Research: Matching Math And OSS Options
+# Research: Agent Fit And Guardrail Logic
 
-Date: 2026-07-06
+Date: 2026-07-07
 
-## Recommendation
+## Stance
 
-Use advanced math only where it makes ApplyCue safer or more useful.
+ApplyCue is not a generic job board, search engine, or "Google for jobs."
 
-V1 should use:
-
-1. deterministic rules and hard gates
-2. requirement-to-proof matching
-3. hybrid retrieval: keyword plus embedding similarity
-4. reconciliation reports
-5. outcome logging for later learning
-
-Do not start with graph neural networks or custom contrastive training. They are useful later, but they need real interaction data.
-
-## 1. Requirement-To-Proof Matching
-
-Use this now.
-
-Model the reconciliation problem as a bipartite matching:
+The objective is:
 
 ```text
-left side: job requirements
-right side: approved facts and proof items
-edge weight: support strength
+agents help a user get a job from thousands of postings every day
 ```
 
-Output:
+CVs and JDs are messy. Titles, seniority, salary, location, company quality, and role shape differ by country, company, industry, hiring manager, and timing. A coded matcher will never know every human reason a user approves or rejects a role.
 
-- supported
-- adjacent
-- unsupported
-- needs confirmation
+So ApplyCue should not chase a perfect deterministic fit score.
 
-This is the most important "advanced math" for ApplyCue because it prevents fabricated CV claims.
-
-Implementation:
-
-- start with a deterministic TypeScript matcher
-- use simple weighted scoring first
-- later use a Hungarian/linear assignment style algorithm if one-to-one matching matters
-
-Current deterministic matcher notes:
-
-- Job-post metadata such as `Reports To`, `Department`, `Location`, and provider appendices such as `NOT YOUR TECH STACK?` should be stripped before requirement extraction.
-- Generic requirements such as `regulated industry` can be supported by approved banking, NBFC, lending, financial-services, compliance, or risk evidence. They must not be invented when that evidence is absent.
-- Generic automation requirements can be supported only by approved automation-system evidence such as autopay, process/workflow automation, product digitisation, AI voicebot, or chatbot work. Generic AI or product-transformation wording alone is not enough.
-- Unsupported requirements remain blockers unless they are proven to be non-requirement metadata/noise.
-
-Useful reference:
-
-- SciPy's `linear_sum_assignment` documents the assignment problem as minimum weight matching in bipartite graphs.
-- NetworkX has bipartite matching utilities.
-
-## 2. Hybrid Retrieval For Jobs
-
-Use this now or soon.
-
-The discovery/ranking stack should combine:
-
-- keyword/BM25-style match
-- normalized skills
-- hard filters
-- embedding similarity
-- source trust
-- recency
-- user preferences
-
-This is more robust than embeddings alone.
-
-Reason:
-
-- keyword match catches exact tools, locations, titles, work authorization
-- embeddings catch adjacent wording
-- hard gates keep the system inside user rules
-
-LinkedIn's job matching work uses a retrieval-plus-ranking pattern at scale. ApplyCue can use the same shape locally without copying their infra.
-
-Current ranker notes:
-
-- Hard gates still run first.
-- Backend priority is role-forward: role-objective fit carries the most weight, then proof, location, industry, keywords, source, and company signals.
-- Weak role matches and adjacent-only titles remain capped below the user's fit floor, so sales/engineering/noisy board results do not fill application slots just because they mention product terms.
-- Product engineering titles should not be treated as product-management roles unless the user explicitly targets that role family.
-
-## 3. Skill Taxonomy And Normalization
-
-Use later, but design for it now.
-
-A skill taxonomy helps map:
+The product split is:
 
 ```text
-JS -> JavaScript
-Product ops -> product operations
-GenAI -> generative AI
+agent judges fuzzy fit
+code enforces safety, truth, repeatability, and evidence
 ```
 
-Useful candidates:
+If an agent can do the work more efficiently by reading the CV, JD, user preferences, and prior feedback, do not add complex code for it.
 
-- ESCO API and taxonomy
-- SkillNER
-- ESCO Skill Extractor
-- Open Skills / skills-ml style tooling
+## What Belongs In Code
 
-For ApplyCue, taxonomy output should feed the fact ledger and requirement map. It should not directly write CV claims.
+Keep these ApplyCue-owned and tested:
 
-## 4. Contrastive Resume-Job Embeddings
+- source adapters for approved APIs, job boards, company pages, and browser-extracted jobs
+- normalization into `JobRecord`
+- dedupe, scan history, liveness, and basic trust/fraud checks
+- hard blockers from user rules
+- fact ledger, proof bank, and reusable user-approved answers
+- CV/JD reconciliation so unsupported claims cannot enter a CV or form answer
+- one standard CV renderer
+- browser apply policy, preflight, receipts, and manifests
+- source/outcome summaries for agent diagnostics
 
-Park until we have data.
+Hard blockers include:
 
-ConFit is a strong research direction: it uses data augmentation and contrastive learning to place resumes and jobs into a shared embedding space. This is useful when we have many labeled outcomes.
+- current company when blocked
+- explicitly blocked companies or industries
+- impossible work authorization
+- blocked country/location/work mode
+- internship/junior role when the user target excludes it
+- known closed posting
+- suspicious portal or payment/document request
+- unsupported CV/application claim
 
-For now:
+These are not "low score" cases. They are stop, skip, or ask-user cases.
 
-- use off-the-shelf embeddings for rough semantic similarity
-- do not fine-tune
-- keep scores behind the scenes
-- never use embedding similarity as proof of a fact
+## What Belongs To The Agent
 
-Embedding similarity can say:
+Let the agent handle:
+
+- role/domain fit from the JD and company context
+- fuzzy seniority interpretation
+- whether a title is equivalent across company sizes
+- whether a role is a good stretch
+- source suggestions after seeing poor volume
+- search widening proposals
+- concise shortlist reasoning
+- user preference updates from feedback
+- deciding what to ask when ambiguity affects action
+
+The agent should write reusable decisions into user-owned config or assets:
+
+- target role/profile notes
+- source approvals
+- blocked or preferred companies
+- location and work-mode preferences
+- company seniority overrides
+- proof bank additions
+- reusable application answers
+- base CV version updates
+
+The agent must not patch source code or hand-edit final generated CVs for one application.
+
+## CV/JD Matching Rule
+
+Do not use matching math to prove experience.
+
+The CV engine only needs this truth test:
 
 ```text
-this job seems related
+direct approved proof -> supported
+adjacent approved proof -> needs user confirmation
+no approved proof -> unsupported
 ```
 
-It cannot say:
+Adjacent evidence can help the agent ask a better question. It cannot create a CV claim or fill an application answer by itself.
+
+This requirement-to-proof mapping can stay simple. Do not add Hungarian matching, graph matching, embeddings, or learned models unless a future test proves the current truth check is failing in a way the agent cannot fix through proof-bank/config updates.
+
+## Shortlisting Rule
+
+Use code for order, not truth.
+
+The engine may group jobs into:
 
 ```text
-the user has done this work
+apply -> review -> watch -> skip
 ```
 
-## 5. Learning-To-Rank From Outcomes
+Inside those buckets, simple backend ordering is acceptable. The output should still be shown to the user as decisions and reasons, not as a personal score or probability of success.
 
-Use later after enough applications.
+If the shortlist is bad, fix in this order:
 
-Once ApplyCue tracks outcomes, train a ranking model from:
+1. update target roles/preferences
+2. update source filters or source approvals
+3. update proof bank or base CV facts
+4. let the agent re-evaluate the jobs
+5. only then consider code changes
 
-- applied
-- ignored
-- reply received
-- interview
-- offer
-- rejection
-- user feedback
+Do not add embeddings, cross-encoders, learning-to-rank, RRF expansion, or salary/seniority models as the default answer to poor fit.
 
-Useful math:
+## Source Logic
 
-- pairwise learning-to-rank
-- LambdaMART / LambdaRank
-- calibrated probability models
+Source discovery should find enough jobs without making the user search manually.
 
-Use this to order future jobs, not to create CV claims.
+Use prebuilt providers and official/public APIs where they save work:
 
-## 6. Graph Neural Networks
+- JobSpy for broad no-login job-board discovery
+- public ATS/company adapters
+- browser-visible extraction for pages without clean APIs
+- Crawl4AI or similar only when it clearly saves extraction work
 
-Park.
-
-LinkedIn's LinkSAGE-style work is real, but it needs a large graph of people, companies, jobs, applications, and outcomes.
-
-ApplyCue v1 will not have that.
-
-Possible later use:
-
-- network intelligence
-- company graph
-- social heat map
-- hidden adjacent roles
-- "people like this got interviews from roles like that"
-
-## 7. OSS Plumbing Worth Considering
-
-Use these when the implementation layer needs them:
-
-- Ajv: JSON Schema validation for fact ledger, CV plan, reconciliation report.
-- JSON Resume: schema inspiration for structured CV facts.
-- Mammoth.js: import `.docx` CVs into HTML/text.
-- unified/remark: inspect Markdown output as an AST.
-- Handlebars: render the single standard CV template from structured data.
-- docx: generate `.docx` from structured content.
-- Pandoc: convert Markdown/HTML to `.docx` or PDF if CLI export is acceptable.
-
-## V1 Build Choice
-
-Build this first:
+But source discovery is supply, not judgment. Every source result still goes through:
 
 ```text
-JD requirements -> requirement-to-proof map -> reconciliation report -> standard_ats_v1 CV
+normalize -> dedupe -> hard blockers -> agent shortlist -> truth reconciliation -> apply policy
 ```
 
-Current implementation rule:
+Do not keep adding broad scrapers just because they can fetch thousands of jobs. If volume is high and quality is low, tighten sources. If volume is low because user rules are strict, ask the user whether to relax reusable preferences.
+
+## Outcome Learning
+
+Outcome learning should help the agent, not become a hidden ranking model.
+
+Track:
+
+- source
+- submitted applications
+- replies
+- interviews
+- offers
+- rejections
+- user feedback when volunteered
+
+Use this to tell the agent:
+
+- which sources are producing useful roles
+- which patterns are being rejected
+- where to widen or tighten the search
+- whether a lower-priority role pattern is surprisingly working
+
+Do not force the user to explain every rejection. If they give a reason, store it. If they do not, move on.
+
+## OSS And Library Policy
+
+Use libraries where they remove boring plumbing:
+
+- `docx` for DOCX export
+- Mammoth.js for DOCX CV import
+- Ajv or TypeScript contracts for validation
+- JobSpy for job-board fetching
+- Playwright/browser tools for application execution and testing
+- JSON Resume as schema inspiration
+
+Avoid libraries whose main purpose is ranking intelligence unless a later evidence-backed decision proves they are needed:
+
+- embedding rerankers
+- cross-encoders
+- learning-to-rank frameworks
+- graph neural networks
+- custom resume/job matching models
+
+The user needs interviews and offers, not a model zoo.
+
+## Implementation Guidance
+
+Existing backend ordering code may remain if it is already working and tested, but do not expand it into the core product strategy.
+
+New work should prefer:
 
 ```text
-exact/alias proof match -> supported
-strong adjacent evidence -> needs_confirmation
-missing evidence -> unsupported
+user config -> agent evaluation -> hard gates -> CV truth reconciliation -> apply policy
 ```
 
-Adjacent evidence can help the agent ask a better question, but it cannot create a CV claim or fill a daily application slot by itself.
-
-Then add hybrid search/ranking.
-
-Then add learning from outcomes.
-
-Everything else is later.
-
-## 8. Source Selection And Preference Matching Upgrade
-
-Research update: 2026-07-07
-
-Goal: source selection and matching must be context-aware. The user should not explain obvious intent every time, but the system should ask when ambiguity would change an apply/skip decision.
-
-Recommended architecture:
+over:
 
 ```text
-profile + CV + objectives
--> structured constraints and preferences
--> source-query plan
--> broad candidate retrieval
--> hard gates
--> hybrid retrieval signals
--> explainable ranker
--> ask-user policy for high-impact ambiguity
--> outcome learning
+more scoring weights -> more ranking models -> more hidden fit math
 ```
 
-### What To Use Now
-
-1. Hard constraints before scores.
-
-Use hard gates for clear no-go cases: wrong role family, current employer, blocked company, work authorization conflict, impossible work mode, explicit seniority mismatch, clear junior experience range, and unsupported CV claims.
-
-Do not make these "low scores." A CEO applying to entry-level jobs may be intentional, but if the profile says director/VP targets and entry-level is not approved, the system should block or ask once and store the answer.
-
-2. Explainable soft utility after gates.
-
-Use weighted utility for soft preferences:
+When in doubt, ask:
 
 ```text
-utility = role_fit + proof_fit + seniority_fit + location_fit + comp_fit + source_quality + recency + company_fit
+Can the agent do this better by reading the CV, JD, and user preferences?
 ```
 
-Keep weights backend-only. Show users the reason, not a score.
-
-3. Ambiguity policy.
-
-Ask the user only when all three are true:
-
-```text
-confidence is low
-decision impact is high
-the answer can be reused
-```
-
-Examples:
-
-- Ask: "Should Product Manager at global enterprises count as director-level for you?"
-- Ask: "Should onsite Gurgaon be allowed?"
-- Do not ask every time a job has an unclear salary.
-- Do not ask why a user wants CEO or entry-level roles if they explicitly set those targets.
-
-Store reusable answers in profile config, such as `companySeniorityOverrides`, target roles, blocked/allowed locations, source policies, and acceptable experience ranges.
-
-4. Hybrid retrieval for source and job search.
-
-Use separate retrieval lists and fuse them:
-
-```text
-BM25 title/JD match
-structured entity match
-embedding similarity
-source trust / historical yield
-recency
-```
-
-Fuse ranked lists using Reciprocal Rank Fusion (RRF). RRF is useful because BM25 scores, embedding cosine scores, and source-quality scores are not naturally comparable.
-
-5. Context-aware source budget.
-
-Every source should get a small scorecard:
-
-```text
-precision = kept / fetched
-yield = prepared / fetched
-freshness = recent live jobs
-user fit = matches target country/role/seniority
-trust = official ATS/company site > known board > broad/noisy feed
-outcome = replies/interviews/offers over time
-```
-
-Use this to choose daily scan budget. Start deterministic. Later, use a contextual bandit or learning-to-rank model once there is outcome data.
-
-### What To Add Later
-
-1. Cross-encoder reranking for top candidates.
-
-Use a bi-encoder or keyword index to retrieve broadly, then a cross-encoder to rerank only the top 50-100 job/profile pairs. Cross-encoders are more accurate but too slow for full-corpus search.
-
-2. Learning-to-rank from outcomes.
-
-Once there are enough applications and outcomes, train a pairwise/listwise ranker with labels such as:
-
-```text
-skip < prepared < submitted < reply < interview < offer
-```
-
-Use XGBoost `rank:ndcg` or LightGBM `lambdarank` / `rank_xendcg`. Do not start here; labels are not mature yet.
-
-3. Multi-criteria decision methods.
-
-TOPSIS/AHP-style multi-criteria ranking can help explain soft tradeoffs, but should not replace hard gates. Use it only for "which good jobs first?", not for "is this allowed?"
-
-### Useful OSS Options
-
-- TypeScript lexical search: MiniSearch is MIT-licensed, local, dependency-light, and supports field boosting/fuzzy search. Good fit for local ApplyCue indexes.
-- TypeScript BM25: `wink-bm25-text-search` is MIT-licensed and directly BM25/BM25F-oriented, but older and less typed than MiniSearch.
-- RRF: implemented directly as `fuseRankedLists` in `packages/ranker`. Use it to combine title, keyword/BM25, source-trust, recency, and later embedding/cross-encoder ranked lists without pretending their raw scores share one scale.
-- Cross-encoder rerank: use Sentence Transformers from a Python sidecar only after top-N candidates are already filtered.
-- Learning-to-rank: use XGBoost or LightGBM later, after outcome labels exist.
-
-### Implementation Upgrade Path
-
-Keep this order. Do not skip hard gates and do not make the user-facing product about scores.
-
-1. Done: deterministic hard gates.
-
-Owner: `packages/ranker`.
-
-Hard blockers run before ranking. Wrong role family, blocked companies, explicit seniority mismatch, junior experience ranges for senior profiles, work-mode conflicts, and work-authorization conflicts must not become "low score" jobs.
-
-2. Done: source-quality filter before ranking.
-
-Owner: `packages/discovery`.
-
-Broad sources should first pass generated title, location, and content filters from `sourcePlan.searchProfile`. This keeps noisy boards and reverse ATS scans from flooding the batch.
-
-3. Done: fused ordering inside decision buckets.
-
-Owner: `packages/ranker`.
-
-`rankJobs` keeps `apply -> review -> watch -> skip` order first, then uses `fuseRankedLists` to order jobs inside each bucket using backend priority, role fit, proof fit, source confidence, and recency. This activates RRF without letting a new or trusted source outrank hard policy.
-
-4. Done: lexical retrieval index.
-
-Owner: `packages/ranker`.
-
-`rankJobs` now builds a MiniSearch-backed local lexical list over normalized jobs and fuses it with backend priority, role fit, proof fit, source confidence, and recency. This gives title/JD keyword retrieval without adding embeddings yet, and still keeps hard decision buckets ahead of rank fusion.
-
-5. Done: source scorecards.
-
-Owner: `packages/tracker` plus `packages/engine`.
-
-Track per-source:
-
-```text
-fetched, kept, prepared, submitted, reply, interview, offer, rejection
-```
-
-Run manifests, dashboards, and chat summaries now include source scorecards with fetched, kept, filtered, prepared, submitted, reply, interview, offer, rejection, precision, and yield. Use these only to allocate scan budget and order sources. Do not show a candidate-worth score to users.
-
-6. Done: first ambiguity prompts from reusable policy.
-
-Owner: `packages/ranker` for detection, `packages/engine` for handoff.
-
-Ask only when the answer is low-confidence, high-impact, and reusable. Examples:
-
-- company seniority mapping: "Should Product Manager at global enterprises count as director-level for you?"
-- location policy: "Should onsite Gurgaon be allowed?"
-- source policy: "Should this unknown portal be allowed after fraud checks?"
-
-`buildAmbiguityPrompts` now creates reusable pending questions for seniority/company-grade, location/work authorization, work mode, employment type, and company-stage ambiguity after a role-family match is plausible. The engine carries these into the run manifest, dashboard, and chat summary. Store the answer in editable user config, not source code.
-
-7. Later: embedding candidate list.
-
-Owner: optional Python sidecar or local model adapter.
-
-Use embeddings only to create another retrieval list for RRF. Embeddings can find adjacent wording. They cannot prove a CV claim.
-
-8. Later: cross-encoder top-N rerank.
-
-Owner: optional Python sidecar.
-
-Run only after hard gates and local retrieval reduce the batch to roughly 50-100 candidate jobs.
-
-9. Later: learning-to-rank from outcomes.
-
-Owner: offline learning job.
-
-Train only after enough outcome labels exist. Labels should come from real events:
-
-```text
-skip < prepared < submitted < reply < interview < offer
-```
-
-Use this for ordering and source budget, not CV truth.
-
-### Sources Checked
-
-- LinkedIn KDD 2024 job matching paper: retrieval plus ranking, standardized entities, inverted indexes, learned retrieval, and feedback rules.
-- LinkedIn JUDE engineering post: multi-tier ranking cascade, attribute-based matching plus embedding-based retrieval.
-- Microsoft Azure AI Search and Elasticsearch docs: RRF for combining multiple ranked result lists with different score scales.
-- Sentence Transformers docs: bi-encoder for retrieval, cross-encoder for top-N rerank.
-- XGBoost and LightGBM docs: production-ready LambdaMART/LambdaRank ranking objectives.
-- Conversational recommender survey: preference elicitation, multi-turn feedback, and exploration/exploitation are core CRS challenges.
+If yes, keep it in the agent workflow and user config.

@@ -11,7 +11,7 @@ Chat or web UI
   -> profile store
   -> source discovery connectors
   -> normalizer and dedupe
-  -> deterministic gates and ranker
+  -> hard gates and simple shortlist ordering
   -> CV and answer generator
   -> browser apply agent
   -> email/reply tracker
@@ -25,17 +25,17 @@ Chat or web UI
 - `packages/profile`: CV, preferences, proof bank, and profile ingestion.
 - `packages/discovery`: source adapters for jobs and posts.
 - `packages/normalizer`: job normalization and dedupe.
-- `packages/ranker`: hard gates and priority ranking.
+- `packages/ranker`: hard gates and simple backend ordering.
 - `packages/cv-tailor`: role-specific CV plans and variants.
 - `packages/apply-assistant`: form-fill plans, auto-submit policy, and exception boundaries.
-- `packages/engine`: first-build orchestration across ranking, CV generation, application drafts, manifests, and local outputs.
+- `packages/engine`: first-build orchestration across shortlisting, CV generation, application drafts, manifests, and local outputs.
 - `packages/tracker`: application state, outcomes, local progress snapshots, and generated HTML dashboard output.
 - Future `packages/network-intel`: social network map, company-context contacts, DM drafts, and referral-help flow.
 
 ## Apps
 
 - `apps/web`: human-facing local or hosted UI.
-- `apps/worker`: scheduled discovery and ranking jobs.
+- `apps/worker`: scheduled discovery and batch preparation jobs.
 - `apps/browser-agent`: controlled browser application helper.
 
 ## Skill
@@ -48,7 +48,7 @@ The skill should expose user actions:
 - show next best roles and exceptions
 - make a CV for this role
 - apply to this role under my policy
-- explain why this was ranked low
+- explain why this was not shortlisted
 - learn from this feedback
 - show what is working
 

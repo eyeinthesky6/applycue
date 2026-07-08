@@ -9,7 +9,7 @@ ApplyCue v1 stays local-first and focused.
 V1 should solve:
 
 ```text
-discover -> rank -> tailor CV -> apply -> track -> reply -> interview -> offer -> learn
+discover -> shortlist -> tailor CV -> apply -> track -> reply -> interview -> offer -> learn
 ```
 
 Progress tracking can be simple:
@@ -42,7 +42,7 @@ V1 should show:
 
 It should not show big personal scores.
 
-Scores are backend ordering signals. The user-facing language should be:
+Backend ordering signals are for the agent. The user-facing language should be:
 
 ```text
 Applied
@@ -189,7 +189,7 @@ V1 stance:
 
 - community is support and lead intake
 - ApplyCue can ingest useful posts later
-- ApplyCue should still run through its own discovery, ranking, tailoring, apply, and tracking loop
+- ApplyCue should still run through its own discovery, shortlisting, tailoring, apply, and tracking loop
 
 Suggested group rules:
 

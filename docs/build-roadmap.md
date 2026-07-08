@@ -25,7 +25,7 @@ Most job-search tools make users do more work.
 ApplyCue should do the work:
 
 - find roles
-- rank them
+- shortlist what is worth applying to
 - tailor truthful CVs
 - prepare applications
 - submit within policy
@@ -34,6 +34,30 @@ ApplyCue should do the work:
 - learn from outcomes
 
 The value is not a better job board. The value is a reliable application engine.
+
+## Stance Correction: Agent-First, Not Search-Engine-First
+
+Date: 2026-07-07
+
+Core invariant:
+
+```text
+agents help a user get a job from thousands of postings every day
+```
+
+ApplyCue is not trying to become a generic job board, a search engine, or "Google for jobs." The agent should do fuzzy judgment work: reading the CV, reading the JD, understanding role shape, interpreting ambiguous seniority, noticing user preferences, and updating reusable config from feedback.
+
+Code should exist where repeatability and safety matter:
+
+- source adapters and approved source config
+- hard blockers from user rules
+- dedupe, liveness, trust, and scan history
+- fact ledger, proof bank, and CV reconciliation
+- standard CV rendering
+- browser apply policy, preflight, receipts, and manifests
+- outcome tracking and dashboard/chat summaries
+
+If an agent can do something more efficiently and safely than a coded subsystem, keep it in the agent workflow and user config instead of adding code.
 
 ## V1 User Promise
 
@@ -66,7 +90,7 @@ Given:
 ApplyCue should produce:
 
 - normalized job records
-- ranked job list
+- shortlisted job list
 - one generated `standard_ats_v1` CV per serious job
 - reconciliation report for each CV
 - application draft for each job
@@ -113,7 +137,7 @@ Build:
 - base CV parser/importer, initially text or Markdown
 - fact extraction stub
 - requirement extraction stub
-- deterministic requirement-to-proof matcher
+- truth-oriented requirement-to-proof mapper
 - reconciliation checker
 - `standard_ats_v1` Markdown/HTML/DOCX renderer
 - output writer under the active output root, for example `~/.applycue/profiles/<profile>/outputs/cvs/`
@@ -131,7 +155,7 @@ Build:
 - local JSONL state store under `<outputRoot>/data/local/`
 - manual/static job source
 - normalizer and dedupe
-- ranker integration
+- hard-gate and shortlist integration
 - CV engine integration
 - application draft integration
 - dashboard writer to `<outputRoot>/outputs/dashboard/latest.html`
@@ -177,7 +201,7 @@ Current implementation status:
 
 - Application drafts are created from approved profile facts and generated CV variants.
 - Closed jobs are blocked before CV, application draft, and browser plan preparation.
-- A liveness verifier hook can update `JobRecord.liveState` before ranking when a browser/page checker is available. The default local run does not fetch live pages.
+- A liveness verifier hook can update `JobRecord.liveState` before shortlist preparation when a browser/page checker is available. The default local run does not fetch live pages.
 - Browser apply plans are generated for each prepared application and written under `outputs/browser-plans/`.
 - Plans pause before final submit in review mode or when any configured pause reason exists.
 - Browser action-log and receipt contracts exist for the execution layer.
@@ -213,11 +237,11 @@ Build:
 - daily and weekly progress reports
 - outcome feedback loop
 
-Later math:
+Later learning:
 
-- hybrid ranking
-- calibrated response probability
-- learning-to-rank from outcomes
+- agent-visible source and outcome patterns
+- reusable preference updates from user feedback
+- daily/weekly evidence of what is producing replies and interviews
 
 Current implementation status:
 
@@ -244,6 +268,9 @@ These are valuable, but not v1:
 - deep portal trust scoring
 - graph neural networks
 - custom contrastive model training
+- embeddings and cross-encoder reranking
+- learning-to-rank models
+- generic web-wide job search
 
 ## Inspiration To Keep
 
@@ -253,22 +280,20 @@ Useful product patterns:
 - Applicant tracking systems: normalize every job/application into a lifecycle state.
 - Sales CRM: pipeline, follow-ups, outcomes, and source performance.
 - JSON Resume: structured resume schema inspiration.
-- LinkedIn-style retrieval/ranking: retrieve many candidates/jobs, then rank with multiple signals.
-
-Useful math patterns:
-
-- bipartite requirement-to-proof matching
-- hybrid retrieval: keywords plus embeddings
-- deterministic hard gates before scoring
-- outcome-based learning later
+- Career-ops-style agent evaluation: CV + profile + JD + user goals -> concise shortlist reasoning.
+- Source adapters: fetch enough jobs from approved places without making the user search manually.
+- Truth reconciliation: map CV/application claims back to approved facts and proof.
+- Outcome learning: show the agent which sources and patterns are producing replies/interviews.
 
 ## What We Should Avoid
 
 - building a generic job board
+- building a generic search engine
 - starting with SaaS
 - adding many CV designs early
 - letting the agent patch files per application
 - treating embeddings as proof
+- adding embeddings, cross-encoders, or learning-to-rank before agent evaluation is exhausted
 - hiding search area expansion
 - applying through suspicious portals without pause
 - making users review every CV forever
@@ -319,7 +344,7 @@ Career OS parity improvement now in place:
 profile/preferences -> generated searchProfile -> richer ATS/job-board search suggestions -> source-quality filter
 ```
 
-This gives the agent a visible title/location/content filter plan before jobs enter the batch. It must stay generated from user config, not hardcoded to one market or one candidate. The engine now uses it before ranking so broad job-board sources do not flood the review queue with weak roles.
+This gives the agent a visible title/location/content filter plan before jobs enter the batch. It must stay generated from user config, not hardcoded to one market or one candidate. The engine now uses it before shortlist preparation so broad job-board sources do not flood the review queue with weak roles.
 
 Career OS-inspired source coverage improvement now in place:
 
@@ -329,28 +354,27 @@ approved company ATS source -> Greenhouse/Lever/Ashby/Workable/SmartRecruiters/B
 
 Workable, SmartRecruiters, BambooHR, Breezy, Recruitee, Pinpoint, Workday, Personio, and Rippling use public no-login surfaces and normalize into the same company-source path as the original ATS adapters. Reverse ATS directory discovery still covers only Greenhouse, Lever, and Ashby until ApplyCue has reliable public company directories for the newer providers.
 
-Ranker parity improvement now in place:
+Shortlist parity improvement now in place:
 
 ```text
 target title anchor -> can enter today's preparation queue
 adjacent-only, description-only, or wrong-family role match -> skip unless the user explicitly targets it
-broad remote region that includes the user's authorized region -> do not hard-block at discovery/ranking time
-decision bucket -> fused ordering by backend priority, role fit, proof fit, source confidence, and recency
-local lexical retrieval -> extra fused list using boosted title/JD/source text
+broad remote region that includes the user's authorized region -> do not hard-block at discovery/shortlist time
+decision bucket -> simple backend ordering by policy, role anchor, proof, source confidence, and recency
 reusable ambiguity prompts -> saved-question handoff for policy edge cases
 ```
 
 This keeps weak matches from filling application slots while still allowing explicit role pivots and plausible remote roles to remain reviewable. Default source generation also keeps adjacent-only terms out of active search queries and title positives; separate exploration lanes must be approved through user config.
 
-Matching upgrade path:
+Shortlist upgrade path:
 
 ```text
-hard gates -> source-quality filter -> rankJobs fused ordering -> local lexical retrieval list -> source scorecards -> ambiguity prompts -> embeddings/cross-encoder -> learning-to-rank
+hard gates -> source-quality filter -> agent fit review -> shortlist -> source scorecards -> ambiguity prompts -> user config updates
 ```
 
-The first fused-ordering slice is implemented in `packages/ranker`. It must keep `apply -> review -> watch -> skip` ahead of any fused rank, so newer jobs, trusted sources, or future embedding matches cannot bypass hard user policy.
+The current backend ordering in `packages/ranker` must remain subordinate to `apply -> review -> watch -> skip` policy buckets. Do not expand this into a search-ranking platform. If the shortlist feels wrong, first update the user's target roles, source filters, proof bank, or preferences, then rerun the engine.
 
-The local lexical retrieval and first ambiguity prompt slices are also implemented. MiniSearch adds a boosted title/JD candidate list into `rankJobs`, and `buildAmbiguityPrompts` emits reusable policy questions for company-grade seniority, location/work authorization, work mode, employment type, and company-stage ambiguity. These prompts must be answered into editable user config; agents must not patch source code for one job.
+`buildAmbiguityPrompts` emits reusable policy questions for company-grade seniority, location/work authorization, work mode, employment type, and company-stage ambiguity. These prompts must be answered into editable user config; agents must not patch source code for one job.
 
 Dashboard parity improvement now in place:
 
@@ -375,10 +399,10 @@ The CV renderer also preserves base-CV career structure and suppresses near-dupl
 Career OS parity / UAT volume improvement now in place:
 
 ```text
-source jobs -> source-quality filter -> role-forward ranker -> cleaned JD requirements -> truth reconciliation -> daily batch filled when enough eligible roles exist
+source jobs -> source-quality filter -> hard gates -> agent shortlist -> cleaned JD requirements -> truth reconciliation -> daily batch filled when enough eligible roles exist
 ```
 
-The first real UAT exposed the Career OS gap clearly: broad job-board discovery found many roles, but weak source filtering and over-flat ranking prepared only one application. ApplyCue now keeps weak-role matches capped, weights role-title fit more strongly for review ordering, maps regulated-financial-services requirements to approved banking/lending evidence, and strips common non-requirement job-post metadata before CV reconciliation. The goal is better batch fill without lowering the truth gate.
+The first real UAT exposed the Career OS gap clearly: broad job-board discovery found many roles, but weak source filtering and over-mechanical ordering prepared too few useful applications. ApplyCue should keep weak-role matches capped, map requirements only to approved evidence, and strip common non-requirement job-post metadata before CV reconciliation. The goal is better batch fill without lowering the truth gate or pretending math knows the user's real opportunity.
 
 Current UAT evidence:
 
@@ -391,7 +415,7 @@ The latest local UAT still warns on batch volume: 3 prepared of 5 configured per
 Funnel health guidance now accompanies every run:
 
 ```text
-source filters + ranker hard gates + prepared count -> funnelHealth -> next actions
+source filters + hard gates + prepared count -> funnelHealth -> next actions
 ```
 
 The dashboard and chat summary should show whether the batch is healthy, low-volume, high-volume, or source-noisy. Agents must use those suggested actions before changing search width, source lists, or user preferences.
@@ -409,7 +433,7 @@ This reduces false positives from shared words while preserving false-negative f
 Transient source expansion now runs before preference relaxation when the batch is short:
 
 ```text
-generated source plan + approved public job-board sources -> wider no-config-edit scan -> source-quality filter -> ranker
+generated source plan + approved public job-board sources -> wider no-config-edit scan -> source-quality filter -> hard gates/shortlist
 ```
 
 This can rerun approved public JobSpy/remote-board queries with wider `resultsWanted`, `hoursOld`, or `limit` values. It does not edit source config, generated source plans, CVs, or user assets.
@@ -453,7 +477,7 @@ Build order:
 2. Optional Python JobSpy runner. Done.
 3. Remotive no-key public API adapter. Done.
 4. Approved `sources.jobBoards` execution. Done.
-5. Generated `searchProfile` source-quality filtering before ranking. Done.
+5. Generated `searchProfile` source-quality filtering before shortlist preparation. Done.
 6. Source Quality dashboard panel backed by typed run data. Done.
 7. Expanded safe JobSpy query budget using distinct role terms before role-plus-industry variants. Done.
 8. Browser-plan local dry-run receipts for every prepared application. Done.
@@ -463,7 +487,7 @@ Build order:
 12. Reverse ATS directory scan over public Greenhouse, Lever, and Ashby directories. Done.
 13. Workable, SmartRecruiters, BambooHR, Breezy, Recruitee, Pinpoint, Workday, Personio, and Rippling company ATS adapters. Done.
 14. The Muse no-key public jobs API adapter. Done.
-15. Local lexical retrieval list in rank fusion. Done.
+15. Local lexical retrieval list in backend ordering. Done. Do not expand this into a ranking platform without a new product decision.
 16. Source scorecards in manifest, dashboard, and chat summary. Done.
 17. Reusable ambiguity prompts in manifest, dashboard, and chat summary. Done.
 18. Transient generated public job-board expansion for short batches without editing user config. Done.

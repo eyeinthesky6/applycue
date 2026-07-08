@@ -11,10 +11,10 @@ The missing work is execution structure, not product direction.
 Build first:
 
 ```text
-fact ledger -> JD requirement map -> reconciliation -> standard_ats_v1 CV -> local pipeline -> dashboard
+source intake -> hard gates -> agent shortlist -> reconciliation -> standard_ats_v1 CV -> apply plan -> dashboard
 ```
 
-Do not start with SaaS, social connectors, multiple templates, or advanced ML.
+Do not start with SaaS, social connectors, multiple templates, advanced ML, or a generic job-search engine.
 
 ## Contracts Needed
 
@@ -45,6 +45,8 @@ These contracts live in `packages/core`; implementation packages should import t
 
 These should become tests.
 
+- ApplyCue exists to help agents get a user hired, not to become "Google for jobs."
+- If an agent can do a task more efficiently from the CV, JD, preferences, and feedback, do not build complex code for it.
 - One v1 CV format: `standard_ats_v1`.
 - Agent never hand-edits CV files for one job.
 - Agent never edits source code during an application run.
@@ -54,7 +56,7 @@ These should become tests.
 - Application answers use the same fact ledger as generated CVs.
 - Browser submit requires passed reconciliation, allowed apply policy, and trusted/allowed source.
 - Unknown or suspicious portals pause.
-- Scores stay backend-only unless user asks to inspect them.
+- Backend ordering signals stay backend-only unless user asks to inspect them.
 - Every run writes a manifest.
 - Every generated file has source inputs and hashes recorded.
 
@@ -102,7 +104,7 @@ These should become tests.
 - Replies, rejections, interviews, offers.
 - Source performance.
 - CV variant outcome tracking.
-- Later learning-to-rank.
+- Outcome feedback loop for the agent.
 
 ## MVP Success Criteria
 
@@ -114,7 +116,7 @@ Given:
 
 ApplyCue produces:
 
-- ranked job list
+- shortlisted job list
 - `standard_ats_v1` CVs for serious jobs
 - reconciliation report per CV
 - application draft per job
@@ -169,6 +171,7 @@ The agent should:
 - call ApplyCue engine commands
 - explain decisions simply
 - ask for approval on major facts and sensitive fields
+- update user config, source approvals, proof bank, and preferences when the user gives reusable feedback
 - operate browser only under policy
 - save outputs and manifests
 - summarize daily results
@@ -187,6 +190,8 @@ The agent should not:
 - guarantee jobs
 - expose backend scores as self-worth
 - ask the user to review every CV forever
+- build a generic job board/search engine inside ApplyCue
+- add matching math when agent evaluation plus hard gates is enough
 
 ## Skill Templates
 
@@ -269,7 +274,7 @@ It should produce:
 
 - profile summary
 - missing setup questions
-- sample ranked jobs
+- sample shortlisted jobs
 - one generated CV
 - reconciliation report
 - dashboard
@@ -305,7 +310,7 @@ Recommended private/paid:
 - connector service
 - browser automation adapters
 - source reliability data
-- outcome learning models
+- outcome learning dashboards and agent guidance
 - paid CV formats
 - team/admin features
 - managed application workers

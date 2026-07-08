@@ -82,18 +82,18 @@ Daily and push runs may skip non-manual jobs already marked `prepared` or `close
 
 Scan history also emits repost signals. A repost signal means the same company has shown a similar role title on multiple URLs within the configured window. It is a warning for source quality and stale-opening analysis, not an automatic skip.
 
-## Ranking
+## Hard Gates And Backend Ordering
 
-Ranking stores:
+Backend ordering stores:
 
 - hard gate results
-- component scores
+- internal ordering signals
 - reasons
 - final priority
 
-The user sees reasons and decisions. The backend keeps scores.
+The user sees reasons and decisions. The backend may keep ordering signals for audit and diagnostics, but they are not the product and are not a prediction of success.
 
-Ranking hard-gates wrong role family, blocked companies, no-go terms, excluded industries/keywords, impossible work mode, out-of-range seniority, out-of-range required experience, employment type, company stage, and work authorization. Adjacent-only roles are optional exploration lanes, not default application targets.
+Hard gates block wrong role family, blocked companies, no-go terms, excluded industries/keywords, impossible work mode, out-of-range seniority, out-of-range required experience, employment type, company stage, and work authorization. Adjacent-only roles are optional exploration lanes, not default application targets.
 
 `JobRecord` may carry `seniorityEvidence`, `companyMarketGrade`, and `requiredExperienceYears`. The normalizer can infer simple seniority and experience evidence from titles/JDs, and can attach a small reusable company-grade signal from known company/domain markers. User-approved exceptions belong in `preferences.companySeniorityOverrides`, not in ranker code.
 
@@ -106,7 +106,7 @@ It summarizes:
 - configured daily target
 - prepared applications
 - discovered jobs
-- jobs kept for ranking
+- jobs kept for shortlist preparation
 - watched or skipped jobs
 - dominant source filters
 - dominant preference gate blockers

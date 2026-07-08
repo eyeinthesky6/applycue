@@ -31,7 +31,7 @@ It should:
 
 1. resolve the external user profile store
 2. load local jobs
-3. rank jobs
+3. apply hard gates and prepare a shortlist
 4. generate `standard_ats_v1` CVs for serious jobs
 5. write reconciliation reports
 6. create application drafts
@@ -65,7 +65,7 @@ It should include:
 - latest live preflight status, if a real portal was inspected
 - answer prompt counts and review links when live preflight pauses
 
-Raw scores can stay hidden. Priority and rank reasons may appear later if phrased as reasons, not as personal judgment.
+Raw backend ordering signals should stay hidden. Priority reasons may appear later if phrased as plain reasons, not as personal judgment.
 
 ## Output Root Rule
 

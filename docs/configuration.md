@@ -181,7 +181,7 @@ Use `sources.searches` with `provider: "ats_directory"` when the user has target
 This is the ApplyCue version of Career OS-style broad ATS discovery:
 
 ```text
-public ATS company directory -> public ATS API -> JobRecord -> source-quality filter -> ranker
+public ATS company directory -> public ATS API -> JobRecord -> source-quality filter -> hard gates/shortlist
 ```
 
 Example:
@@ -216,7 +216,7 @@ Rules:
 - no login or API key is needed
 - Workday company sources can be approved directly when the careers URL is a public `myworkdayjobs.com` board
 - Rippling company sources can be approved directly when the careers URL is a public `ats.rippling.com/<slug>/jobs` board
-- source-quality filtering must run before ranking because this is a broad source
+- source-quality filtering must run before shortlist preparation because this is a broad source
 - increase `limitPerProvider` only when the user wants wider discovery
 - keep source approval in editable config; do not hand-edit `source-plan.generated.json`
 
@@ -285,7 +285,7 @@ Rules:
 - It must be derived from the user's CV/profile/preferences/search settings.
 - It should not contain market-specific defaults such as India, Naukri, or Dubai unless the user profile or setup config asks for them.
 - Title positives should use target role terms. Adjacent-only role terms are optional exploration lanes and should not enter default source queries or title positives.
-- Source adapters and ranking may use it later for filtering and diagnostics, but user-facing CV claims still come only from approved facts and proof.
+- Source adapters and shortlist preparation may use it later for filtering and diagnostics, but user-facing CV claims still come only from approved facts and proof.
 
 ## Approving Generated Sources
 
@@ -386,7 +386,7 @@ Supported no-key job-board providers:
 - `himalayas`
 - `themuse`
 
-`themuse` reads the public The Muse jobs API and should be capped with `options.limit` and `options.pageLimit` so broad supply still flows through ApplyCue's source-quality filter before ranking.
+`themuse` reads the public The Muse jobs API and should be capped with `options.limit` and `options.pageLimit` so broad supply still flows through ApplyCue's source-quality filter before shortlist preparation.
 
 For key-required providers such as Adzuna or USAJOBS, config should store only a user-owned credential reference, not the secret:
 
@@ -636,7 +636,7 @@ Use `relaxOrder` to decide what widens first.
 Default:
 
 ```text
-source -> title -> industry -> location -> recency -> minimum_fit
+source -> title -> industry -> location -> recency -> batch strictness
 ```
 
 Location should be explicit:

@@ -9,7 +9,7 @@ Do not build a broad job-board scraper from scratch.
 Use prebuilt providers behind ApplyCue-owned adapters:
 
 ```text
-approved source config -> provider adapter -> normalized JobRecord -> source-quality filter -> ranker -> CV engine -> apply assistant
+approved source config -> provider adapter -> normalized JobRecord -> source-quality filter -> hard gates/shortlist -> CV engine -> apply assistant
 ```
 
 ApplyCue stays the engine. External tools are fetchers, parsers, or browser helpers.
@@ -26,7 +26,7 @@ Simple rule:
 
 Agents should not call random scrapers directly during a run. They should approve sources, then run ApplyCue commands.
 
-The generated `searchProfile` is now part of discovery quality control. It filters broad provider output before ranking using title, location, and content rules generated from the user's profile/preferences. This is the Career OS lesson ApplyCue keeps: do not let every scraped job enter the expensive CV/application path.
+The generated `searchProfile` is now part of discovery quality control. It filters broad provider output before shortlist preparation using title, location, and content rules generated from the user's profile/preferences. This is the Career OS lesson ApplyCue keeps: do not let every scraped job enter the expensive CV/application path.
 
 ## Discovery Provider Order
 
@@ -79,7 +79,7 @@ Use these first for a single local user:
 | Ashby | none for public posting API | Good company/ATS source, often includes compensation. |
 | Workable | none for public markdown feeds | Good company/ATS source; common public feed at `apply.workable.com/<slug>/jobs.md`. |
 | SmartRecruiters | none for public postings API | Good company/ATS source; public company postings API plus detail endpoint. |
-| BambooHR | none for public tenant careers list | Good company/ATS source when a company uses `<tenant>.bamboohr.com/careers`; list metadata can feed ranking and browser preflight can inspect the posting before apply. |
+| BambooHR | none for public tenant careers list | Good company/ATS source when a company uses `<tenant>.bamboohr.com/careers`; list metadata can feed shortlist diagnostics and browser preflight can inspect the posting before apply. |
 | Breezy | none for public tenant JSON feed | Good company/ATS source when a company uses `<tenant>.breezy.hr`; public feed returns active postings without credentials. |
 | Recruitee | none for public tenant offers API | Good company/ATS source when a company uses `<tenant>.recruitee.com`; postings may point to a custom careers domain and still pass through browser preflight. |
 | Pinpoint | none for public tenant postings feed | Good company/ATS source when a company uses `<tenant>.pinpointhq.com`; public feed returns active postings without credentials. |
@@ -88,7 +88,7 @@ Use these first for a single local user:
 | Rippling | none for public tenant board API | Good company/ATS source when a company uses `ats.rippling.com/<slug>/jobs`; public board API returns active postings without credentials. |
 | Reverse ATS directory | none for public directory/API use | Good Career OS-inspired broad ATS discovery over Greenhouse, Lever, and Ashby without a fixed company list. |
 | Remotive | none for public endpoint | Good remote-job source; obey attribution and low request frequency terms. |
-| The Muse | none for public jobs API | Good supplemental no-key job-board source. Keep capped and filtered before ranking because it is broad. |
+| The Muse | none for public jobs API | Good supplemental no-key job-board source. Keep capped and filtered before shortlist preparation because it is broad. |
 | Adzuna | user-owned app id/key | Good later broad API. Official default limits are enough for a single user if scheduled carefully. |
 | USAJOBS | user-owned API key | Only useful for US federal/public-sector targets. |
 
@@ -116,11 +116,11 @@ Use JobSpy for:
 - LinkedIn discovery, cautiously
 - Glassdoor, ZipRecruiter, Bayt, and BDJobs where relevant
 
-JobSpy is intentionally broad. Its output must pass through ApplyCue normalization, dedupe, and generated `searchProfile` filtering before ranking. In the current local UAT, approved and transiently widened sources produced 1135 fetched jobs, the source-quality layer kept 18 reviewable jobs, and the engine prepared 3 applications because the remaining roles were blocked by saved seniority/location policy.
+JobSpy is intentionally broad. Its output must pass through ApplyCue normalization, dedupe, generated `searchProfile` filtering, and hard gates before shortlist preparation. In the current local UAT, approved and transiently widened sources produced 1135 fetched jobs, the source-quality layer kept 18 reviewable jobs, and the engine prepared 3 applications because the remaining roles were blocked by saved seniority/location policy.
 
 Use `funnelHealth` after every broad provider run. If discovered volume is huge but kept volume is tiny, tighten source/title filters before adding more feeds. If kept volume is low because seniority, location, work authorization, employment type, or experience gates dominate, ask the user for a reusable preference change instead of weakening gates in code.
 
-After source-quality filtering, daily and push runs also pass through scan history. Non-manual jobs already recorded as `prepared` or `closed` in the user's `data/local/scan-history.jsonl` are skipped before ranking/CV work. Review mode keeps them visible for inspection.
+After source-quality filtering, daily and push runs also pass through scan history. Non-manual jobs already recorded as `prepared` or `closed` in the user's `data/local/scan-history.jsonl` are skipped before shortlist/CV work. Review mode keeps them visible for inspection.
 
 Query budget rule:
 
@@ -256,7 +256,7 @@ Map JobSpy rows to `JobRecord` like this:
 | `is_remote` | `workMode` |
 | `job_type` | `employmentType` |
 | `interval`, `min_amount`, `max_amount`, `currency` | `compensation` |
-| `date_posted` | source metadata now; later freshness scoring |
+| `date_posted` | source metadata for freshness diagnostics |
 
 Keep ApplyCue dedupe after this step. JobSpy also recommends deduping by URL or title plus company because the same job can appear on multiple boards.
 
@@ -299,7 +299,7 @@ Current implementation:
 - samples across the directory instead of only taking the alphabetic prefix
 - fetches public ATS APIs in small batches
 - normalizes every posting into `JobRecord`
-- runs source-quality filtering before ranking and CV work
+- runs source-quality filtering before shortlist and CV work
 
 Config lives in `sources.searches`, not hardcoded code:
 
@@ -325,7 +325,7 @@ Config lives in `sources.searches`, not hardcoded code:
 }
 ```
 
-Do not use this as a final relevance signal. It is a supply source. The generated `searchProfile`, ranker, CV truth reconciliation, source trust, and scan history still decide what moves forward.
+Do not use this as a final relevance signal. It is a supply source. The generated `searchProfile`, hard gates, agent shortlist review, CV truth reconciliation, source trust, and scan history still decide what moves forward.
 
 ## Crawl4AI
 
@@ -406,7 +406,7 @@ Keep these ApplyCue-owned:
 
 - user preferences and source approval
 - source trust policy
-- ranking gates
+- hard gates and shortlist policy
 - requirement-to-proof matching
 - CV truth reconciliation
 - application submit policy

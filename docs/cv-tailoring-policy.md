@@ -144,7 +144,7 @@ The agent can create new templates later, but templates must be data-driven and 
 
 ## Code Impact
 
-CV design should not require changing ranking, proof mapping, application logic, or browser automation.
+CV design should not require changing shortlisting, proof mapping, application logic, or browser automation.
 
 Keep this split:
 
