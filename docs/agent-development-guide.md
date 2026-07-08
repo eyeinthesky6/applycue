@@ -272,7 +272,7 @@ docs/research-math-and-oss.md
 
 Hard gates first. Agent judgment handles fuzzy role fit. Backend ordering signals are routing hints, not user-facing judgment and not a claim that the system knows the user's real chances.
 
-Wrong role family, current company, explicit blocked company, impossible work authorization, blocked location/work mode, and clear junior/intern mismatch are hard blockers. Ambiguous seniority, role shape, domain fit, and company-level differences should be routed to agent review or reusable user config, not solved with new math.
+Wrong role family, disallowed source kind, current company, explicit blocked company, blocked portal, fraud signal, impossible work authorization, blocked work mode, clear junior/intern mismatch, known compensation below floor, explicit no-sponsorship when sponsorship is required, explicit non-standard shift conflict, explicit travel above limit, and explicit timezone conflict are hard blockers. Ambiguous seniority, role shape, domain fit, location fit, company-level differences, and missing compensation/travel/sponsorship/timezone data should be routed to agent review or reusable user config, not solved with new math.
 
 Company title levels can be adjusted only through reusable evidence: `companyMarketGrade`, `companyStage`, normalized seniority evidence, or `preferences.companySeniorityOverrides`. Do not hardcode one company name in ranker logic.
 

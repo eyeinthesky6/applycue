@@ -1163,7 +1163,10 @@ describe("rankJob", () => {
   });
 
   function productLeadershipProfile(overrides: {
+    applySettings?: Partial<UserProfile["applySettings"]>;
     preferences?: Partial<UserPreferences>;
+    searchSettings?: Partial<UserProfile["searchSettings"]>;
+    sourceSettings?: Partial<UserProfile["sourceSettings"]>;
     minimumFitFloor?: number;
   } = {}): UserProfile {
     return {
@@ -1191,7 +1194,8 @@ describe("rankJob", () => {
         informUserOnSearchAreaChange: true,
         standardHoursOnly: true,
         preferredShifts: ["standard"],
-        askBeforeShifts: []
+        askBeforeShifts: [],
+        ...overrides.searchSettings
       },
       sourceSettings: {
         allowLoggedInBrowserAccess: false,
@@ -1199,7 +1203,8 @@ describe("rankJob", () => {
         trustedPortals: [],
         askBeforePortals: [],
         blockedPortals: [],
-        fraudSignalTerms: []
+        fraudSignalTerms: [],
+        ...overrides.sourceSettings
       },
       applySettings: {
         mode: "daily",
@@ -1209,7 +1214,8 @@ describe("rankJob", () => {
         messagePolicy: "draft_only",
         pauseReasons: ["missing_required_answer"],
         trackEmailReplies: false,
-        allowRecruiterDmDrafts: true
+        allowRecruiterDmDrafts: true,
+        ...overrides.applySettings
       },
       matchSettings: {
         range: "normal",
@@ -1375,6 +1381,149 @@ describe("rankJob", () => {
 
     expect(ranked.decision).toBe("skip");
     expect(ranked.gates.find((gate) => gate.id === "experience")?.passed).toBe(false);
+  });
+
+  it("hard-blocks source kinds outside the user's allowed source list", () => {
+    const ranked = rankJob(
+      rankableJob({
+        id: "job-social-source",
+        source: {
+          id: "social",
+          kind: "social_post",
+          name: "Social post"
+        }
+      }),
+      productLeadershipProfile({
+        applySettings: {
+          allowedSourceKinds: ["ats", "job_board", "manual"]
+        }
+      })
+    );
+
+    expect(ranked.decision).toBe("skip");
+    expect(ranked.gates.find((gate) => gate.id === "source-kind")?.passed).toBe(false);
+  });
+
+  it("hard-blocks blocked portals and configured fraud signals", () => {
+    const profile = productLeadershipProfile({
+      sourceSettings: {
+        blockedPortals: ["blocked.jobs"],
+        fraudSignalTerms: ["registration fee"]
+      }
+    });
+    const blockedPortal = rankJob(
+      rankableJob({
+        id: "job-blocked-portal",
+        url: "https://blocked.jobs/apply/123"
+      }),
+      profile
+    );
+    const fraudSignal = rankJob(
+      rankableJob({
+        id: "job-fraud-signal",
+        description: "Lead product roadmap. Candidate must pay a registration fee before interview."
+      }),
+      profile
+    );
+
+    expect(blockedPortal.gates.find((gate) => gate.id === "blocked-portal")?.passed).toBe(false);
+    expect(fraudSignal.gates.find((gate) => gate.id === "fraud-signal")?.passed).toBe(false);
+    expect(blockedPortal.decision).toBe("skip");
+    expect(fraudSignal.decision).toBe("skip");
+  });
+
+  it("does not treat normal financial deposit wording as a fraud signal", () => {
+    const ranked = rankJob(
+      rankableJob({
+        id: "job-deposit-product",
+        description: "Lead product roadmap for deposit, payments, and wealth products."
+      }),
+      productLeadershipProfile({
+        sourceSettings: {
+          fraudSignalTerms: ["deposit"]
+        }
+      })
+    );
+
+    expect(ranked.gates.find((gate) => gate.id === "fraud-signal")?.passed).toBe(true);
+  });
+
+  it("hard-blocks known compensation below the user's configured floor", () => {
+    const ranked = rankJob(
+      rankableJob({
+        id: "job-low-comp",
+        compensation: {
+          min: 60000,
+          max: 90000,
+          currency: "USD",
+          period: "year"
+        }
+      }),
+      productLeadershipProfile({
+        preferences: {
+          minimumCompensation: 120000,
+          compensationCurrency: "USD"
+        }
+      })
+    );
+
+    expect(ranked.decision).toBe("skip");
+    expect(ranked.gates.find((gate) => gate.id === "compensation")?.passed).toBe(false);
+  });
+
+  it("hard-blocks explicit no-sponsorship roles when sponsorship is required", () => {
+    const ranked = rankJob(
+      rankableJob({
+        id: "job-no-sponsor",
+        description: "Lead product roadmap. Applicants must be authorized to work without sponsorship."
+      }),
+      productLeadershipProfile({
+        preferences: {
+          visaSponsorshipRequired: true
+        }
+      })
+    );
+
+    expect(ranked.decision).toBe("skip");
+    expect(ranked.gates.find((gate) => gate.id === "visa-sponsorship")?.passed).toBe(false);
+  });
+
+  it("hard-blocks explicit shift, travel, and timezone conflicts", () => {
+    const profile = productLeadershipProfile({
+      preferences: {
+        maxTravelPercent: 10,
+        preferredTimezones: ["IST"]
+      },
+      searchSettings: {
+        standardHoursOnly: true,
+        askBeforeShifts: ["night shift"]
+      }
+    });
+    const shiftConflict = rankJob(
+      rankableJob({
+        id: "job-night-shift",
+        description: "Lead product roadmap. Night shift coverage required."
+      }),
+      profile
+    );
+    const travelConflict = rankJob(
+      rankableJob({
+        id: "job-travel",
+        description: "Lead product roadmap. Up to 25% travel required."
+      }),
+      profile
+    );
+    const timezoneConflict = rankJob(
+      rankableJob({
+        id: "job-us-hours",
+        description: "Lead product roadmap. Must overlap with EST timezone."
+      }),
+      profile
+    );
+
+    expect(shiftConflict.gates.find((gate) => gate.id === "shift")?.passed).toBe(false);
+    expect(travelConflict.gates.find((gate) => gate.id === "travel")?.passed).toBe(false);
+    expect(timezoneConflict.gates.find((gate) => gate.id === "timezone")?.passed).toBe(false);
   });
 
   it("suggests a relax plan when the batch is short", () => {

@@ -172,6 +172,9 @@ export function evaluateHardGates(job: JobRecord, profile: UserProfile): GateRes
   const blockedCompany = prefs.blockedCompanyNames.some((company) =>
     job.company.toLowerCase().includes(company.toLowerCase())
   );
+  const sourceKindOk =
+    profile.applySettings.allowedSourceKinds.length === 0 ||
+    profile.applySettings.allowedSourceKinds.includes(job.source.kind);
   const currentCompany =
     Boolean(profile.currentCompany) &&
     job.company.toLowerCase().includes(profile.currentCompany!.toLowerCase());
@@ -181,6 +184,9 @@ export function evaluateHardGates(job: JobRecord, profile: UserProfile): GateRes
   const noGoRole = prefs.noGoRoleTerms.some((term) => haystack.includes(term.toLowerCase()));
   const excludedIndustry = prefs.excludedIndustries.some((term) => haystack.includes(term.toLowerCase()));
   const excludedKeyword = prefs.excludedKeywords.some((term) => haystack.includes(term.toLowerCase()));
+  const blockedPortal = portalMatches(job, profile.sourceSettings.blockedPortals);
+  const fraudSignal = findFraudSignal(searchableJobText(job), profile.sourceSettings.fraudSignalTerms);
+  const portalPolicyOk = profile.sourceSettings.defaultPortalApplyPolicy !== "block" || portalMatches(job, profile.sourceSettings.trustedPortals);
   const workModeOk = prefs.acceptableWorkModes.includes(job.workMode) || job.workMode === "unknown";
   const remoteOk = !prefs.remoteOnly || job.workMode === "remote" || job.workMode === "unknown";
   const seniorityOk =
@@ -204,12 +210,24 @@ export function evaluateHardGates(job: JobRecord, profile: UserProfile): GateRes
     !jobLocation ||
     prefs.workAuthorizationCountries.some((country) => locationMatchesCountry(jobLocation, country)) ||
     (job.workMode === "remote" && remoteLocationCouldIncludeAuthorizedCountry(jobLocation, prefs.workAuthorizationCountries));
+  const compensationOk = compensationGate(job, profile);
+  const sponsorshipOk = visaSponsorshipGate(job, profile);
+  const shiftOk = shiftGate(job, profile);
+  const travelOk = travelGate(job, profile);
+  const timezoneOk = timezoneGate(job, profile);
 
   return [
     {
       id: "live",
       passed: job.liveState !== "closed",
       reason: job.liveState === "closed" ? "Job appears closed." : "Job is not known to be closed."
+    },
+    {
+      id: "source-kind",
+      passed: sourceKindOk,
+      reason: sourceKindOk
+        ? "Source kind is allowed by apply settings."
+        : `Source kind ${job.source.kind} is not allowed by apply settings.`
     },
     {
       id: "blocked-company",
@@ -220,7 +238,24 @@ export function evaluateHardGates(job: JobRecord, profile: UserProfile): GateRes
           ? "Company is the user's current employer."
           : pastEmployer
             ? "Company is a past employer and user has not allowed applying there."
-            : "Company is not blocked."
+        : "Company is not blocked."
+    },
+    {
+      id: "blocked-portal",
+      passed: !blockedPortal,
+      reason: blockedPortal ? "Portal or source is blocked by user preference." : "Portal is not blocked."
+    },
+    {
+      id: "fraud-signal",
+      passed: !fraudSignal,
+      reason: fraudSignal ? `Job/source matched fraud signal: ${fraudSignal}.` : "No configured fraud signal matched."
+    },
+    {
+      id: "portal-policy",
+      passed: portalPolicyOk,
+      reason: portalPolicyOk
+        ? "Portal policy does not block this source."
+        : "Default portal policy blocks sources unless explicitly trusted."
     },
     {
       id: "no-go-role",
@@ -273,6 +308,31 @@ export function evaluateHardGates(job: JobRecord, profile: UserProfile): GateRes
       id: "work-authorization",
       passed: workAuthOk,
       reason: workAuthOk ? "Work authorization does not block this role." : "Location may conflict with work authorization."
+    },
+    {
+      id: "visa-sponsorship",
+      passed: sponsorshipOk.passed,
+      reason: sponsorshipOk.reason
+    },
+    {
+      id: "compensation",
+      passed: compensationOk.passed,
+      reason: compensationOk.reason
+    },
+    {
+      id: "shift",
+      passed: shiftOk.passed,
+      reason: shiftOk.reason
+    },
+    {
+      id: "travel",
+      passed: travelOk.passed,
+      reason: travelOk.reason
+    },
+    {
+      id: "timezone",
+      passed: timezoneOk.passed,
+      reason: timezoneOk.reason
     }
   ];
 }
@@ -954,6 +1014,176 @@ function isSeniorTargetProfile(profile: UserProfile): boolean {
   return levels.some((level) => seniorLevels.has(level));
 }
 
+interface PreferenceGateResult {
+  passed: boolean;
+  reason: string;
+}
+
+function compensationGate(job: JobRecord, profile: UserProfile): PreferenceGateResult {
+  const floor = profile.preferences.minimumCompensation;
+  if (typeof floor !== "number" || !Number.isFinite(floor)) {
+    return { passed: true, reason: "No compensation floor is configured." };
+  }
+  if (!job.compensation) {
+    return { passed: true, reason: "Job compensation is unknown, so it is not used as a hard blocker." };
+  }
+  const configuredCurrency = normalizeText(profile.preferences.compensationCurrency ?? "");
+  const jobCurrency = normalizeText(job.compensation.currency ?? "");
+  if (configuredCurrency && jobCurrency && configuredCurrency !== jobCurrency) {
+    return { passed: true, reason: "Job compensation currency differs from the configured floor, so compensation needs review." };
+  }
+  if (typeof job.compensation.max === "number" && job.compensation.max < floor) {
+    return {
+      passed: false,
+      reason: `Job compensation max ${formatMoney(job.compensation.max, job.compensation.currency)} is below configured floor ${formatMoney(floor, profile.preferences.compensationCurrency)}.`
+    };
+  }
+  return { passed: true, reason: "Known compensation does not violate the configured floor." };
+}
+
+function visaSponsorshipGate(job: JobRecord, profile: UserProfile): PreferenceGateResult {
+  if (profile.preferences.visaSponsorshipRequired !== true) {
+    return { passed: true, reason: "Visa sponsorship is not marked as required." };
+  }
+  const text = searchableJobText(job);
+  if (textContainsAny(text, [
+    "no visa sponsorship",
+    "unable to sponsor",
+    "cannot sponsor",
+    "will not sponsor",
+    "sponsorship is not available",
+    "must be authorized to work",
+    "must have work authorization",
+    "without sponsorship"
+  ])) {
+    return { passed: false, reason: "Job explicitly says visa sponsorship or work authorization support is not available." };
+  }
+  return { passed: true, reason: "No explicit no-sponsorship blocker was found." };
+}
+
+function shiftGate(job: JobRecord, profile: UserProfile): PreferenceGateResult {
+  if (!profile.searchSettings.standardHoursOnly && profile.searchSettings.askBeforeShifts.length === 0) {
+    return { passed: true, reason: "No shift preference is configured." };
+  }
+  const text = searchableJobText(job);
+  const detectedShift = detectNonStandardShift(text, profile.searchSettings.askBeforeShifts);
+  if (!detectedShift) return { passed: true, reason: "No non-standard shift signal was found." };
+  if (profile.searchSettings.standardHoursOnly) {
+    return { passed: false, reason: `Job mentions ${detectedShift} shift work, conflicting with standard-hours preference.` };
+  }
+  return { passed: true, reason: `Job mentions ${detectedShift} shift work, which should be reviewed before application.` };
+}
+
+function travelGate(job: JobRecord, profile: UserProfile): PreferenceGateResult {
+  const maxTravel = profile.preferences.maxTravelPercent;
+  if (typeof maxTravel !== "number" || !Number.isFinite(maxTravel)) {
+    return { passed: true, reason: "No travel limit is configured." };
+  }
+  const travelPercent = inferTravelPercent(searchableJobText(job));
+  if (typeof travelPercent !== "number") {
+    return { passed: true, reason: "Travel requirement is unknown." };
+  }
+  return travelPercent <= maxTravel
+    ? { passed: true, reason: `Travel requirement ${travelPercent}% is within configured limit ${maxTravel}%.` }
+    : { passed: false, reason: `Travel requirement ${travelPercent}% exceeds configured limit ${maxTravel}%.` };
+}
+
+function timezoneGate(job: JobRecord, profile: UserProfile): PreferenceGateResult {
+  const preferred = profile.preferences.preferredTimezones.map(normalizeTimezoneTerm).filter(Boolean);
+  if (preferred.length === 0) return { passed: true, reason: "No timezone preference is configured." };
+  const found = detectTimezoneTerms(searchableJobText(job));
+  if (found.length === 0) return { passed: true, reason: "No explicit timezone requirement was found." };
+  const matched = found.some((timezone) => preferred.includes(timezone));
+  return matched
+    ? { passed: true, reason: "Timezone requirement matches a preferred timezone." }
+    : { passed: false, reason: `Job mentions timezone requirement (${found.join(", ")}) outside preferred timezone(s).` };
+}
+
+function portalMatches(job: JobRecord, terms: readonly string[]): boolean {
+  const text = searchableSourceText(job);
+  return terms.some((term) => textContainsPhrase(text, term));
+}
+
+function searchableJobText(job: JobRecord): string {
+  return `${job.company} ${job.title} ${job.description} ${job.location ?? ""} ${job.source.name} ${job.source.url ?? ""} ${job.url}`;
+}
+
+function searchableSourceText(job: JobRecord): string {
+  return `${job.source.id} ${job.source.name} ${job.source.url ?? ""} ${job.url}`;
+}
+
+function textContainsPhrase(text: string, phrase: string): boolean {
+  const normalizedPhrase = normalizeText(phrase);
+  return Boolean(normalizedPhrase) && normalizeText(text).includes(normalizedPhrase);
+}
+
+function textContainsAny(text: string, phrases: string[]): boolean {
+  return phrases.some((phrase) => textContainsPhrase(text, phrase));
+}
+
+function findFraudSignal(text: string, terms: readonly string[]): string | undefined {
+  return terms.find((term) => fraudTermMatches(text, term));
+}
+
+function fraudTermMatches(text: string, term: string): boolean {
+  const normalizedTerm = normalizeText(term);
+  if (!normalizedTerm) return false;
+  const normalizedText = normalizeText(text);
+  if (normalizedTerm === "deposit") {
+    return /\b(pay|payment|fee|registration|training|security|refundable|required|before)\b.{0,40}\bdeposit\b/.test(normalizedText) ||
+      /\bdeposit\b.{0,40}\b(pay|payment|fee|registration|training|security|refundable|required|before)\b/.test(normalizedText);
+  }
+  if (normalizedTerm === "payment required") {
+    return /\b(payment|required|pay|fee)\b.{0,40}\b(payment|required|pay|fee)\b/.test(normalizedText);
+  }
+  return normalizedText.includes(normalizedTerm);
+}
+
+function detectNonStandardShift(text: string, configuredAskBefore: readonly string[]): string | undefined {
+  const normalized = normalizeText(text);
+  const candidates = [
+    ...configuredAskBefore.map(normalizeText),
+    "night shift",
+    "rotational shift",
+    "rotating shift",
+    "weekend shift",
+    "graveyard shift",
+    "us shift",
+    "uk shift"
+  ].filter(Boolean);
+  return candidates.find((candidate) => normalized.includes(candidate));
+}
+
+function inferTravelPercent(text: string): number | undefined {
+  const normalized = text.toLowerCase().replace(/\s+/g, " ");
+  const percentMatches = [...normalized.matchAll(/\b(?:up to|upto|about|around|approximately)?\s*(\d{1,3})\s*percent\s+travel\b/g)];
+  const symbolMatches = [...normalized.matchAll(/\b(?:up to|upto|about|around|approximately)?\s*(\d{1,3})\s*%\s+travel\b/g)];
+  const values = [...percentMatches, ...symbolMatches]
+    .map((match) => Number(match[1]))
+    .filter((value) => Number.isFinite(value) && value >= 0 && value <= 100);
+  return values.length > 0 ? Math.max(...values) : undefined;
+}
+
+function detectTimezoneTerms(text: string): string[] {
+  const normalized = normalizeText(text);
+  const tokens = tokenSet(normalized);
+  const timezoneContext = /\b(timezone|time zone|working hours|overlap)\b/.test(normalized);
+  const detected = TIMEZONE_TERMS.filter((timezone) =>
+    timezone.length <= 4
+      ? tokens.has(timezone)
+      : normalized.includes(timezone)
+  );
+  return timezoneContext || detected.length > 0 ? [...new Set(detected)] : [];
+}
+
+function normalizeTimezoneTerm(value: string): string {
+  return normalizeText(value).replace(/\btime\b/g, "").replace(/\s+/g, " ").trim();
+}
+
+function formatMoney(value: number, currency?: string): string {
+  return `${currency?.trim() ? `${currency.trim()} ` : ""}${value}`;
+}
+
 function formatExperienceRange(range: ExperienceRange): string {
   if (typeof range.min === "number" && typeof range.max === "number") return `${range.min}-${range.max} years`;
   if (typeof range.min === "number") return `${range.min}+ years`;
@@ -1022,6 +1252,31 @@ const COUNTRY_LOCATION_ALIASES: Record<string, string[]> = {
     "dl"
   ]
 };
+
+const TIMEZONE_TERMS = [
+  "ist",
+  "india standard",
+  "gmt",
+  "utc",
+  "est",
+  "eastern",
+  "pst",
+  "pacific",
+  "cst",
+  "central",
+  "mst",
+  "mountain",
+  "cet",
+  "cest",
+  "bst",
+  "sgt",
+  "aest",
+  "aedt",
+  "us hours",
+  "uk hours",
+  "europe hours",
+  "apac hours"
+];
 
 function locationMatchesCountry(location: string, country: string): boolean {
   const aliases = countryAliases(country);

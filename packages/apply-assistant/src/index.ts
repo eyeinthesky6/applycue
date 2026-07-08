@@ -36,13 +36,17 @@ export function createApplicationDraft(
   cvVariant?: CvVariant
 ): ApplicationDraft {
   const cvNeedsReview = Boolean(cvVariant && cvVariant.reconciliationStatus !== "passed");
+  const policyPauseReasons = applicationPolicyPauseReasons(job, profile);
   const draft: ApplicationDraft = {
     jobId: job.id,
     answers: [],
-    submitRequiresApproval: profile.applySettings.mode === "review" || cvNeedsReview,
-    canAutoSubmit: profile.applySettings.mode !== "review" && !cvNeedsReview,
+    submitRequiresApproval: profile.applySettings.mode === "review" || cvNeedsReview || policyPauseReasons.length > 0,
+    canAutoSubmit: profile.applySettings.mode !== "review" && !cvNeedsReview && policyPauseReasons.length === 0,
     applyMode: profile.applySettings.mode,
-    pauseReasons: cvNeedsReview ? ["unsupported_cv_claim"] : []
+    pauseReasons: [
+      ...(cvNeedsReview ? ["unsupported_cv_claim" as const] : []),
+      ...policyPauseReasons
+    ]
   };
 
   if (cvVariant) draft.cvVariantId = cvVariant.id;
@@ -188,6 +192,49 @@ function addPreferenceApplicationAnswers(draft: ApplicationDraft, profile: UserP
       sourceRef: prefs.targetCompensation ? "preferences.targetCompensation" : "preferences.minimumCompensation"
     });
   }
+}
+
+function applicationPolicyPauseReasons(job: JobRecord, profile: UserProfile): PauseReason[] {
+  const reasons: PauseReason[] = [];
+  const sourceText = `${job.source.id} ${job.source.name} ${job.source.url ?? ""} ${job.url}`;
+  const fullText = `${sourceText} ${job.company} ${job.title} ${job.description}`;
+
+  if (profile.sourceSettings.fraudSignalTerms.some((term) => fraudTermMatches(fullText, term))) {
+    reasons.push("fraud_signal");
+  }
+  if (profile.sourceSettings.blockedPortals.some((term) => textContainsPhrase(sourceText, term))) {
+    reasons.push("unknown_portal");
+  }
+
+  const trusted = profile.sourceSettings.trustedPortals.some((term) => textContainsPhrase(sourceText, term));
+  const askBefore = profile.sourceSettings.askBeforePortals.some((term) => textContainsPhrase(sourceText, term));
+  if (!trusted && (askBefore || profile.sourceSettings.defaultPortalApplyPolicy === "ask")) {
+    reasons.push("unknown_portal");
+  }
+  return [...new Set(reasons)];
+}
+
+function textContainsPhrase(text: string, phrase: string): boolean {
+  const normalizedPhrase = normalizeComparable(phrase);
+  return Boolean(normalizedPhrase) && normalizeComparable(text).includes(normalizedPhrase);
+}
+
+function fraudTermMatches(text: string, term: string): boolean {
+  const normalizedTerm = normalizeComparable(term);
+  if (!normalizedTerm) return false;
+  const normalizedText = normalizeComparable(text);
+  if (normalizedTerm === "deposit") {
+    return /\b(pay|payment|fee|registration|training|security|refundable|required|before)\b.{0,40}\bdeposit\b/.test(normalizedText) ||
+      /\bdeposit\b.{0,40}\b(pay|payment|fee|registration|training|security|refundable|required|before)\b/.test(normalizedText);
+  }
+  if (normalizedTerm === "payment required") {
+    return /\b(payment|required|pay|fee)\b.{0,40}\b(payment|required|pay|fee)\b/.test(normalizedText);
+  }
+  return normalizedText.includes(normalizedTerm);
+}
+
+function normalizeComparable(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
 function formatCompensation(value: number | undefined, currency: string | undefined): string | undefined {

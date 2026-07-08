@@ -597,6 +597,37 @@ ApplyCue stores the normal job-search parameters an agent needs:
 - mode: review, daily, or push
 - match range: tight, normal, or wide
 
+## Preference Enforcement
+
+ApplyCue applies preference rules in layers:
+
+```text
+source plan -> source-quality filter -> hard gates -> CV reconciliation -> browser submit policy
+```
+
+Hard blockers now include:
+
+- disallowed source kinds from `applySettings.allowedSourceKinds`
+- blocked companies, current company, and past employers when not allowed
+- no-go role terms, excluded industries, and excluded keywords
+- wrong role family
+- unacceptable work mode or `remoteOnly` conflict
+- unacceptable seniority, including inferred title level and approved company-level overrides
+- unacceptable known experience range
+- unacceptable employment type
+- unacceptable company stage
+- work authorization conflicts from known location
+- explicit no-sponsorship language when visa sponsorship is required
+- known compensation max below `preferences.minimumCompensation`
+- blocked portals
+- configured fraud signals
+- default portal policy `block` when the portal is not trusted
+- explicit non-standard shift conflict when `standardHoursOnly` is true
+- explicit travel percent above `maxTravelPercent`
+- explicit timezone requirement outside `preferredTimezones`
+
+Unknown data is not guessed into a hard blocker. If compensation, travel, shift, sponsorship, or timezone is missing from the JD/source, the role can still proceed to ranking or browser preflight. Browser submit still pauses on unknown or ask-before portals unless the source is trusted.
+
 ## What Does Not Live In Config
 
 - passwords

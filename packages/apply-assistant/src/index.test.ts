@@ -101,6 +101,28 @@ describe("createApplicationDraft", () => {
     expect(answers.get("expected_salary")?.aliases).toContain("What is your desired salary?");
     expect(answers.has("current_salary")).toBe(false);
   });
+
+  it("pauses submit for untrusted portals when default portal policy asks first", () => {
+    const profile = sampleProfile();
+    profile.sourceSettings.defaultPortalApplyPolicy = "ask";
+
+    const draft = createApplicationDraft(sampleJob(), profile, sampleCvVariant("passed"));
+
+    expect(draft.canAutoSubmit).toBe(false);
+    expect(draft.submitRequiresApproval).toBe(true);
+    expect(draft.pauseReasons).toContain("unknown_portal");
+  });
+
+  it("allows trusted portals to avoid the unknown portal pause", () => {
+    const profile = sampleProfile();
+    profile.sourceSettings.defaultPortalApplyPolicy = "ask";
+    profile.sourceSettings.trustedPortals = ["example.com"];
+
+    const draft = createApplicationDraft(sampleJob(), profile, sampleCvVariant("passed"));
+
+    expect(draft.canAutoSubmit).toBe(true);
+    expect(draft.pauseReasons).not.toContain("unknown_portal");
+  });
 });
 
 function sampleProfile(): UserProfile {
@@ -148,7 +170,7 @@ function sampleProfile(): UserProfile {
     },
     sourceSettings: {
       allowLoggedInBrowserAccess: false,
-      defaultPortalApplyPolicy: "ask",
+      defaultPortalApplyPolicy: "allow",
       trustedPortals: [],
       askBeforePortals: [],
       blockedPortals: [],
