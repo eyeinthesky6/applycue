@@ -382,8 +382,8 @@ Current UAT layer:
 - ApplyCue dry-runs every generated browser plan against a local form contract.
 - Review-mode receipts should pause before submit after filling fields and uploading the generated DOCX.
 - These local receipts prove the plan contract and policy gate, not real portal compatibility.
-- `pnpm browser-uat` can also run the latest generated plan through a safe local HTML form and Playwright-style adapter. It proves the adapter can open, inspect, fill, upload the DOCX, and pause before submit when the browser tool is installed. If the browser tool is missing, it writes a skipped report instead of blocking normal UAT. `setup-applycue` should verify or install that optional tool for the agent.
-- `pnpm browser-live-preflight` is the next gate. It opens a real application URL, snapshots visible fields and page text, runs ApplyCue preflight, and writes a report without filling, uploading, or submitting.
+- `pnpm applycue:browser-uat` can also run the latest generated plan through a safe local HTML form and Playwright-style adapter. It proves the adapter can open, inspect, fill, upload the DOCX, and pause before submit when the browser tool is installed. If the browser tool is missing, it writes a skipped report instead of blocking normal UAT. `pnpm applycue:setup` should verify or install that optional tool for the agent.
+- `pnpm applycue:browser-live-preflight` is the next gate. It opens a real application URL, snapshots visible fields and page text, runs ApplyCue preflight, and writes a report without filling, uploading, or submitting.
 - Real portal execution should come later through Playwright, Stagehand, Browser Use, or connector/browser control behind the same ApplyCue policy gates.
 - Browser/page tools should feed posting text and visible apply controls into the ApplyCue liveness verifier before CV work. They should not scrape and apply through side paths that bypass `JobRecord.liveState`.
 

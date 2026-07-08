@@ -4,7 +4,7 @@ Date: 2026-07-06
 
 ## Decision
 
-ApplyCue is not usable just because `pnpm first-build` writes files.
+ApplyCue is not usable just because `pnpm applycue:first-build` writes files.
 
 The first local usable state means a user or agent can run one command and immediately answer:
 
@@ -24,7 +24,7 @@ The first local usable state means a user or agent can run one command and immed
 The first usable command is:
 
 ```powershell
-pnpm first-build
+pnpm applycue:first-build
 ```
 
 It should:
@@ -94,8 +94,8 @@ Those come after the local run is reviewable and trustworthy.
 
 Before saying "usable":
 
-- `pnpm check` passes
-- `pnpm first-build` passes
+- `pnpm applycue:check` passes
+- `pnpm applycue:first-build` passes
 - dashboard is generated under the active output root
 - dashboard shows prepared job details and links
 - run manifest records generated files

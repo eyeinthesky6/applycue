@@ -149,26 +149,26 @@ Do not edit env files unless the user explicitly asks.
 Use this loop for normal development:
 
 ```powershell
-pnpm check
-pnpm uat
-pnpm browser-uat
-pnpm browser-live-preflight
-pnpm first-build
+pnpm applycue:check
+pnpm applycue:uat
+pnpm applycue:browser-uat
+pnpm applycue:browser-live-preflight
+pnpm applycue:first-build
 ```
 
-`pnpm check` runs typecheck and tests.
+`pnpm applycue:check` runs typecheck and tests.
 
-`pnpm uat` runs the local product gate, including CV completeness, truth reconciliation, browser-plan dry-runs, dashboard, and chat summary checks.
+`pnpm applycue:uat` runs the local product gate, including CV completeness, truth reconciliation, browser-plan dry-runs, dashboard, and chat summary checks.
 
-`pnpm browser-uat` runs the optional safe local browser proof when the browser tool is installed. It opens a fake application form under the user store, fills planned fields, uploads the generated DOCX, and pauses before submit.
+`pnpm applycue:browser-uat` runs the optional safe local browser proof when the browser tool is installed. It opens a fake application form under the user store, fills planned fields, uploads the generated DOCX, and pauses before submit.
 
-`pnpm browser-live-preflight` opens one real application page from a generated browser plan, snapshots visible fields and page text, runs ApplyCue preflight, writes a report, writes chat-ready answer prompts, writes a local answer review page, and stops before filling or uploading anything.
+`pnpm applycue:browser-live-preflight` opens one real application page from a generated browser plan, snapshots visible fields and page text, runs ApplyCue preflight, writes a report, writes chat-ready answer prompts, writes a local answer review page, and stops before filling or uploading anything.
 
-`pnpm browser-live-apply` runs only after a current passing live preflight for the same prepared browser plan. By default it creates a review-mode execution copy, fills planned fields, uploads the generated DOCX, writes a receipt/report, refreshes progress, and pauses before final submit. It refuses missing, stale, paused, failed, or mismatched live preflight evidence. Use `--allow-submit` only when the plan itself allows submit and the user policy explicitly allows it.
+`pnpm applycue:browser-live-apply` runs only after a current passing live preflight for the same prepared browser plan. By default it creates a review-mode execution copy, fills planned fields, uploads the generated DOCX, writes a receipt/report, refreshes progress, and pauses before final submit. It refuses missing, stale, paused, failed, or mismatched live preflight evidence. Use `--allow-submit` only when the plan itself allows submit and the user policy explicitly allows it.
 
 When a live apply run is explicitly allowed to submit and captures a submitted receipt, ApplyCue records the `submitted` outcome in the user store automatically and refreshes the dashboard/summary. Do not run `record-outcome` again for that same submission.
 
-`pnpm first-build` runs the current configured batch:
+`pnpm applycue:first-build` runs the current configured batch:
 
 - external user profile if present
 - dev local config if present
@@ -255,8 +255,8 @@ If the count is huge or source quality is noisy, tighten title/source filters be
 To approve generated suggestions, use:
 
 ```powershell
-pnpm approve-sources -- --dry-run --ids <suggestion-id>
-pnpm approve-sources -- --ids <suggestion-id>
+pnpm applycue:approve-sources -- --dry-run --ids <suggestion-id>
+pnpm applycue:approve-sources -- --ids <suggestion-id>
 ```
 
 This reads the generated plan and writes accepted sources into the editable profile config. It must not modify the generated source-plan file.
@@ -311,15 +311,15 @@ Never submit when reconciliation, source trust, or user policy fails.
 For a safe local browser proof, use:
 
 ```powershell
-pnpm browser-uat
+pnpm applycue:browser-uat
 ```
 
-This command creates a local fake application form under the active user store, opens it through the Playwright adapter when Playwright is installed, fills planned fields, uploads the generated DOCX, and pauses before submit. If the browser tool is missing, it writes a skipped report instead of breaking normal UAT. `setup-applycue` should install or verify this optional tool for the agent; the user should not be asked to install it manually.
+This command creates a local fake application form under the active user store, opens it through the Playwright adapter when Playwright is installed, fills planned fields, uploads the generated DOCX, and pauses before submit. `pnpm applycue:setup` should install or verify this optional tool for the agent; the user should not be asked to install it manually.
 
 Before filling a real portal form, use:
 
 ```powershell
-pnpm browser-live-preflight
+pnpm applycue:browser-live-preflight
 ```
 
 This opens and inspects a real application URL from a generated browser plan, writes the page snapshot, preflight report, and answer prompts under the user store, and does not fill fields, upload files, or submit. A `pause` result is not a failure; it means the agent needs to review company/role match, liveness, required fields, or sensitive questions before continuing.
@@ -341,15 +341,15 @@ Ask the user the Markdown questions in chat, then save only explicitly approved 
 If the user approves a reusable form answer after a preflight pause, save it with:
 
 ```powershell
-pnpm approve-answers -- --dry-run --field notice_period --value "30 days" --alias "What is your notice period?"
-pnpm approve-answers -- --field notice_period --value "30 days" --alias "What is your notice period?"
+pnpm applycue:approve-answers -- --dry-run --field notice_period --value "30 days" --alias "What is your notice period?"
+pnpm applycue:approve-answers -- --field notice_period --value "30 days" --alias "What is your notice period?"
 ```
 
 For multiple live-preflight answers, prefer approving values directly from the latest live template:
 
 ```powershell
-pnpm approve-answers -- --from-live --set notice_period="30 days" --set expected_salary="INR 7500000" --dry-run
-pnpm approve-answers -- --from-live --set notice_period="30 days" --set expected_salary="INR 7500000"
+pnpm applycue:approve-answers -- --from-live --set notice_period="30 days" --set expected_salary="INR 7500000" --dry-run
+pnpm applycue:approve-answers -- --from-live --set notice_period="30 days" --set expected_salary="INR 7500000"
 ```
 
 Only include `--set field=value` pairs the user explicitly approved for reuse. This reads the generated live template for aliases and source refs without hand-editing generated JSON.
@@ -357,8 +357,8 @@ Only include `--set field=value` pairs the user explicitly approved for reuse. T
 Use the generated approval template as a fallback when the answer set is too large for a single command:
 
 ```powershell
-pnpm approve-answers -- --from-file "~/.applycue/profiles/default/outputs/live-preflight/live-answer-approval-template.json" --dry-run
-pnpm approve-answers -- --from-file "~/.applycue/profiles/default/outputs/live-preflight/live-answer-approval-template.json"
+pnpm applycue:approve-answers -- --from-file "~/.applycue/profiles/default/outputs/live-preflight/live-answer-approval-template.json" --dry-run
+pnpm applycue:approve-answers -- --from-file "~/.applycue/profiles/default/outputs/live-preflight/live-answer-approval-template.json"
 ```
 
 Only fill values and set `approveForReuse: true` after explicit user approval. One-off answers in the template are for form review only and must not be saved as reusable answers.
@@ -368,7 +368,7 @@ This writes approved answers into editable user config. It must not edit generat
 After live preflight returns `PASS`, continue with:
 
 ```powershell
-pnpm browser-live-apply
+pnpm applycue:browser-live-apply
 ```
 
 This fills planned fields, uploads the generated DOCX, writes `outputs/browser-receipts/<plan>-receipt.json`, and pauses before submit by default. Do not run it against a real portal unless the user has approved applying to that role. Do not submit unless reconciliation, source trust, and the user's apply settings all allow it.
@@ -391,7 +391,7 @@ Outcome events live in the user store:
 Record outcomes through the product command:
 
 ```powershell
-pnpm record-outcome -- --application <application-id> --type reply --note "Recruiter replied"
+pnpm applycue:record-outcome -- --application <application-id> --type reply --note "Recruiter replied"
 ```
 
 Submitted outcomes from controlled live browser submit are recorded automatically from the receipt. Use `record-outcome` for confirmations, replies, interviews, offers, rejections, withdrawals, or manual corrections.
@@ -419,8 +419,8 @@ This is where discovery, shortlisting, CV generation, drafts, manifests, dashboa
 - Store real user data in the user store.
 - Add examples with fake data only.
 - Add or update tests with behavior changes.
-- Run `pnpm check`.
-- Run `pnpm first-build` when changing the local pipeline.
+- Run `pnpm applycue:check`.
+- Run `pnpm applycue:first-build` when changing the local pipeline.
 - Keep generated outputs reproducible from config, assets, jobs, and code.
 - Keep backend ordering signals hidden unless explicitly asked.
 - Treat unknown portals and unsupported CV claims as pause conditions.
@@ -521,8 +521,8 @@ Pause and inspect:
 
 ```powershell
 rg "term" packages docs
-pnpm check
-pnpm first-build
+pnpm applycue:check
+pnpm applycue:first-build
 ```
 
 If a choice affects user data, storage, truth, or submission policy, prefer a small documented contract change over an ad hoc shortcut.

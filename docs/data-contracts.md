@@ -148,7 +148,7 @@ Each event records:
 Agents should record events through the product command:
 
 ```powershell
-pnpm record-outcome -- --application <application-id> --type reply --note "Recruiter replied"
+pnpm applycue:record-outcome -- --application <application-id> --type reply --note "Recruiter replied"
 ```
 
 Do not store outcome events in the source repo. Do not edit source code to record one user's reply, rejection, interview, or offer.

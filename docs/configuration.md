@@ -16,7 +16,7 @@ For a real user, the agent should create a private local config outside the repo
 ~/.applycue/profiles/default/applycue.json
 ```
 
-`pnpm first-build` uses that external user config when it exists. If it does not exist, the command falls back to development-only `config/applycue.local.json`, then to the sample fixture.
+`pnpm applycue:first-build` uses that external user config when it exists. If it does not exist, the command falls back to development-only `config/applycue.local.json`, then to the sample fixture.
 
 Do not put secrets in config files. Account access should use approved connectors, local browser sessions, or a secure secret store later.
 
@@ -294,15 +294,15 @@ Agents should not hand-edit the generated source-plan file.
 Use the product command to accept generated suggestions into editable config:
 
 ```powershell
-pnpm approve-sources -- --dry-run --ids <suggestion-id>
-pnpm approve-sources -- --ids <suggestion-id>
+pnpm applycue:approve-sources -- --dry-run --ids <suggestion-id>
+pnpm applycue:approve-sources -- --ids <suggestion-id>
 ```
 
 For explicit bulk approval:
 
 ```powershell
-pnpm approve-sources -- --dry-run --all
-pnpm approve-sources -- --all
+pnpm applycue:approve-sources -- --dry-run --all
+pnpm applycue:approve-sources -- --all
 ```
 
 What the command does:
@@ -533,15 +533,15 @@ Rules:
 Agents should save approved answers through the product command, not by hand-editing JSON:
 
 ```powershell
-pnpm approve-answers -- --dry-run --field notice_period --value "30 days" --alias "What is your notice period?"
-pnpm approve-answers -- --field notice_period --value "30 days" --alias "What is your notice period?"
+pnpm applycue:approve-answers -- --dry-run --field notice_period --value "30 days" --alias "What is your notice period?"
+pnpm applycue:approve-answers -- --field notice_period --value "30 days" --alias "What is your notice period?"
 ```
 
 When live preflight asks several questions, prefer the direct live-template command after the user explicitly approves reusable answers:
 
 ```powershell
-pnpm approve-answers -- --from-live --set notice_period="30 days" --set expected_salary="INR 7500000" --dry-run
-pnpm approve-answers -- --from-live --set notice_period="30 days" --set expected_salary="INR 7500000"
+pnpm applycue:approve-answers -- --from-live --set notice_period="30 days" --set expected_salary="INR 7500000" --dry-run
+pnpm applycue:approve-answers -- --from-live --set notice_period="30 days" --set expected_salary="INR 7500000"
 ```
 
 Only include `--set field=value` pairs the user approved for reuse. The command reads the latest `outputs/live-preflight/live-answer-approval-template.json`, keeps aliases and source refs, and does not edit the generated template.
@@ -549,8 +549,8 @@ Only include `--set field=value` pairs the user approved for reuse. The command 
 The file-based route remains available when the agent needs to review or prepare many answers offline:
 
 ```powershell
-pnpm approve-answers -- --from-file "~/.applycue/profiles/default/outputs/live-preflight/live-answer-approval-template.json" --dry-run
-pnpm approve-answers -- --from-file "~/.applycue/profiles/default/outputs/live-preflight/live-answer-approval-template.json"
+pnpm applycue:approve-answers -- --from-file "~/.applycue/profiles/default/outputs/live-preflight/live-answer-approval-template.json" --dry-run
+pnpm applycue:approve-answers -- --from-file "~/.applycue/profiles/default/outputs/live-preflight/live-answer-approval-template.json"
 ```
 
 The command only saves reusable template rows with a non-empty value and `approveForReuse: true`. One-off answers are ignored for reusable config.
@@ -558,7 +558,7 @@ The command only saves reusable template rows with a non-empty value and `approv
 Use `--replace` only when the user explicitly changes a previously approved answer:
 
 ```powershell
-pnpm approve-answers -- --replace --field notice_period --value "45 days" --alias "When can you join?"
+pnpm applycue:approve-answers -- --replace --field notice_period --value "45 days" --alias "When can you join?"
 ```
 
 ApplyCue can also derive safe answers from explicit preferences:

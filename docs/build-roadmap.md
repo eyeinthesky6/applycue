@@ -208,16 +208,16 @@ Current implementation status:
 - Local browser-plan dry-run execution is part of UAT and writes receipts under `outputs/browser-receipts/`.
 - Browser apply preflight now runs before fill/upload/submit in the browser-agent dry-run path. It fails closed postings, pauses company/role mismatches, pauses unclear liveness, pauses sensitive required fields, and pauses required fields the current plan cannot answer.
 - Browser apply preflight now treats a single noisy secondary job-title node as weak evidence when the browser title or top-of-page text clearly matches the planned role. This avoids false pauses on real job pages that also render related jobs or alert widgets, while still pausing when the page title/body point to a different role.
-- Browser page snapshots can now be checked through `pnpm browser-preflight -- --plan <browser-plan.json> --snapshot <page-snapshot.json>`, giving agents a real Chrome handoff without putting Playwright inside the core engine yet.
+- Browser page snapshots can now be checked through `pnpm applycue:browser-preflight -- --plan <browser-plan.json> --snapshot <page-snapshot.json>`, giving agents a real Chrome handoff without putting Playwright inside the core engine yet.
 - `apps/browser-agent` now exposes a browser execution kernel: generated plan + browser page snapshot + browser controller -> preflight -> fill/upload/pause/submit -> receipt. Chrome, Playwright, Stagehand, or other adapters should plug into that controller interface instead of bypassing ApplyCue policy.
 - `apps/browser-agent` also exposes `createPlaywrightBrowserApplyController`, a small Playwright-style page adapter that can inspect the visible page, fill standard fields, upload the generated DOCX, submit only when the plan allows it, and capture a receipt. It is duck-typed so Playwright stays an adapter, not an engine dependency.
-- `pnpm browser-uat` now runs an optional safe local browser proof. It selects a generated browser plan, creates a fake application form under the active user store, forces a review-mode copy of the plan, opens it through the Playwright adapter when the browser tool is installed, fills fields, uploads the DOCX, writes a receipt/report, and pauses before submit. If the browser tool is not installed, it writes a skipped report instead of failing normal UAT.
-- `setup-applycue` now reports browser tool status and can verify/install the Playwright Chromium runtime for agent-driven UAT. This follows the base workflow's useful browser-proof pattern without making browser control the source of truth.
-- `pnpm browser-live-preflight` now opens a real application page from a generated browser plan, captures a page snapshot, runs ApplyCue preflight, writes a report, and stops before fill/upload/submit. This is the first live-portal compatibility gate before controlled application execution.
-- `pnpm browser-live-apply` now gives agents the next controlled execution step after a current passing live preflight. It refuses missing/stale/non-passing preflight evidence, resolves the generated DOCX from the user store, creates a review-mode execution copy by default, fills planned fields, uploads the generated CV, writes a live apply report and browser receipt, refreshes progress, and pauses before final submit.
+- `pnpm applycue:browser-uat` now runs an optional safe local browser proof. It selects a generated browser plan, creates a fake application form under the active user store, forces a review-mode copy of the plan, opens it through the Playwright adapter when the browser tool is installed, fills fields, uploads the DOCX, writes a receipt/report, and pauses before submit. If the browser tool is not installed, it writes a skipped report instead of failing normal UAT.
+- `pnpm applycue:setup` now reports browser tool status and can verify/install the Playwright Chromium runtime for agent-driven UAT. This follows the base workflow's useful browser-proof pattern without making browser control the source of truth.
+- `pnpm applycue:browser-live-preflight` now opens a real application page from a generated browser plan, captures a page snapshot, runs ApplyCue preflight, writes a report, and stops before fill/upload/submit. This is the first live-portal compatibility gate before controlled application execution.
+- `pnpm applycue:browser-live-apply` now gives agents the next controlled execution step after a current passing live preflight. It refuses missing/stale/non-passing preflight evidence, resolves the generated DOCX from the user store, creates a review-mode execution copy by default, fills planned fields, uploads the generated CV, writes a live apply report and browser receipt, refreshes progress, and pauses before final submit.
 - Reusable approved application answers now live on the profile as `applicationAnswers`. Drafts consume them through the engine, preference-derived notice period and expected salary answers are added only when explicitly configured, and browser preflight treats sensitive required fields as clear only when the plan already has a matching approved answer.
 - Public profile links from setup, such as LinkedIn, GitHub, portfolio, and personal website, are also turned into application answers with common form-label aliases. The agent should collect these once during setup instead of asking again on every form.
-- `pnpm approve-answers` now gives agents the approval route after live preflight pauses. It supports dry-run, aliases for visible form labels, duplicate checks, explicit replacement, direct `--from-live --set field=value` approval from the latest live template, and writes only to editable user config.
+- `pnpm applycue:approve-answers` now gives agents the approval route after live preflight pauses. It supports dry-run, aliases for visible form labels, duplicate checks, explicit replacement, direct `--from-live --set field=value` approval from the latest live template, and writes only to editable user config.
 - Live preflight now writes `live-answer-approval-template.json` as fallback evidence and generates a direct approval command in `live-answer-prompts.md`. Agents can save explicitly approved reusable values without editing generated JSON. One-off answers remain out of reusable config.
 - Live preflight now writes `live-answer-prompts.json`, `live-answer-prompts.md`, and `live-answer-prompts.html`, so the agent can ask clean chat questions, the user can inspect a polished local review page, and approved reusable answers can be saved without dumping raw form diagnostics on the user.
 - Live preflight also refreshes the main dashboard and chat summary with the current portal status, answer prompt counts, review links, and next action. The dashboard must not say the run has no pending questions when the latest live portal preflight is paused on unanswered form fields.
@@ -245,8 +245,8 @@ Later learning:
 
 Current implementation status:
 
-- Outcome events can be recorded into the user store with `pnpm record-outcome`.
-- A successful `pnpm browser-live-apply --allow-submit` run now records a `submitted` outcome event automatically from the captured browser receipt. Review-mode pauses still do not create submission outcomes.
+- Outcome events can be recorded into the user store with `pnpm applycue:record-outcome`.
+- A successful `pnpm applycue:browser-live-apply --allow-submit` run now records a `submitted` outcome event automatically from the captured browser receipt. Review-mode pauses still do not create submission outcomes.
 - The engine reads `data/local/outcomes.jsonl` during local runs.
 - Run manifests, dashboard HTML, and chat summaries include Source Learning:
   - applications with source context
@@ -336,7 +336,7 @@ Manual import remains available, but it is not the primary discovery path. Keep 
 The generated source plan and approval route are now in place:
 
 ```text
-source-plan.generated.json -> pnpm approve-sources -> editable applycue.json source config
+source-plan.generated.json -> pnpm applycue:approve-sources -> editable applycue.json source config
 ```
 
 base workflow parity improvement now in place:
@@ -408,10 +408,10 @@ The first real UAT exposed the base workflow gap clearly: broad job-board discov
 Current UAT evidence:
 
 ```text
-1135 discovered jobs -> 18 source-quality kept -> 3 CVs -> 3 application drafts -> 3 browser plans -> 0 blocked reconciliations -> 3 browser dry-run receipts
+1130 discovered jobs -> 24 source-quality kept -> 5 CVs -> 5 application drafts -> 5 browser plans -> 0 blocked reconciliations -> 5 browser dry-run receipts
 ```
 
-The latest local UAT still warns on batch volume: 3 prepared of 5 configured per day. That warning is correct. The remaining kept jobs are mostly Senior Product Manager/Product Manager roles or roles outside saved location/work-authorization policy, while the user profile currently accepts director, VP, C-level, and founder seniority. Do not fake-fill the queue by weakening hard blockers. The next volume path is better source coverage or explicit user approval to relax saved preferences.
+The latest local UAT now fills the configured daily review batch: 5 prepared of 5 configured per day. The remaining problem is source noise, not volume: only 24 of 1130 discovered jobs survived source-quality filtering. Do not fake quality by weakening hard blockers. The next path is real portal UAT on the prepared queue, tighter source queries where the funnel is noisy, and explicit user approval before relaxing saved preferences.
 
 Funnel health guidance now accompanies every run:
 
@@ -454,7 +454,7 @@ applications + scan history + outcome events -> source learning -> dashboard and
 fetched/kept/filtered jobs + outcomes -> source scorecards -> future source budget choices
 ```
 
-The base workflow analyzes tracker/report outcomes to find patterns. ApplyCue now keeps the first version in structured contracts: outcome events live in `data/local/outcomes.jsonl`, the engine records them through `pnpm record-outcome`, and each run summarizes which sources are producing replies, interviews, offers, or rejections. This should later influence source weights and search expansion, but it does not expose raw scores as the product UI.
+The base workflow analyzes tracker/report outcomes to find patterns. ApplyCue now keeps the first version in structured contracts: outcome events live in `data/local/outcomes.jsonl`, the engine records them through `pnpm applycue:record-outcome`, and each run summarizes which sources are producing replies, interviews, offers, or rejections. This should later influence source weights and search expansion, but it does not expose raw scores as the product UI.
 
 Source scorecards now add the missing upstream view: fetched jobs, kept jobs, filtered jobs, prepared applications, precision, yield, and positive outcomes by source. Use this for backend source allocation and agent diagnostics, not as a user-facing worth score.
 
@@ -464,13 +464,11 @@ UAT now enforces this as a rendered-CV completeness and parity gate. Agents shou
 
 UAT must warn when a run prepares fewer applications than `applicationsPerDay`. That is not a CV or truth failure, but it is a source supply / match-width issue that the agent should address by approving more sources, widening search, or asking the user for permission to relax preferences.
 
-Next discovery work should make approved non-company sources useful:
+Next discovery work should make approved non-company and browser-backed sources useful:
 
-- reverse public ATS directory discovery
 - browser-visible extraction for approved logged-in sources
-- source quality tracking from outcomes
-- The Muse no-key public jobs API adapter
 - Crawl4AI adapter for public pages with no API
+- key-required APIs only with user-owned credentials
 
 Build order:
 
@@ -503,7 +501,7 @@ See `docs/prebuilt-providers-and-libraries.md`.
 
 Build the agent-first path:
 
-1. `setup-applycue` skill flow:
+1. ApplyCue setup skill flow, backed by `pnpm applycue:setup`:
    - verify local repo/package
    - install optional tools into `~/.applycue/tools/`
    - create profile folders
@@ -534,23 +532,23 @@ Build the agent-first path:
    - rendered CV completeness passes, so generated CVs are full CVs rather than extracts
    - local browser-plan dry-run receipts are created for every prepared application
    - browser apply preflight passes before fill/upload/submit actions
-   - optional `pnpm browser-uat` either passes with a local browser receipt or skips clearly because the optional browser tool is not installed
-   - `pnpm browser-live-preflight` has opened at least one real portal page and either passed or paused with clear reasons before any fill/upload
-   - `pnpm browser-live-apply` is available after a current passing preflight and defaults to fill/upload/pause with a receipt, not final submit
+   - optional `pnpm applycue:browser-uat` either passes with a local browser receipt or skips clearly because the optional browser tool is not installed
+   - `pnpm applycue:browser-live-preflight` has opened at least one real portal page and either passed or paused with clear reasons before any fill/upload
+   - `pnpm applycue:browser-live-apply` is available after a current passing preflight and defaults to fill/upload/pause with a receipt, not final submit
 
 Normal-user UAT fails if the user has to manually run `pnpm`, install JobSpy, edit JSON, or understand where files live.
 
 Status update:
 
 ```text
-pnpm status -> profile/config/run/UAT/dashboard/summary/source-quality checkpoint -> agent handoff -> agent next action
+pnpm applycue:status -> profile/config/run/UAT/dashboard/summary/source-quality checkpoint -> agent handoff -> agent next action
 ```
 
 This is the first agent-first usability bridge: agents can start from one checkpoint instead of manually inspecting output folders. It follows the base workflow's useful doctor/tracker pattern without making base workflow the runtime base.
 
 Current implementation status:
 
-- `pnpm status` is read-only.
+- `pnpm applycue:status` is read-only.
 - It reports setup health, latest UAT, latest run, source quality, scan history, source learning, dashboard, and summary paths.
 - It now includes an Agent handoff block with:
   - command-center routes for the agent's exact next repo command

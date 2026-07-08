@@ -198,7 +198,7 @@ applycue setup
 For repo development this can be:
 
 ```powershell
-pnpm setup-applycue
+pnpm applycue:setup
 ```
 
 But that command is for the agent, not the user.
@@ -221,7 +221,7 @@ Setup should:
 The agent should use one command to prove the local loop is ready for user testing:
 
 ```powershell
-pnpm uat
+pnpm applycue:uat
 ```
 
 This command:
@@ -263,7 +263,7 @@ For review-mode runs, browser dry-run receipts should normally be `paused`, not 
 The agent should start every ApplyCue session with:
 
 ```powershell
-pnpm status
+pnpm applycue:status
 ```
 
 This is a read-only checkpoint for the agent. It reports:
@@ -281,11 +281,11 @@ If live preflight has paused or failed, the next safe action must point to the l
 
 If a later batch no longer prepares the same job or browser plan, the old live preflight report is stale. Show it only as past evidence. Do not ask those old form questions, do not use them as the next action, and do not block the current prepared queue with them. Rerun live preflight for one of the current prepared browser plans before filling a real portal.
 
-If live preflight passes for the current prepared browser plan, the next safe action is `pnpm browser-live-apply`. The agent runs it from chat. By default it fills known fields, uploads the generated DOCX, writes a receipt, refreshes progress, and pauses before final submit. The user should hear the plain result, not the command.
+If live preflight passes for the current prepared browser plan, the next safe action is `pnpm applycue:browser-live-apply`. The agent runs it from chat. By default it fills known fields, uploads the generated DOCX, writes a receipt, refreshes progress, and pauses before final submit. The user should hear the plain result, not the command.
 
 Use the Agent command center like the base workflow's useful router pattern, but keep it agent-only. The user should hear the outcome in chat, not be asked to run those commands.
 
-When live answer prompts exist, use the `Copy This To Chat` section from `outputs/live-preflight/live-answer-prompts.md` as the user-facing message. It should name the company, role, and page before asking questions. After the user answers, save only explicitly approved reusable values with `pnpm approve-answers -- --from-live --set field=value --dry-run`, then rerun without `--dry-run`. Use the detailed prompt records to choose field names and inspect one-off fields. The JSON approval template is fallback evidence, not the normal editing path.
+When live answer prompts exist, use the `Copy This To Chat` section from `outputs/live-preflight/live-answer-prompts.md` as the user-facing message. It should name the company, role, and page before asking questions. After the user answers, save only explicitly approved reusable values with `pnpm applycue:approve-answers -- --from-live --set field=value --dry-run`, then rerun without `--dry-run`. Use the detailed prompt records to choose field names and inspect one-off fields. The JSON approval template is fallback evidence, not the normal editing path.
 
 Use it like the base workflow's useful doctor/tracker habit, but keep it ApplyCue-owned and chat-first. The user should hear the plain outcome, not the command.
 
@@ -317,7 +317,7 @@ Snapshot shape:
 Then run:
 
 ```powershell
-pnpm browser-preflight -- --plan <browser-plan.json> --snapshot <page-snapshot.json>
+pnpm applycue:browser-preflight -- --plan <browser-plan.json> --snapshot <page-snapshot.json>
 ```
 
 This command does not fill or submit the form. It only checks the real page against the generated browser plan. Continue to browser fill only when it returns `PASS`. Pause if it reports a closed posting, company/role mismatch, sensitive required field, unclear liveness, or a required field ApplyCue cannot answer.
