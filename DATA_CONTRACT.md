@@ -1,10 +1,28 @@
-# Data Contract
+# ApplyCue Data Contract
 
-This document defines which files belong to the **system** (auto-updatable) and which belong to the **user** (never touched by updates).
+This document defines which files belong to the **system** and which belong to the **user**.
+
+ApplyCue is currently a fork of career-ops. During the transition, the career-ops-compatible user layer still works inside this checkout. New ApplyCue engine outputs should prefer the external profile store:
+
+`~/.applycue/profiles/<profile>/`
+
+That keeps real user assets, generated CVs, run manifests, browser receipts, and outcomes outside the product repo.
 
 ## User Layer (NEVER auto-updated)
 
 These files contain your personal data, customizations, and work product. Updates will NEVER modify them.
+
+Preferred ApplyCue profile-store files:
+
+| File | Purpose |
+|------|---------|
+| `~/.applycue/profiles/<profile>/applycue.json` | User profile, preferences, search policy, and apply policy |
+| `~/.applycue/profiles/<profile>/assets/` | Base CVs, profile images, and imported user documents |
+| `~/.applycue/profiles/<profile>/outputs/` | Generated CVs, application drafts, browser plans, receipts, UAT reports, and dashboards |
+| `~/.applycue/profiles/<profile>/sources/` | User-approved, agent-suggested, and system-generated source plans |
+| `~/.applycue/profiles/<profile>/outcomes/` | Replies, interviews, offers, rejections, and learning notes |
+
+Career-ops-compatible repo-local files:
 
 | File | Purpose |
 |------|---------|

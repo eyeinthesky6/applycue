@@ -1,9 +1,25 @@
 {
-  "name": "career-ops",
-  "version": "1.15.0",
-  "description": "AI-powered job search pipeline — works with any AI coding CLI (Claude Code, OpenCode, Gemini, Codex, Qwen)",
+  "name": "applycue",
+  "version": "0.1.0",
+  "description": "ApplyCue: an agent-led CV-to-offer pipeline, forked from career-ops.",
   "private": true,
+  "packageManager": "pnpm@11.7.0",
   "scripts": {
+    "applycue:build": "tsc -b",
+    "applycue:check": "pnpm applycue:typecheck && pnpm applycue:test",
+    "applycue:approve-answers": "pnpm applycue:build && node apps/worker/dist/index.js approve-answers",
+    "applycue:approve-sources": "pnpm applycue:build && node apps/worker/dist/index.js approve-sources",
+    "applycue:browser-live-apply": "pnpm applycue:build && node apps/worker/dist/index.js browser-live-apply",
+    "applycue:browser-live-preflight": "pnpm applycue:build && node apps/worker/dist/index.js browser-live-preflight",
+    "applycue:browser-preflight": "pnpm applycue:build && node apps/worker/dist/index.js browser-preflight",
+    "applycue:browser-uat": "pnpm applycue:build && node apps/worker/dist/index.js browser-uat",
+    "applycue:first-build": "pnpm applycue:build && node apps/worker/dist/index.js",
+    "applycue:record-outcome": "pnpm applycue:build && node apps/worker/dist/index.js record-outcome",
+    "applycue:setup": "pnpm applycue:build && node apps/worker/dist/index.js setup",
+    "applycue:status": "pnpm applycue:build && node apps/worker/dist/index.js status",
+    "applycue:typecheck": "tsc -b",
+    "applycue:test": "vitest run --passWithNoTests",
+    "applycue:uat": "pnpm applycue:build && node apps/worker/dist/index.js uat",
     "doctor": "node doctor.mjs",
     "or": "node openrouter-runner.mjs",
     "or:scan": "node openrouter-runner.mjs scan",
@@ -40,8 +56,10 @@
     "postinstall": "npx playwright install chromium --with-deps || npx playwright install chromium --with-deps"
   },
   "keywords": [
+    "applycue",
     "ai",
     "job-search",
+    "cv-to-offer",
     "claude-code",
     "opencode",
     "career",
@@ -49,11 +67,11 @@
     "careerops",
     "automation"
   ],
-  "author": "Santiago Fernández de Valderrama <hi@santifer.io> (https://santifer.io)",
-  "homepage": "https://santifer.io",
+  "author": "ApplyCue contributors",
+  "homepage": "https://github.com/eyeinthesky6/applycue",
   "repository": {
     "type": "git",
-    "url": "https://github.com/santifer/career-ops"
+    "url": "https://github.com/eyeinthesky6/applycue"
   },
   "license": "MIT",
   "dependencies": {
@@ -61,5 +79,10 @@
     "dotenv": "^17.0.0",
     "js-yaml": "^4.1.1",
     "playwright": "1.61.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.0.0"
   }
 }

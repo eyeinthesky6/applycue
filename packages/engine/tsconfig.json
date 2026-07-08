@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
+  },
+  "references": [
+    { "path": "../core" },
+    { "path": "../profile" },
+    { "path": "../discovery" },
+    { "path": "../normalizer" },
+    { "path": "../ranker" },
+    { "path": "../cv-tailor" },
+    { "path": "../apply-assistant" },
+    { "path": "../tracker" }
+  ],
+  "include": ["src/**/*.ts"]
+}

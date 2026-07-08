@@ -1,12 +1,14 @@
-# Career-Ops -- AI Job Search Pipeline
+# ApplyCue -- CV-to-Offer Agent
 
 ## Origin
 
-This system was built and used by [santifer](https://santifer.io) to evaluate 740+ job offers, generate 100+ tailored CVs, and land a Head of Applied AI role. The archetypes, scoring logic, negotiation scripts, and proof point structure all reflect his specific career search in AI/automation roles.
+ApplyCue is forked from [career-ops](https://github.com/santifer/career-ops), which is MIT licensed. Keep the upstream attribution intact. The inherited career-ops system was built and used by [santifer](https://santifer.io) to evaluate 740+ job offers, generate 100+ tailored CVs, and land a Head of Applied AI role.
 
-The portfolio that goes with this system is also open source: [cv-santiago](https://github.com/santifer/cv-santiago).
+ApplyCue's direction is broader and more agent-led: from a user's CV, preferences, source access, and feedback, the agent should discover roles, prepare truthful role-specific CVs, drive browser applications under policy, and track outcomes until interviews and offers.
 
-**It will work out of the box, but it's designed to be made yours.** If the archetypes don't match your career, the modes are in the wrong language, or the scoring doesn't fit your priorities -- just ask. You (AI Agent) can edit the user's files. The user says "change the archetypes to data engineering roles" and you do it. That's the whole point.
+Core invariant: ApplyCue exists so agents can help a user get a job from the thousands of roles posted every day. It is not trying to become a generic job board, search engine, or "Google for jobs." If an agent can do a fuzzy task better by reading the CV, JD, preferences, and feedback, do not build complex code for that task. Code should enforce contracts, safety, truth, storage, source adapters, browser policy, and repeatable outputs.
+
+**It should work by chat.** If the archetypes don't match the user's career, the modes are in the wrong language, or the scoring doesn't fit their priorities, the agent updates user-layer files. The user says "target VP Product and AI platform roles in India/Singapore/remote" and the agent changes configuration, not source code.
 
 ## Data Contract (CRITICAL)
 
@@ -21,6 +23,8 @@ There are two layers. Read `DATA_CONTRACT.md` for the full list.
 - `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, `OPENCODE.md`, `*.mjs` scripts, `dashboard/*`, `templates/*`, `batch/*`
 
 **THE RULE: When the user asks to customize anything (archetypes, narrative, negotiation scripts, proof points, location policy, comp targets), ALWAYS write to `modes/_profile.md` or `config/profile.yml`. NEVER edit `modes/_shared.md` for user-specific content.** This ensures system updates don't overwrite their customizations.
+
+ApplyCue-specific rule: do not hand-edit generated CVs for one application. Fix the user facts, proof bank, renderer, mode instructions, or generator config so future applications benefit too.
 
 ## Source-of-Truth Boundary (CRITICAL)
 
@@ -37,7 +41,7 @@ User-facing content (CV, cover letters, form answers, recruiter outreach, applic
 Anything not in this list is **out of scope for content generation**, including:
 
 - Auto-memory at `~/.claude/projects/.../memory/` — see scope clarification below
-- Any directory outside the career-ops project — for example, parent-directory repos containing the user's product code, sibling project directories, or other unrelated codebases on the same machine
+- Any directory outside this ApplyCue checkout — for example, parent-directory repos containing the user's product code, sibling project directories, or other unrelated codebases on the same machine
 - Cross-session inferences about the user's work that have not been written into one of the in-scope files
 - Knowledge from other Claude Code projects on the same machine
 
@@ -62,7 +66,11 @@ Rules belong in files the harness reads automatically — `CLAUDE.md`, `CODEX.md
 
 ## Update Check
 
-On the first message of each session, run the update checker silently:
+Do **not** run the inherited upstream updater automatically in the ApplyCue fork. `update-system.mjs` still points at career-ops behavior and can overwrite fork-owned system files if used casually.
+
+If the user explicitly asks to check upstream career-ops updates, first explain that this is a fork merge decision. Then inspect the diff from upstream and merge selectively.
+
+The old career-ops flow was:
 
 ```bash
 node update-system.mjs check
@@ -77,18 +85,17 @@ Parse the JSON output:
 - `{"status": "offline"}` → say nothing
 - `{"status": "no-remote-version"}` → say nothing (checker reached GitHub but neither VERSION nor the latest release tag parsed as semver — treat as a silent non-failure, same as offline)
 
-The user can also say "check for updates" or "update career-ops" at any time to force a check.
-To rollback: `node update-system.mjs rollback`
+Keep that as reference only until ApplyCue has a fork-aware updater.
 
-## What is career-ops
+## What is ApplyCue
 
-AI-powered, CLI-agnostic job search automation: pipeline tracking, offer evaluation, CV generation, portal scanning, batch processing. Runs on any AI coding CLI that follows the [open agent skill standard](https://agentskills.io) (Claude Code, Codex, OpenCode, Qwen, Copilot, Kimi, Antigravity CLI, Grok Build CLI). Legacy Gemini API evaluation remains available through `gemini-eval.mjs`.
+AI-powered, CLI-agnostic job search automation: source discovery, pipeline tracking, offer evaluation, truthful CV generation, browser-apply planning, portal scanning, batch processing, and outcome learning. Runs on any AI coding CLI that follows the [open agent skill standard](https://agentskills.io) (Claude Code, Codex, OpenCode, Qwen, Copilot, Kimi, Antigravity CLI, Grok Build CLI). Legacy Gemini API evaluation remains available through `gemini-eval.mjs`.
 
 ### Codex invocation
 
 - **Interactive Codex:** run `codex` in the repo root. Slash commands are not guaranteed in Codex, so ask Codex to run the requested mode directly if `/career-ops` is unavailable.
 - **Headless Codex:** use `codex exec "prompt"` for one-shot workers.
-- **Examples:** `Run career-ops scan mode`, `Run career-ops pipeline mode for data/pipeline.md`, `Run career-ops pdf mode`, `Run career-ops tracker mode`, `Evaluate this JD with career-ops auto-pipeline: https://company.com/jobs/123`
+- **Examples:** `Run ApplyCue scan mode`, `Run ApplyCue pipeline mode for data/pipeline.md`, `Run ApplyCue pdf mode`, `Run ApplyCue tracker mode`, `Evaluate this JD with ApplyCue auto-pipeline: https://company.com/jobs/123`
 
 ### Main Files
 
