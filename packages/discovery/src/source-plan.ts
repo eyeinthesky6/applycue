@@ -359,7 +359,9 @@ function buildAtsSearchSuggestions(
         priority: provider.priority - index * 0.015,
         provider: provider.provider,
         query: `${provider.siteQuery} ${quotedTerms([query, input.location]).join(" ")}`,
-        reason: `${provider.reason} Query variant comes from the generated search profile.`
+        reason: `${provider.reason} Query variant comes from the generated search profile. Use this to find concrete company board URLs before adding company sources.`,
+        requiresBrowser: true,
+        requiresLogin: false
       })
     )
   );

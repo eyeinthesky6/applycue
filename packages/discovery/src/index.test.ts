@@ -249,6 +249,7 @@ describe("createSourcePlan", () => {
       "ashby"
     ]);
     expect(plan.suggestions.some((source) => source.provider === "greenhouse" && source.query?.includes("Head of Product fintech"))).toBe(true);
+    expect(plan.suggestions.find((source) => source.provider === "greenhouse")?.requiresBrowser).toBe(true);
     expect(plan.suggestions.some((source) => source.provider === "jobspy")).toBe(true);
     expect(plan.suggestions.filter((source) => source.provider === "jobspy")).toHaveLength(10);
     expect(plan.suggestions.find((source) => source.provider === "jobspy")?.options?.siteNames).toEqual(["indeed", "google", "naukri"]);
@@ -1818,7 +1819,7 @@ describe("discoverJobsFromJobBoards", () => {
     const fetchJson: FetchJson = async (url, options) => {
       calls.push(url);
       expect(options?.redirect).toBe("error");
-      if (url === "https://www.themuse.com/api/public/jobs?page=0") {
+      if (url === "https://www.themuse.com/api/public/jobs?page=0&keyword=product") {
         return {
           page_count: 2,
           results: [
@@ -1842,7 +1843,7 @@ describe("discoverJobsFromJobBoards", () => {
           ]
         };
       }
-      expect(url).toBe("https://www.themuse.com/api/public/jobs?page=1");
+      expect(url).toBe("https://www.themuse.com/api/public/jobs?page=1&keyword=product");
       return {
         page_count: 2,
         results: [
@@ -1861,6 +1862,7 @@ describe("discoverJobsFromJobBoards", () => {
         id: "themuse-product",
         label: "The Muse product",
         provider: "themuse",
+        query: "product",
         options: {
           limit: 2,
           pageLimit: 2
@@ -1870,8 +1872,8 @@ describe("discoverJobsFromJobBoards", () => {
     );
 
     expect(calls).toEqual([
-      "https://www.themuse.com/api/public/jobs?page=0",
-      "https://www.themuse.com/api/public/jobs?page=1"
+      "https://www.themuse.com/api/public/jobs?page=0&keyword=product",
+      "https://www.themuse.com/api/public/jobs?page=1&keyword=product"
     ]);
     expect(jobs).toHaveLength(1);
     expect(jobs[0]?.source.name).toContain("themuse");

@@ -261,6 +261,8 @@ pnpm applycue:approve-sources -- --ids <suggestion-id>
 
 This reads the generated plan and writes accepted sources into the editable profile config. It must not modify the generated source-plan file.
 
+Public ATS query suggestions are leads for browser/search work unless they include a concrete company board URL. Do not treat a `site:...` query as an executable source adapter. Confirm a real careers/ATS URL before adding `sources.companyPages`, or approve executable no-login providers such as `ats_directory`, JobSpy, Remotive, The Muse, or remote-board adapters.
+
 ### Hard Gates And Shortlisting
 
 Use:
@@ -293,6 +295,8 @@ docs/cv-engine-architecture.md
 The agent must call the engine. It must not hand-edit generated CVs.
 
 The CV engine maps JD requirements to approved facts and proof items before rendering. Direct support can shape the generated CV. Adjacent support becomes `needs_confirmation` for required requirements and pauses that candidate until the user confirms it. Unsupported requirements block the CV for that job.
+
+Prepared applications write normalized JD Markdown under `outputs/jds/`. Use those files as the source JD input for agent review, CV/JD checks, and browser preflight context. Do not paste one-off JD text into source code or hand-edit generated CVs for a single application.
 
 Do not bypass this by editing Markdown/DOCX output. If a user wants to claim a new role, industry, skill, location, metric, or career pivot, record it as an approved fact or target base CV update first, then regenerate.
 

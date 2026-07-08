@@ -328,6 +328,8 @@ Currently executable `sources.searches` providers:
 
 - `ats_directory`
 
+Provider-specific public ATS search suggestions such as Greenhouse, Lever, Workday, and SmartRecruiters are research leads unless they include a concrete company board URL. Approving those suggestions routes them to browser/search source config for the agent. To make them executable, confirm the actual careers/ATS URL and add it to `sources.companyPages`, or use the executable `ats_directory` source.
+
 ## Job Board Sources
 
 Use `sources.jobBoards` for approved job-board searches.

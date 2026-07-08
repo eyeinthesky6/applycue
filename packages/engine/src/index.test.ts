@@ -32,6 +32,8 @@ describe("runSampleBatch", () => {
     expect(result.progressItems[0]?.cvHtmlPath).toContain("outputs/cvs/");
     expect(result.progressItems[0]?.cvHtmlPath).toContain(".html");
     expect(result.progressItems[0]?.cvPath).toContain("outputs/cvs/");
+    expect(result.progressItems[0]?.jdPath).toContain("outputs/jds/");
+    expect(result.progressItems[0]?.jdPath).toContain(".md");
     expect(result.browserPlans[0]?.cvPath).toContain(".docx");
     expect(result.progressItems[0]?.reconciliationPath).toContain("outputs/reconciliation/");
     expect(result.cvVariants.every((variant) => variant.formatMode === "standard_ats_v1")).toBe(true);
@@ -40,6 +42,7 @@ describe("runSampleBatch", () => {
     expect(result.manifest.generatedFiles.some((file) => file.path === "outputs/dashboard/latest.html")).toBe(true);
     expect(result.manifest.generatedFiles.some((file) => file.kind === "cv_docx")).toBe(true);
     expect(result.manifest.generatedFiles.some((file) => file.kind === "cv_html")).toBe(true);
+    expect(result.manifest.generatedFiles.some((file) => file.kind === "job_description_markdown")).toBe(true);
     expect(result.manifest.generatedFiles.some((file) => file.kind === "browser_plan_json")).toBe(true);
     expect(result.manifest.generatedFiles.some((file) => file.kind === "source_plan_json")).toBe(true);
     expect(result.manifest.generatedFiles.some((file) => file.kind === "run_summary_markdown")).toBe(true);
@@ -1798,9 +1801,7 @@ Lead product strategy and automation.
         loggedInBrowserSources?: Array<Record<string, unknown>>;
       };
     };
-    expect(updatedConfig.sources.searches).toHaveLength(1);
-    expect(updatedConfig.sources.searches?.[0]?.sourceSuggestionId).toBe(greenhouse?.id);
-    expect(updatedConfig.sources.searches?.[0]?.origin).toBe("system_generated");
+    expect(updatedConfig.sources.searches ?? []).toHaveLength(0);
     expect(updatedConfig.sources.jobBoards).toHaveLength(1);
     expect(updatedConfig.sources.jobBoards?.[0]?.sourceSuggestionId).toBe(jobSpy?.id);
     expect(updatedConfig.sources.jobBoards?.[0]?.provider).toBe("jobspy");
@@ -1809,8 +1810,11 @@ Lead product strategy and automation.
       "google",
       "naukri"
     ]);
-    expect(updatedConfig.sources.loggedInBrowserSources).toHaveLength(1);
-    expect(updatedConfig.sources.loggedInBrowserSources?.[0]?.sourceSuggestionId).toBe(linkedIn?.id);
+    expect(updatedConfig.sources.loggedInBrowserSources).toHaveLength(2);
+    expect(updatedConfig.sources.loggedInBrowserSources?.map((source) => source.sourceSuggestionId)).toEqual(
+      expect.arrayContaining([greenhouse?.id, linkedIn?.id])
+    );
+    expect(updatedConfig.sources.loggedInBrowserSources?.[0]?.origin).toBe("system_generated");
 
     const secondRun = await approveSourceSuggestions({
       workspaceRoot,

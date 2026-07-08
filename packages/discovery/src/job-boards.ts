@@ -191,7 +191,7 @@ export async function discoverTheMuseJobs(source: JobBoardSourceConfig, fetchJso
   const pageLimit = sourcePageLimit(source, 5);
   let pageCount = 1;
   for (let page = 0; page < pageCount && page < pageLimit && rows.length < limit; page += 1) {
-    const payload = await fetchJson(buildTheMuseUrl(page), { redirect: "error" });
+    const payload = await fetchJson(buildTheMuseUrl(source, page), { redirect: "error" });
     const results = asArray(asRecord(payload).results);
     rows.push(...results);
     const reportedPageCount = numberValue(asRecord(payload).page_count);
@@ -402,9 +402,10 @@ function toHimalayasRawJob(job: unknown, source: JobBoardSourceConfig): RawJobIn
   };
 }
 
-function buildTheMuseUrl(page: number): string {
+function buildTheMuseUrl(source: JobBoardSourceConfig, page: number): string {
   const url = new URL(THEMUSE_API_URL);
   url.searchParams.set("page", String(Math.max(0, Math.floor(page))));
+  if (source.query?.trim()) url.searchParams.set("keyword", source.query.trim());
   return assertTheMuseUrl(url.toString(), "The Muse jobs API URL");
 }
 

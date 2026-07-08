@@ -164,6 +164,7 @@ MBA from Example Institute
     expect(await readFile(report.paths.markdownReport, "utf8")).toContain("Browser Apply Preflight");
     const dashboard = await readFile(report.paths.dashboard, "utf8");
     expect(dashboard).toContain("Receipt");
+    expect(dashboard).toContain("../jds/");
     expect(dashboard).toContain("Paused");
     expect(dashboard).toContain("outputs/browser-receipts/");
     const summary = await readFile(report.paths.summary, "utf8");
@@ -177,5 +178,11 @@ MBA from Example Institute
     const renderedCv = await readFile(path.join(cvDir, cvFile!), "utf8");
     expect(renderedCv).toContain("Alpha Bank");
     expect(renderedCv).toContain("Beta Pay");
+    const jdDir = path.join(profileDir, "outputs", "jds");
+    const jdFile = (await readdir(jdDir)).find((name) => name.endsWith(".md"));
+    expect(jdFile).toBeTruthy();
+    const renderedJd = await readFile(path.join(jdDir, jdFile!), "utf8");
+    expect(renderedJd).toContain("# UAT Fintech - Head of Product");
+    expect(renderedJd).toContain("Lead product strategy for fintech.");
   });
 });

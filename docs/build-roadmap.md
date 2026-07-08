@@ -398,6 +398,14 @@ the base workflow's useful lesson is that the CV artifact must be application-re
 
 The CV renderer also preserves base-CV career structure and suppresses near-duplicate bullets when proof-bank claims and base-CV bullets describe the same work. Generated CVs must remain full CVs with contact, summary, skills, employer sections, awards, and education when those facts exist.
 
+JD artifact parity improvement now in place:
+
+```text
+prepared application -> outputs/jds/<job-id>.md -> agent/CV review input
+```
+
+Every prepared application writes a normalized JD Markdown file with source metadata and the captured job description. Agents should use these JD files for review, CV/JD reconciliation checks, and browser preflight context instead of scraping the same page again or hand-copying descriptions into source code.
+
 base workflow parity / UAT volume improvement now in place:
 
 ```text

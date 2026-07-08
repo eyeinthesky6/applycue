@@ -564,6 +564,7 @@ export interface ProgressApplicationItem {
   cvHtmlPath?: string;
   cvVariantId?: ApplyCueId;
   cvPath?: string;
+  jdPath?: string;
   reconciliationPath?: string;
   reconciliationStatus?: ReconciliationReport["status"];
   canAutoSubmit: boolean;
@@ -863,6 +864,7 @@ export interface GeneratedFileManifest {
     | "cv_markdown"
     | "cv_html"
     | "dashboard_html"
+    | "job_description_markdown"
     | "reconciliation_json"
     | "run_manifest"
     | "run_summary_markdown"

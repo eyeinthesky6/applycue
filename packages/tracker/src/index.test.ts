@@ -35,6 +35,7 @@ describe("progress dashboard", () => {
           cvDocxPath: "outputs/cvs/example.docx",
           cvHtmlPath: "outputs/cvs/example.html",
           cvPath: "outputs/cvs/example.md",
+          jdPath: "outputs/jds/job-1.md",
           reconciliationPath: "outputs/reconciliation/example.json",
           reconciliationStatus: "passed",
           canAutoSubmit: false,
@@ -247,6 +248,7 @@ describe("progress dashboard", () => {
     expect(html).toContain("outputs/cvs/example.docx");
     expect(html).toContain("outputs/cvs/example.html");
     expect(html).toContain("outputs/cvs/example.md");
+    expect(html).toContain("../jds/job-1.md");
     expect(html).toContain("outputs/browser-plans/example-plan.json");
     expect(html).toContain("outputs/browser-receipts/example-receipt.json");
     expect(html).toContain("Passed");

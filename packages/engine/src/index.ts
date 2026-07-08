@@ -683,6 +683,7 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
     cvVariants,
     reconciliationReports,
     applications,
+    jobs,
     sourcePlan,
     []
   );
@@ -701,6 +702,7 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
     cvVariants,
     reconciliationReports,
     applications,
+    jobs,
     sourcePlan,
     browserPlans
   );
@@ -1222,6 +1224,7 @@ function buildGeneratedFileManifests(
   cvVariants: CvVariant[],
   reports: ReconciliationReport[],
   applications: ApplicationRecord[],
+  jobs: JobRecord[],
   sourcePlan: SourcePlan,
   browserPlans: BrowserApplyPlan[]
 ): GeneratedFileManifest[] {
@@ -1252,8 +1255,22 @@ function buildGeneratedFileManifests(
     kind: "reconciliation_json",
     path: `outputs/reconciliation/${report.id}.json`,
     sourceIds: [report.id, report.cvContentPlanId],
-      createdAt
-    }));
+    createdAt
+  }));
+  const jobsById = new Map(jobs.map((job) => [job.id, job]));
+  const jdFiles = applications.flatMap((application): GeneratedFileManifest[] => {
+    const job = jobsById.get(application.jobId);
+    if (!job) return [];
+    return [
+      {
+        id: `${application.id}-job-description-file`,
+        kind: "job_description_markdown",
+        path: jobDescriptionFilePath(job.id),
+        sourceIds: [application.id, job.id],
+        createdAt
+      }
+    ];
+  });
   const browserPlanFiles = browserPlans.map((plan): GeneratedFileManifest => ({
     id: `${plan.id}-json-file`,
     kind: "browser_plan_json",
@@ -1266,6 +1283,7 @@ function buildGeneratedFileManifests(
     ...cvDocxFiles,
     ...cvHtmlFiles,
     ...reportFiles,
+    ...jdFiles,
     ...browserPlanFiles,
     {
       id: `${sourcePlan.id}-source-plan-file`,
@@ -1296,6 +1314,59 @@ function buildGeneratedFileManifests(
       createdAt
     }
   ];
+}
+
+function jobDescriptionFilePath(jobId: string): string {
+  return `outputs/jds/${artifactFileSlug(jobId)}.md`;
+}
+
+function renderJobDescriptionMarkdown(job: JobRecord): string {
+  const metadata = [
+    ["company", job.company],
+    ["title", job.title],
+    ["url", job.url],
+    ["source", job.source.name],
+    ["sourceKind", job.source.kind],
+    ["location", job.location],
+    ["workMode", job.workMode],
+    ["seniority", job.seniority],
+    ["employmentType", job.employmentType],
+    ["liveState", job.liveState],
+    ["discoveredAt", job.discoveredAt]
+  ]
+    .filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].trim().length > 0)
+    .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
+    .join("\n");
+  const compensation = job.compensation ? formatCompensationForMarkdown(job.compensation) : "";
+  const description = job.description.trim() || "No job description text was available from the source.";
+  const sourceLine = job.source.url ? `- Source URL: ${job.source.url}` : "";
+
+  return `---\n${metadata}\n---\n\n# ${job.company} - ${job.title}\n\n## Source\n\n- Job URL: ${job.url}\n- Source: ${job.source.name} (${job.source.kind})\n${sourceLine ? `${sourceLine}\n` : ""}${job.location ? `- Location: ${job.location}\n` : ""}${compensation ? `- Compensation: ${compensation}\n` : ""}\n## Job Description\n\n${description}\n`;
+}
+
+function formatCompensationForMarkdown(compensation: NonNullable<JobRecord["compensation"]>): string {
+  const amount = [compensation.min, compensation.max]
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+    .map((value) => String(value))
+    .join(" - ");
+  const currency = compensation.currency ? `${compensation.currency} ` : "";
+  const period = compensation.period && compensation.period !== "unknown" ? ` / ${compensation.period}` : "";
+  return `${currency}${amount || "amount not specified"}${period}`.trim();
+}
+
+function artifactFileSlug(value: string): string {
+  const slug = value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "job";
+  const suffix = stableShortHash(value);
+  return `${slug.slice(0, 120).replace(/-$/g, "")}-${suffix}`;
+}
+
+function stableShortHash(value: string): string {
+  let hash = 0x811c9dc5;
+  for (const char of value) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36).padStart(7, "0").slice(0, 7);
 }
 
 function buildCvQualitySummary(
@@ -1372,6 +1443,7 @@ function buildProgressApplicationItems(input: {
     const cvPath = variant ? findGeneratedFilePath(input.files, "cv_markdown", variant.id) : undefined;
     const cvDocxPath = variant ? findGeneratedFilePath(input.files, "cv_docx", variant.id) : undefined;
     const cvHtmlPath = variant ? findGeneratedFilePath(input.files, "cv_html", variant.id) : undefined;
+    const jdPath = job ? findGeneratedFilePath(input.files, "job_description_markdown", job.id) : undefined;
     const reconciliationPath = report ? findGeneratedFilePath(input.files, "reconciliation_json", report.id) : undefined;
     const browserPlanPath = browserPlan ? findGeneratedFilePath(input.files, "browser_plan_json", browserPlan.id) : undefined;
 
@@ -1390,6 +1462,7 @@ function buildProgressApplicationItems(input: {
       ...(cvDocxPath ? { cvDocxPath } : {}),
       ...(cvHtmlPath ? { cvHtmlPath } : {}),
       ...(cvPath ? { cvPath } : {}),
+      ...(jdPath ? { jdPath } : {}),
       ...(reconciliationPath ? { reconciliationPath } : {}),
       ...(report ? { reconciliationStatus: report.status } : {})
     };
@@ -1470,6 +1543,7 @@ async function writeRunOutputs(
     mkdir(path.join(outputRoot, "outputs", "browser-plans"), { recursive: true }),
     mkdir(path.join(outputRoot, "outputs", "cvs"), { recursive: true }),
     mkdir(path.join(outputRoot, "outputs", "dashboard"), { recursive: true }),
+    mkdir(path.join(outputRoot, "outputs", "jds"), { recursive: true }),
     mkdir(path.join(outputRoot, "outputs", "reconciliation"), { recursive: true }),
     mkdir(path.join(outputRoot, "outputs", "runs"), { recursive: true })
   ]);
@@ -1523,6 +1597,20 @@ async function writeRunOutputs(
         "utf8"
       )
     )
+  );
+  const jobsById = new Map(result.jobs.map((job) => [job.id, job]));
+  await Promise.all(
+    result.applications.flatMap((application) => {
+      const job = jobsById.get(application.jobId);
+      if (!job) return [];
+      return [
+        writeFile(
+          path.join(outputRoot, jobDescriptionFilePath(job.id)),
+          renderJobDescriptionMarkdown(job),
+          "utf8"
+        )
+      ];
+    })
   );
   await Promise.all(
     result.browserPlans.map((plan) =>

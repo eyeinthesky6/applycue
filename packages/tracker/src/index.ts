@@ -1037,6 +1037,7 @@ function renderApplicationItem(item: ProgressApplicationItem): string {
   const cvDocxPath = renderArtifactLink(item.cvDocxPath, "Upload DOCX", "../cvs");
   const cvHtmlPath = renderArtifactLink(item.cvHtmlPath, "View CV", "../cvs");
   const cvPath = renderArtifactLink(item.cvPath, "Markdown", "../cvs");
+  const jdPath = renderArtifactLink(item.jdPath, "JD", "../jds");
   const reconciliationPath = renderArtifactLink(item.reconciliationPath, "Reconciliation", "../reconciliation");
   const browserPlanPath = renderArtifactLink(item.browserPlanPath, "Browser plan", "../browser-plans");
   const browserReceiptPath = renderArtifactLink(item.browserReceiptPath, "Receipt", "../browser-receipts");
@@ -1052,7 +1053,7 @@ function renderApplicationItem(item: ProgressApplicationItem): string {
       <span class="badge ${statusBadgeClass(reconciliationStatus)}">${escapeHtml(humanizeIdentifier(reconciliationStatus))}</span>
     </header>
     <p class="next-step">${escapeHtml(item.nextStep)}</p>
-    <div class="artifact-row">${cvDocxPath}${cvHtmlPath}${cvPath}${reconciliationPath}${browserPlanPath}${browserReceiptPath}</div>
+    <div class="artifact-row">${jdPath}${cvDocxPath}${cvHtmlPath}${cvPath}${reconciliationPath}${browserPlanPath}${browserReceiptPath}</div>
     <dl class="compact-grid">
       <div><dt>Auto-submit</dt><dd>${item.canAutoSubmit ? "Allowed" : "Not allowed"}</dd></div>
       <div><dt>Approval</dt><dd>${item.submitRequiresApproval ? "Required" : "Not required"}</dd></div>
