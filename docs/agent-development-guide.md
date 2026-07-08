@@ -166,6 +166,8 @@ pnpm first-build
 
 `pnpm browser-live-apply` runs only after a current passing live preflight for the same prepared browser plan. By default it creates a review-mode execution copy, fills planned fields, uploads the generated DOCX, writes a receipt/report, refreshes progress, and pauses before final submit. It refuses missing, stale, paused, failed, or mismatched live preflight evidence. Use `--allow-submit` only when the plan itself allows submit and the user policy explicitly allows it.
 
+When a live apply run is explicitly allowed to submit and captures a submitted receipt, ApplyCue records the `submitted` outcome in the user store automatically and refreshes the dashboard/summary. Do not run `record-outcome` again for that same submission.
+
 `pnpm first-build` runs the current configured batch:
 
 - external user profile if present
@@ -391,6 +393,8 @@ Record outcomes through the product command:
 ```powershell
 pnpm record-outcome -- --application <application-id> --type reply --note "Recruiter replied"
 ```
+
+Submitted outcomes from controlled live browser submit are recorded automatically from the receipt. Use `record-outcome` for confirmations, replies, interviews, offers, rejections, withdrawals, or manual corrections.
 
 The engine reads application records, scan history, and outcome events to produce Source Learning in the run manifest, dashboard, and chat summary. It also produces Source Scorecards from fetched, kept, filtered, prepared, and outcome data. Use these to decide which sources deserve more scan budget. Do not expose them as a candidate-worth score.
 

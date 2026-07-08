@@ -246,6 +246,7 @@ Later learning:
 Current implementation status:
 
 - Outcome events can be recorded into the user store with `pnpm record-outcome`.
+- A successful `pnpm browser-live-apply --allow-submit` run now records a `submitted` outcome event automatically from the captured browser receipt. Review-mode pauses still do not create submission outcomes.
 - The engine reads `data/local/outcomes.jsonl` during local runs.
 - Run manifests, dashboard HTML, and chat summaries include Source Learning:
   - applications with source context

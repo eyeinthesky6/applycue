@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import type { SampleBatchResult } from "@applycue/engine";
 import { runLiveBrowserApply } from "./live-apply.js";
 
 const tempDirs: string[] = [];
@@ -80,6 +81,40 @@ describe("live browser apply", () => {
     expect(report.status).toBe("fail");
     expect(report.checks.some((check) => check.id === "live-preflight-current" && check.status === "fail")).toBe(true);
     expect(events).toEqual([]);
+  });
+
+  it("records a submitted outcome after an allowed live submit", async () => {
+    const outputRoot = await tempOutputRoot();
+    await mkdir(path.join(outputRoot, "outputs", "dashboard"), { recursive: true });
+    await mkdir(path.join(outputRoot, "outputs", "runs"), { recursive: true });
+    await writeFile(path.join(outputRoot, "outputs", "cvs", "cv.docx"), "PK fake docx", "utf8");
+    await writePreflightReport(outputRoot, {
+      selectedPlanId: "example-live-plan",
+      selectedJobId: "job-1",
+      status: "pass"
+    });
+    const plan = sampleSubmitPlan();
+    const events: string[] = [];
+    const report = await runLiveBrowserApply({
+      allowSubmit: true,
+      batch: fullBatch(outputRoot, plan),
+      playwright: fakePlaywright(events, passSnapshot())
+    });
+
+    expect(report.status).toBe("pass");
+    expect(report.resultStatus).toBe("submitted");
+    expect(report.receiptStatus).toBe("submitted");
+    expect(report.paths.outcomes).toBe(path.join(outputRoot, "data", "local", "outcomes.jsonl"));
+    expect(report.checks.find((check) => check.id === "outcome-event")?.detail).toContain("Recorded submitted outcome");
+    expect(events.some((event) => event.startsWith("click:"))).toBe(true);
+
+    const outcomes = await readFile(path.join(outputRoot, "data", "local", "outcomes.jsonl"), "utf8");
+    expect(outcomes).toContain('"applicationId":"application-1"');
+    expect(outcomes).toContain('"type":"submitted"');
+    const summary = await readFile(path.join(outputRoot, "outputs", "runs", "latest-summary.md"), "utf8");
+    expect(summary).toContain("- Submitted or confirmed: 1");
+    expect(summary).toContain("- Monitor email for application confirmation or recruiter replies.");
+    expect(summary).not.toContain("Record the submission outcome");
   });
 });
 
@@ -173,6 +208,189 @@ function samplePlan(): BrowserApplyPlan {
     createdAt: "2026-07-06T00:00:00.000Z",
     cvVariantId: "cv-1",
     cvPath: "outputs/cvs/cv.docx"
+  };
+}
+
+function sampleSubmitPlan(): BrowserApplyPlan {
+  return {
+    ...samplePlan(),
+    applyMode: "daily",
+    canSubmit: true,
+    submitRequiresApproval: false,
+    pauseReasons: [],
+    actions: [
+      ...samplePlan().actions.filter((action) => action.type !== "pause"),
+      {
+        id: "job-1-submit",
+        type: "submit",
+        label: "Submit application",
+        requiresApproval: false
+      },
+      {
+        id: "job-1-capture-receipt",
+        type: "capture_receipt",
+        label: "Capture receipt",
+        requiresApproval: false
+      }
+    ]
+  };
+}
+
+function fullBatch(outputRoot: string, plan: BrowserApplyPlan): SampleBatchResult {
+  return {
+    applications: [{
+      id: "application-1",
+      jobId: "job-1",
+      status: "prepared",
+      cvVariantId: "cv-1",
+      notes: ["Prepared by test."],
+      createdAt: "2026-07-06T00:00:00.000Z",
+      updatedAt: "2026-07-06T00:00:00.000Z"
+    }],
+    browserPlans: [plan],
+    cvDocxs: [],
+    cvHtmls: [],
+    cvMarkdowns: [],
+    cvVariants: [],
+    drafts: [],
+    jobs: [{
+      id: "job-1",
+      source: {
+        id: "greenhouse-example",
+        kind: "ats",
+        name: "Greenhouse Example",
+        url: "https://boards.greenhouse.io/example/jobs/123"
+      },
+      company: "Example",
+      title: "Example Role",
+      url: "https://boards.greenhouse.io/example/jobs/123",
+      description: "Example is hiring for Example Role.",
+      workMode: "remote",
+      discoveredAt: "2026-07-06T00:00:00.000Z",
+      liveState: "live"
+    }],
+    jobDecisions: [],
+    manifest: {
+      id: "local-first-build",
+      kind: "daily_batch",
+      startedAt: "2026-07-06T00:00:00.000Z",
+      completedAt: "2026-07-06T00:00:00.000Z",
+      profileId: "profile-1",
+      jobIds: ["job-1"],
+      cvVariantIds: ["cv-1"],
+      applicationIds: ["application-1"],
+      generatedFiles: [],
+      sourceCodeWriteCount: 0,
+      notes: ["Test run."]
+    },
+    outputRoot,
+    pendingQuestions: [],
+    profile: {
+      id: "profile-1",
+      pastEmployers: [],
+      preferences: {
+        targetRoleTerms: ["product"],
+        adjacentRoleTerms: [],
+        targetIndustries: [],
+        excludedIndustries: [],
+        preferredLocations: [],
+        extraLocations: [],
+        askBeforeLocations: [],
+        acceptableWorkModes: ["remote"],
+        targetSeniorities: ["vp"],
+        acceptableSeniorities: ["vp"],
+        employmentTypes: ["full_time"],
+        companyStages: [],
+        preferredCompanyNames: [],
+        blockedCompanyNames: [],
+        noGoRoleTerms: [],
+        requiredKeywords: [],
+        niceToHaveKeywords: [],
+        excludedKeywords: [],
+        workAuthorizationCountries: [],
+        preferredTimezones: []
+      },
+      searchSettings: {
+        searchCountries: [],
+        searchAreas: [],
+        remoteRegions: [],
+        agentMayExpandSearchArea: false,
+        informUserOnSearchAreaChange: true,
+        standardHoursOnly: true,
+        preferredShifts: [],
+        askBeforeShifts: []
+      },
+      sourceSettings: {
+        allowLoggedInBrowserAccess: false,
+        defaultPortalApplyPolicy: "ask",
+        trustedPortals: [],
+        askBeforePortals: [],
+        blockedPortals: [],
+        fraudSignalTerms: []
+      },
+      applySettings: {
+        mode: "daily",
+        applicationsPerDay: 1,
+        minimumFitToApply: 0,
+        allowedSourceKinds: ["ats"],
+        messagePolicy: "draft_only",
+        pauseReasons: [],
+        trackEmailReplies: false,
+        allowRecruiterDmDrafts: false
+      },
+      matchSettings: {
+        range: "normal",
+        widenIfFewerThan: 1,
+        relaxOrder: [],
+        minimumFitFloor: 0,
+        allowAdjacentTitles: false,
+        allowAdjacentIndustries: false
+      },
+      proofBank: []
+    },
+    progressItems: [{
+      applicationId: "application-1",
+      jobId: "job-1",
+      company: "Example",
+      title: "Example Role",
+      status: "prepared",
+      browserPlanPath: "outputs/browser-plans/example-live-plan.json",
+      cvVariantId: "cv-1",
+      canAutoSubmit: true,
+      submitRequiresApproval: false,
+      pauseReasons: [],
+      nextStep: "Ready to submit under configured policy."
+    }],
+    reconciliationReports: [],
+    sourcePlan: {
+      id: "source-plan-1",
+      profileId: "profile-1",
+      generatedAt: "2026-07-06T00:00:00.000Z",
+      status: "generated_for_review",
+      generatedFrom: {
+        targetRoleTerms: ["product"],
+        targetIndustries: [],
+        preferredLocations: [],
+        extraLocations: [],
+        preferredCompanyNames: []
+      },
+      searchProfile: {
+        titleFilter: { positive: [], negative: [], seniorityBoost: [] },
+        locationFilter: { alwaysAllow: [], allow: [], askBefore: [], block: [] },
+        contentFilter: { required: [], positive: [], negative: [] },
+        sourceHints: {
+          preferredCompanies: [],
+          blockedCompanies: [],
+          trustedPortals: [],
+          askBeforePortals: [],
+          blockedPortals: [],
+          fraudSignalTerms: []
+        },
+        notes: []
+      },
+      suggestions: [],
+      notes: []
+    }
   };
 }
 

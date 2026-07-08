@@ -4,9 +4,10 @@ import {
   type BrowserPlanExecutionResult,
   type PlaywrightLikePage
 } from "@applycue/browser-agent";
-import type { ApplicationReceipt, BrowserApplyAction, BrowserApplyPlan } from "@applycue/core";
+import type { ApplicationReceipt, ApplicationRecord, BrowserApplyAction, BrowserApplyPlan, OutcomeEvent } from "@applycue/core";
 import { runLocalOrSampleBatch, writeProgressDashboardAndSummary, type SampleBatchResult } from "@applycue/engine";
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { buildSourceOutcomeSummary, parseOutcomeEventsJsonLines } from "@applycue/tracker";
+import { access, appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { LiveBrowserPreflightReport } from "./live-preflight.js";
 import type { SetupApplyCueOptions } from "./setup.js";
@@ -36,6 +37,7 @@ export interface LiveBrowserApplyReport {
   checks: LiveBrowserApplyCheck[];
   paths: {
     markdownReport: string;
+    outcomes?: string;
     plan: string;
     receipt: string;
     report: string;
@@ -570,29 +572,148 @@ async function writeLiveApplyReport(
   batch: Pick<SampleBatchResult, "browserPlans" | "outputRoot">,
   report: LiveBrowserApplyReport
 ): Promise<LiveBrowserApplyReport> {
-  await mkdir(path.dirname(report.paths.report), { recursive: true });
-  await mkdir(path.dirname(report.paths.receipt), { recursive: true });
-  await writeFile(report.paths.report, `${JSON.stringify(report, null, 2)}\n`, "utf8");
-  await writeFile(report.paths.markdownReport, renderMarkdownReport(report), "utf8");
+  let finalReport = report;
+  let progressBatch: SampleBatchResult | undefined;
   if (hasProgressBatchData(batch)) {
-    await writeProgressDashboardAndSummary(batch.outputRoot, withReceiptProgress(batch, report), {
-      nextActions: liveApplyNextActions(report),
-      notes: [`Live apply: ${report.summary}`]
+    const recordedOutcome = await recordSubmittedOutcomeIfNeeded(batch, report);
+    if (recordedOutcome) {
+      finalReport = withOutcomeCheck(report, recordedOutcome);
+    }
+    progressBatch = withReceiptProgress(batch, finalReport, recordedOutcome);
+  }
+
+  await mkdir(path.dirname(finalReport.paths.report), { recursive: true });
+  await mkdir(path.dirname(finalReport.paths.receipt), { recursive: true });
+  await writeFile(finalReport.paths.report, `${JSON.stringify(finalReport, null, 2)}\n`, "utf8");
+  await writeFile(finalReport.paths.markdownReport, renderMarkdownReport(finalReport), "utf8");
+  if (progressBatch) {
+    await writeProgressDashboardAndSummary(batch.outputRoot, progressBatch, {
+      nextActions: liveApplyNextActions(finalReport),
+      notes: [`Live apply: ${finalReport.summary}`]
     });
   }
-  return report;
+  return finalReport;
 }
 
-function withReceiptProgress(batch: SampleBatchResult, report: LiveBrowserApplyReport): SampleBatchResult {
+interface RecordedSubmittedOutcome {
+  alreadyRecorded: boolean;
+  check: LiveBrowserApplyCheck;
+  event?: OutcomeEvent;
+  events: OutcomeEvent[];
+  outcomesPath: string;
+}
+
+async function recordSubmittedOutcomeIfNeeded(
+  batch: SampleBatchResult,
+  report: LiveBrowserApplyReport
+): Promise<RecordedSubmittedOutcome | undefined> {
+  if (report.status !== "pass" || report.receiptStatus !== "submitted" || !report.selectedJobId) return undefined;
+  const application = findApplicationForReport(batch.applications, report);
+  if (!application) return undefined;
+
+  const outcomesPath = path.join(batch.outputRoot, "data", "local", "outcomes.jsonl");
+  const existingEvents = await readOutcomeEventsIfExists(outcomesPath);
+  const existingSubmitted = existingEvents.find((event) =>
+    event.applicationId === application.id && event.type === "submitted"
+  );
+  if (existingSubmitted) {
+    return {
+      alreadyRecorded: true,
+      check: {
+        id: "outcome-event",
+        label: "Outcome Event",
+        status: "pass",
+        detail: `Submission outcome was already recorded for ${application.id}.`
+      },
+      event: existingSubmitted,
+      events: existingEvents,
+      outcomesPath
+    };
+  }
+
+  const event: OutcomeEvent = {
+    id: createLiveApplyOutcomeEventId(application.id, report.generatedAt),
+    applicationId: application.id,
+    type: "submitted",
+    note: `Submitted by live browser apply. Receipt: ${toOutputRelativePath(batch.outputRoot, report.paths.receipt)}`,
+    occurredAt: report.generatedAt
+  };
+  await mkdir(path.dirname(outcomesPath), { recursive: true });
+  await appendFile(outcomesPath, `${JSON.stringify(event)}\n`, "utf8");
+  return {
+    alreadyRecorded: false,
+    check: {
+      id: "outcome-event",
+      label: "Outcome Event",
+      status: "pass",
+      detail: `Recorded submitted outcome for ${application.id}.`
+    },
+    event,
+    events: [...existingEvents, event],
+    outcomesPath
+  };
+}
+
+async function readOutcomeEventsIfExists(filePath: string): Promise<OutcomeEvent[]> {
+  if (!await fileExists(filePath)) return [];
+  return parseOutcomeEventsJsonLines(await readFile(filePath, "utf8"));
+}
+
+function withOutcomeCheck(
+  report: LiveBrowserApplyReport,
+  recordedOutcome: RecordedSubmittedOutcome
+): LiveBrowserApplyReport {
+  return {
+    ...report,
+    paths: {
+      ...report.paths,
+      outcomes: recordedOutcome.outcomesPath
+    },
+    checks: [...report.checks, recordedOutcome.check],
+    summary: recordedOutcome.alreadyRecorded
+      ? report.summary
+      : `${report.summary} The submitted outcome was recorded for tracking.`
+  };
+}
+
+function withReceiptProgress(
+  batch: SampleBatchResult,
+  report: LiveBrowserApplyReport,
+  recordedOutcome?: RecordedSubmittedOutcome
+): SampleBatchResult {
   if (!report.selectedJobId || !report.receiptStatus || report.status !== "pass") return batch;
   const receiptStatus = report.receiptStatus;
   const receiptPath = toOutputRelativePath(batch.outputRoot, report.paths.receipt);
+  const applications = batch.applications.map((application) =>
+    application.jobId === report.selectedJobId && receiptStatus === "submitted"
+      ? {
+          ...application,
+          status: "submitted" as const,
+          notes: uniqueNotes([...application.notes, "Submitted by live browser apply."]),
+          updatedAt: report.generatedAt
+        }
+      : application
+  );
+  const manifest = recordedOutcome
+    ? {
+        ...batch.manifest,
+        sourceOutcomes: buildSourceOutcomeSummary({
+          applications,
+          jobs: batch.jobs,
+          outcomeEvents: recordedOutcome.events,
+          eventPath: recordedOutcome.outcomesPath
+        })
+      }
+    : batch.manifest;
   return {
     ...batch,
+    applications,
+    manifest,
     progressItems: batch.progressItems.map((item) =>
       item.jobId === report.selectedJobId
         ? {
             ...item,
+            status: receiptStatus === "submitted" ? "submitted" : item.status,
             browserReceiptPath: receiptPath,
             browserReceiptStatus: receiptStatus,
             nextStep: receiptStatus === "submitted"
@@ -604,12 +725,28 @@ function withReceiptProgress(batch: SampleBatchResult, report: LiveBrowserApplyR
   };
 }
 
+function findApplicationForReport(
+  applications: ApplicationRecord[],
+  report: LiveBrowserApplyReport
+): ApplicationRecord | undefined {
+  return applications.find((application) => application.jobId === report.selectedJobId);
+}
+
+function createLiveApplyOutcomeEventId(applicationId: string, occurredAt: string): string {
+  const safeTimestamp = occurredAt.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return `outcome-${applicationId}-submitted-${safeTimestamp || "live-apply"}`;
+}
+
+function uniqueNotes(notes: string[]): string[] {
+  return [...new Set(notes)];
+}
+
 function liveApplyNextActions(report: LiveBrowserApplyReport): string[] {
   if (report.status === "pass" && report.receiptStatus === "paused") {
     return ["Review the filled browser form and submit only if the user approves and the page still matches."];
   }
   if (report.status === "pass" && report.receiptStatus === "submitted") {
-    return ["Record the submission outcome, then monitor email for confirmation or recruiter replies."];
+    return ["Monitor email for application confirmation or recruiter replies."];
   }
   if (report.status === "skipped") {
     return ["Verify browser tooling, then rerun live preflight before trying live apply again."];
@@ -667,6 +804,7 @@ ${checks}
 
 - Execution plan: ${report.paths.plan}
 - Receipt: ${report.paths.receipt}
+- Outcomes: ${report.paths.outcomes ?? "not updated"}
 - JSON report: ${report.paths.report}
 `;
 }
