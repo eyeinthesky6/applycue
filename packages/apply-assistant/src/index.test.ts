@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CvVariant, JobRecord, UserProfile } from "@applycue/core";
-import { createApplicationDraft, createBrowserApplyPlan } from "./index.js";
+import { createApplicationDraft, createApplyRoute, createBrowserApplyPlan } from "./index.js";
 
 describe("createApplicationDraft", () => {
   it("allows automated submit only after CV reconciliation passes", () => {
@@ -84,7 +84,38 @@ describe("createApplicationDraft", () => {
 
     expect(noticeAnswer?.value).toBe("30 days");
     expect(noticeAnswer?.aliases).toContain("What is your notice period?");
+    expect(noticeAnswer?.aliases).toContain("When can you join?");
     expect(draft.answers.some((answer) => answer.field === "current_salary")).toBe(false);
+  });
+
+  it("expands approved reusable answers with default aliases for common portal wording", () => {
+    const profile = sampleProfile();
+    profile.applicationAnswers = [
+      {
+        id: "answer-work-authorization",
+        field: "work_authorization",
+        value: "Authorized to work in India",
+        approvedByUser: true,
+        aliases: ["Right to work"],
+        sourceRef: "user-confirmed",
+        createdAt: "2026-07-06T00:00:00.000Z"
+      },
+      {
+        id: "answer-total-experience",
+        field: "total_experience_years",
+        value: "15+ years",
+        approvedByUser: true,
+        createdAt: "2026-07-06T00:00:00.000Z"
+      }
+    ];
+
+    const draft = createApplicationDraft(sampleJob(), profile, sampleCvVariant("passed"));
+    const workAuthorization = draft.answers.find((answer) => answer.field === "work_authorization");
+    const totalExperience = draft.answers.find((answer) => answer.field === "total_experience_years");
+
+    expect(workAuthorization?.aliases).toContain("Right to work");
+    expect(workAuthorization?.aliases).toContain("Are you legally authorized to work?");
+    expect(totalExperience?.aliases).toContain("Total years of experience");
   });
 
   it("derives safe application answers only from explicit preferences", () => {
@@ -102,9 +133,19 @@ describe("createApplicationDraft", () => {
     expect(answers.has("current_salary")).toBe(false);
   });
 
-  it("pauses submit for untrusted portals when default portal policy asks first", () => {
+  it("does not pause normal unlisted portals just because default portal policy asks first", () => {
     const profile = sampleProfile();
     profile.sourceSettings.defaultPortalApplyPolicy = "ask";
+
+    const draft = createApplicationDraft(sampleJob(), profile, sampleCvVariant("passed"));
+
+    expect(draft.pauseReasons).not.toContain("unknown_portal");
+  });
+
+  it("pauses ask-before portals without blocking all small company portals", () => {
+    const profile = sampleProfile();
+    profile.sourceSettings.defaultPortalApplyPolicy = "ask";
+    profile.sourceSettings.askBeforePortals = ["example.com"];
 
     const draft = createApplicationDraft(sampleJob(), profile, sampleCvVariant("passed"));
 
@@ -122,6 +163,130 @@ describe("createApplicationDraft", () => {
 
     expect(draft.canAutoSubmit).toBe(true);
     expect(draft.pauseReasons).not.toContain("unknown_portal");
+  });
+
+  it("pauses blocked portals as platform rules", () => {
+    const profile = sampleProfile();
+    profile.sourceSettings.blockedPortals = ["example.com"];
+
+    const draft = createApplicationDraft(sampleJob(), profile, sampleCvVariant("passed"));
+
+    expect(draft.canAutoSubmit).toBe(false);
+    expect(draft.pauseReasons).toContain("platform_rule");
+  });
+
+  it("pauses sketchy recruiter data-harvest emails before application execution", () => {
+    const profile = sampleProfile();
+    profile.sourceSettings.fraudSignalTerms = ["profile database", "document before interview"];
+    const job = {
+      ...sampleJob(),
+      source: {
+        id: "email-alert",
+        kind: "email_alert" as const,
+        name: "User inbox job leads"
+      },
+      description: "You are shortlisted. Register your profile in our candidate database and send PAN before interview."
+    };
+
+    const draft = createApplicationDraft(job, profile, sampleCvVariant("passed"));
+
+    expect(draft.canAutoSubmit).toBe(false);
+    expect(draft.pauseReasons).toContain("fraud_signal");
+  });
+
+  it("routes normal web applications through browser preflight", () => {
+    const profile = sampleProfile();
+    const job = sampleJob();
+    const cv = sampleCvVariant("passed");
+    const draft = createApplicationDraft(job, profile, cv);
+    const plan = createBrowserApplyPlan({ draft, job, cvPath: "outputs/cvs/job-1.docx" });
+
+    const route = createApplyRoute({
+      application: sampleApplication(),
+      browserPlan: plan,
+      draft,
+      job,
+      profile
+    });
+
+    expect(route.type).toBe("browser");
+    expect(route.status).toBe("needs_preflight");
+    expect(route.execution.browser?.planId).toBe(plan.id);
+    expect(route.execution.browser?.preflightCommand).toContain("browser-live-preflight");
+  });
+
+  it("routes email-alert portal links through browser instead of treating sender metadata as an apply email", () => {
+    const profile = sampleProfile();
+    const job: JobRecord = {
+      ...sampleJob(),
+      source: {
+        id: "email-lead-1",
+        kind: "email_alert",
+        name: "Gmail job alert - iimjobs"
+      },
+      url: "https://www.iimjobs.com/j/product-director-generative-ai-ecommercefintech-12-18-yrs-1706783",
+      description: [
+        "Email subject: Product Director - Generative AI at Employee Forums : Apply Now",
+        "From: info@iimjobs.com",
+        "IIMJobs alert with a portal application URL."
+      ].join("\n\n")
+    };
+    const draft = createApplicationDraft(job, profile, sampleCvVariant("passed"));
+    const plan = createBrowserApplyPlan({ draft, job, cvPath: "outputs/cvs/job-1.docx" });
+
+    const route = createApplyRoute({
+      application: sampleApplication(),
+      browserPlan: plan,
+      draft,
+      job,
+      profile
+    });
+
+    expect(route.type).toBe("browser");
+    expect(route.status).toBe("needs_preflight");
+  });
+
+  it("routes email applications as drafts when an apply email is present", () => {
+    const profile = sampleProfile();
+    const job = {
+      ...sampleJob(),
+      description: "Please email careers@example.com with your CV."
+    };
+    const draft = createApplicationDraft(job, profile, sampleCvVariant("passed"));
+    const plan = createBrowserApplyPlan({ draft, job, cvPath: "outputs/cvs/job-1.docx" });
+
+    const route = createApplyRoute({
+      application: sampleApplication(),
+      browserPlan: plan,
+      draft,
+      job,
+      profile
+    });
+
+    expect(route.type).toBe("email");
+    expect(route.status).toBe("draft_only");
+    expect(route.execution.email?.to).toEqual(["careers@example.com"]);
+    expect(route.execution.email?.attachmentPaths).toEqual(["outputs/cvs/job-1.docx"]);
+  });
+
+  it("blocks route execution when the draft has a hard policy pause", () => {
+    const profile = sampleProfile();
+    profile.sourceSettings.blockedPortals = ["example.com"];
+    const job = sampleJob();
+    const draft = createApplicationDraft(job, profile, sampleCvVariant("passed"));
+    const plan = createBrowserApplyPlan({ draft, job, cvPath: "outputs/cvs/job-1.docx" });
+
+    const route = createApplyRoute({
+      application: sampleApplication(),
+      browserPlan: plan,
+      draft,
+      job,
+      profile
+    });
+
+    expect(route.type).toBe("manual_review");
+    expect(route.status).toBe("blocked");
+    expect(route.execution.manualReview?.questions[0]).toContain("platform rule");
   });
 });
 
@@ -229,5 +394,17 @@ function sampleCvVariant(reconciliationStatus: CvVariant["reconciliationStatus"]
     reconciliationNotes: [],
     changes: [],
     createdAt: "2026-07-06T00:00:00.000Z"
+  };
+}
+
+function sampleApplication() {
+  return {
+    id: "application-1",
+    jobId: "job-1",
+    status: "prepared" as const,
+    cvVariantId: "cv-1",
+    notes: [],
+    createdAt: "2026-07-06T00:00:00.000Z",
+    updatedAt: "2026-07-06T00:00:00.000Z"
   };
 }

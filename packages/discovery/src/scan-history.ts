@@ -16,6 +16,25 @@ export interface ScanHistorySkippedJob {
   status: Extract<ScanHistoryStatus, "prepared" | "closed">;
 }
 
+export type JobDedupeReason = "same_url" | "same_company_similar_role";
+
+export interface JobDedupeSkippedJob {
+  duplicateOf: JobRecord;
+  job: JobRecord;
+  reason: JobDedupeReason;
+}
+
+export interface JobDedupeResult {
+  jobs: JobRecord[];
+  skipped: JobDedupeSkippedJob[];
+  summary: {
+    inputJobs: number;
+    keptJobs: number;
+    skippedByReason: Record<JobDedupeReason, number>;
+    skippedJobs: number;
+  };
+}
+
 export interface ScanHistoryFilterResult {
   jobs: JobRecord[];
   skipped: ScanHistorySkippedJob[];
@@ -94,11 +113,12 @@ export function filterJobsByScanHistory(
   const observedEntries = buildScanHistoryEntries(jobs, []);
   const reposts = detectScanHistoryReposts([...entries, ...observedEntries], repostWindowDays);
   const latestStatusByKey = buildLatestBlockingStatusByKey(entries);
+  const preparedEntriesByCompany = buildPreparedEntriesByCompany(entries);
   const kept: JobRecord[] = [];
   const skipped: ScanHistorySkippedJob[] = [];
 
   for (const job of jobs) {
-    const status = latestStatusByKey.get(scanHistoryKeyForJob(job));
+    const status = latestStatusByKey.get(scanHistoryKeyForJob(job)) ?? findPreparedSimilarRoleStatus(job, preparedEntriesByCompany);
     if (shouldSkip && status && skippableSourceKinds.has(job.source.kind)) {
       skipped.push({ job, status });
       continue;
@@ -122,6 +142,47 @@ export function filterJobsByScanHistory(
       skippedJobs: skipped.length,
       skippedPrepared: skipped.filter((item) => item.status === "prepared").length,
       topReposts: reposts.slice(0, 3)
+    }
+  };
+}
+
+export function dedupeJobsForShortlist(jobs: JobRecord[]): JobDedupeResult {
+  const kept: JobRecord[] = [];
+  const skipped: JobDedupeSkippedJob[] = [];
+  const keptByUrl = new Map<string, JobRecord>();
+  const skippedByReason: Record<JobDedupeReason, number> = {
+    same_url: 0,
+    same_company_similar_role: 0
+  };
+
+  for (const job of jobs) {
+    const urlKey = scanHistoryKeyForJob(job);
+    const urlDuplicate = urlKey ? keptByUrl.get(urlKey) : undefined;
+    if (urlDuplicate && job.source.kind !== "manual") {
+      skipped.push({ duplicateOf: urlDuplicate, job, reason: "same_url" });
+      skippedByReason.same_url += 1;
+      continue;
+    }
+
+    const similarDuplicate = findSimilarKeptJob(job, kept);
+    if (similarDuplicate && job.source.kind !== "manual") {
+      skipped.push({ duplicateOf: similarDuplicate, job, reason: "same_company_similar_role" });
+      skippedByReason.same_company_similar_role += 1;
+      continue;
+    }
+
+    kept.push(job);
+    if (urlKey && !keptByUrl.has(urlKey)) keptByUrl.set(urlKey, job);
+  }
+
+  return {
+    jobs: kept,
+    skipped,
+    summary: {
+      inputJobs: jobs.length,
+      keptJobs: kept.length,
+      skippedByReason,
+      skippedJobs: skipped.length
     }
   };
 }
@@ -234,6 +295,81 @@ function buildLatestBlockingStatusByKey(
   );
 }
 
+function buildPreparedEntriesByCompany(entries: ScanHistoryEntry[]): Map<string, ScanHistoryEntry[]> {
+  const byCompany = new Map<string, ScanHistoryEntry[]>();
+  for (const entry of entries) {
+    if (entry.status !== "prepared") continue;
+    const company = normalizeCompany(entry.company);
+    if (!isKnownCompanyKey(company)) continue;
+    const rows = byCompany.get(company) ?? [];
+    rows.push(entry);
+    byCompany.set(company, rows);
+  }
+  return byCompany;
+}
+
+function findPreparedSimilarRoleStatus(
+  job: JobRecord,
+  preparedEntriesByCompany: Map<string, ScanHistoryEntry[]>
+): Extract<ScanHistoryStatus, "prepared"> | undefined {
+  const company = normalizeCompany(job.company);
+  if (!isKnownCompanyKey(company)) return undefined;
+  const entries = preparedEntriesByCompany.get(company) ?? [];
+  return entries.some((entry) => sameOrSimilarRole(entry.title, job.title)) ? "prepared" : undefined;
+}
+
+function findSimilarKeptJob(job: JobRecord, kept: JobRecord[]): JobRecord | undefined {
+  const company = normalizeCompany(job.company);
+  if (!isKnownCompanyKey(company)) return undefined;
+  return kept.find((candidate) =>
+    normalizeCompany(candidate.company) === company &&
+    likelySamePosting(candidate, job)
+  );
+}
+
+function likelySamePosting(first: JobRecord, second: JobRecord): boolean {
+  if (!sameOrSimilarRole(first.title, second.title)) return false;
+  if (compatibleLocation(first, second)) return true;
+  if (compatibleWorkMode(first, second)) return true;
+  if (crossPostedSourcePair(first.source.kind, second.source.kind)) return true;
+  if (similarDescription(first.description, second.description)) return true;
+  return !first.location?.trim() || !second.location?.trim() || !first.description?.trim() || !second.description?.trim();
+}
+
+function compatibleLocation(first: JobRecord, second: JobRecord): boolean {
+  const firstLocation = normalizeLocation(first.location ?? "");
+  const secondLocation = normalizeLocation(second.location ?? "");
+  if (!firstLocation || !secondLocation) return false;
+  return firstLocation === secondLocation ||
+    firstLocation.includes(secondLocation) ||
+    secondLocation.includes(firstLocation);
+}
+
+function compatibleWorkMode(first: JobRecord, second: JobRecord): boolean {
+  return first.workMode !== "unknown" && first.workMode === second.workMode;
+}
+
+function crossPostedSourcePair(first: JobSource["kind"], second: JobSource["kind"]): boolean {
+  const sourceKinds = new Set([first, second]);
+  return sourceKinds.has("job_board") && (sourceKinds.has("company_site") || sourceKinds.has("ats"));
+}
+
+function similarDescription(first: string, second: string): boolean {
+  const firstTokens = contentTokens(first);
+  const secondTokens = contentTokens(second);
+  if (firstTokens.length < 8 || secondTokens.length < 8) return false;
+  const secondSet = new Set(secondTokens);
+  const overlap = new Set(firstTokens.filter((token) => secondSet.has(token))).size;
+  const union = new Set([...firstTokens, ...secondTokens]).size;
+  return union > 0 && overlap / union >= 0.45;
+}
+
+function contentTokens(value: string): string[] {
+  return normalizeRoleText(value)
+    .split(" ")
+    .filter((token) => token.length > 3 && !ROLE_STOPWORDS.has(token) && !BASELINE_ROLE_TOKENS.has(token));
+}
+
 function groupRowsBySimilarRole(
   rows: Array<{ entry: ScanHistoryEntry; seenAt: Date }>
 ): Array<Array<{ entry: ScanHistoryEntry; seenAt: Date }>> {
@@ -308,6 +444,9 @@ function buildRepostCluster(
 
 function sameOrSimilarRole(first: string, second: string): boolean {
   if (normalizeRoleText(first) === normalizeRoleText(second)) return true;
+  const firstRoleKey = canonicalRoleKey(first);
+  const secondRoleKey = canonicalRoleKey(second);
+  if (firstRoleKey && firstRoleKey === secondRoleKey) return true;
   const firstTokens = [...new Set(roleTokens(first))];
   const secondTokens = [...new Set(roleTokens(second))];
   if (firstTokens.length === 0 || secondTokens.length === 0) return false;
@@ -325,12 +464,30 @@ function roleTokens(role: string): string[] {
     .filter((token) => (token.length > 3 || SHORT_ROLE_TOKENS.has(token)) && !ROLE_STOPWORDS.has(token));
 }
 
+function canonicalRoleKey(role: string): string {
+  return roleTokens(role)
+    .filter((token) => !["of", "and", "the"].includes(token))
+    .join(" ");
+}
+
 function normalizeRoleText(role: string): string {
   return role.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
 function normalizeCompany(company: string): string {
   return company.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function normalizeLocation(location: string): string {
+  return location.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function isKnownCompanyKey(company: string): boolean {
+  return Boolean(company) &&
+    company !== "unknown" &&
+    company !== "unknown company" &&
+    company !== "confidential" &&
+    company !== "stealth";
 }
 
 function parseSeenAt(value: string): Date | undefined {

@@ -23,6 +23,7 @@ import {
   classifyJobLivenessFromText,
   createSourcePlan,
   createTextLivenessVerifier,
+  dedupeJobsForShortlist,
   detectScanHistoryReposts,
   filterJobsBySearchProfile,
   filterJobsByScanHistory,
@@ -230,6 +231,7 @@ describe("createSourcePlan", () => {
     );
     expect(plan.searchProfile.locationFilter.askBefore).toEqual(["Dubai"]);
     expect(plan.searchProfile.contentFilter.required).toEqual(["roadmap"]);
+    expect(plan.searchProfile.contentFilter.targetIndustries).toEqual(["fintech"]);
     expect(plan.searchProfile.contentFilter.positive).toEqual(["fintech", "ai"]);
     expect(plan.searchProfile.contentFilter.negative).toEqual(["BPO", "Intern"]);
     expect(plan.suggestions.some((source) => source.provider === "greenhouse")).toBe(true);
@@ -439,6 +441,165 @@ describe("createSourcePlan", () => {
     expect(serializedPlan).not.toContain("india");
   });
 
+  it("generates market-aware job-board searches for multiple configured locations", () => {
+    const plan = createSourcePlan({
+      id: "profile-multi-country",
+      pastEmployers: [],
+      preferences: {
+        targetRoleTerms: ["Head of Product"],
+        adjacentRoleTerms: [],
+        targetIndustries: ["fintech", "payments", "saas"],
+        excludedIndustries: [],
+        preferredLocations: ["remote"],
+        extraLocations: [],
+        askBeforeLocations: [],
+        acceptableWorkModes: ["remote", "hybrid", "onsite"],
+        targetSeniorities: ["director", "vp"],
+        acceptableSeniorities: ["director", "vp"],
+        employmentTypes: ["full_time"],
+        companyStages: [],
+        preferredCompanyNames: [],
+        blockedCompanyNames: [],
+        noGoRoleTerms: [],
+        requiredKeywords: [],
+        niceToHaveKeywords: ["roadmap"],
+        excludedKeywords: [],
+        workAuthorizationCountries: ["india", "united kingdom", "australia"],
+        preferredTimezones: []
+      },
+      searchSettings: {
+        searchCountries: ["India", "United Kingdom", "Australia"],
+        searchAreas: ["India", "United Kingdom", "Australia"],
+        remoteRegions: ["India"],
+        agentMayExpandSearchArea: true,
+        informUserOnSearchAreaChange: true,
+        standardHoursOnly: true,
+        preferredShifts: ["standard"],
+        askBeforeShifts: []
+      },
+      sourceSettings: {
+        allowLoggedInBrowserAccess: false,
+        defaultPortalApplyPolicy: "ask",
+        trustedPortals: [],
+        askBeforePortals: [],
+        blockedPortals: [],
+        fraudSignalTerms: [],
+        jobBoardDefaults: {
+          siteNames: ["indeed", "google", "naukri"],
+          countryIndeed: "india"
+        }
+      },
+      applySettings: {
+        mode: "daily",
+        applicationsPerDay: 5,
+        minimumFitToApply: 0.75,
+        allowedSourceKinds: ["ats", "job_board", "company_site", "manual", "email_alert"],
+        messagePolicy: "draft_only",
+        pauseReasons: [],
+        trackEmailReplies: false,
+        allowRecruiterDmDrafts: false
+      },
+      matchSettings: {
+        range: "normal",
+        widenIfFewerThan: 20,
+        relaxOrder: ["source"],
+        minimumFitFloor: 0.55,
+        allowAdjacentTitles: true,
+        allowAdjacentIndustries: true
+      },
+      proofBank: []
+    });
+
+    const jobSpy = plan.suggestions.filter((source) => source.provider === "jobspy");
+    const locations = jobSpy.map((source) => source.options?.location);
+    const india = jobSpy.find((source) => source.options?.location === "India");
+    const uk = jobSpy.find((source) => source.options?.location === "United Kingdom");
+    const australia = jobSpy.find((source) => source.options?.location === "Australia");
+    const inbox = plan.suggestions.find((source) => source.provider === "user_email");
+
+    expect(locations).toEqual(expect.arrayContaining(["India", "United Kingdom", "Australia"]));
+    expect(india?.options?.siteNames).toEqual(["indeed", "google", "naukri"]);
+    expect(india?.options?.countryIndeed).toBe("india");
+    expect(uk?.options?.siteNames).toEqual(["indeed", "google"]);
+    expect(uk?.options?.countryIndeed).toBe("united kingdom");
+    expect(australia?.options?.siteNames).toEqual(["indeed", "google"]);
+    expect(australia?.options?.countryIndeed).toBe("australia");
+    expect(inbox?.kind).toBe("email_alert");
+    expect(inbox?.requiresLogin).toBe(true);
+    expect(inbox?.query).toContain("newer_than:30d");
+  });
+
+  it("does not treat generic remote as a global location when the profile has explicit countries", () => {
+    const plan = createSourcePlan({
+      id: "profile-india-remote",
+      pastEmployers: [],
+      preferences: {
+        targetRoleTerms: ["Head of Product"],
+        adjacentRoleTerms: [],
+        targetIndustries: ["fintech"],
+        excludedIndustries: [],
+        preferredLocations: ["remote", "india", "bangalore"],
+        extraLocations: [],
+        askBeforeLocations: [],
+        acceptableWorkModes: ["remote", "hybrid"],
+        targetSeniorities: ["vp"],
+        acceptableSeniorities: ["director", "vp"],
+        employmentTypes: ["full_time"],
+        companyStages: [],
+        preferredCompanyNames: [],
+        blockedCompanyNames: [],
+        noGoRoleTerms: [],
+        requiredKeywords: [],
+        niceToHaveKeywords: ["product strategy"],
+        excludedKeywords: [],
+        workAuthorizationCountries: ["india"],
+        preferredTimezones: []
+      },
+      searchSettings: {
+        searchCountries: ["India"],
+        searchAreas: ["India", "Remote India"],
+        remoteRegions: ["India"],
+        agentMayExpandSearchArea: true,
+        informUserOnSearchAreaChange: true,
+        standardHoursOnly: true,
+        preferredShifts: ["standard"],
+        askBeforeShifts: []
+      },
+      sourceSettings: {
+        allowLoggedInBrowserAccess: false,
+        defaultPortalApplyPolicy: "ask",
+        trustedPortals: [],
+        askBeforePortals: [],
+        blockedPortals: [],
+        fraudSignalTerms: []
+      },
+      applySettings: {
+        mode: "daily",
+        applicationsPerDay: 5,
+        minimumFitToApply: 0.75,
+        allowedSourceKinds: ["ats", "job_board", "company_site", "manual"],
+        messagePolicy: "draft_only",
+        pauseReasons: [],
+        trackEmailReplies: false,
+        allowRecruiterDmDrafts: false
+      },
+      matchSettings: {
+        range: "normal",
+        widenIfFewerThan: 20,
+        relaxOrder: ["source"],
+        minimumFitFloor: 0.55,
+        allowAdjacentTitles: true,
+        allowAdjacentIndustries: true
+      },
+      proofBank: []
+    });
+
+    expect(plan.searchProfile.locationFilter.alwaysAllow).toEqual(expect.arrayContaining(["india", "bangalore"]));
+    expect(plan.searchProfile.locationFilter.allow).toEqual(expect.arrayContaining(["India", "Remote India"]));
+    expect(plan.searchProfile.locationFilter.alwaysAllow).not.toContain("remote");
+    expect(plan.searchProfile.locationFilter.allow).not.toContain("remote");
+  });
+
   it("does not hardcode product title variants for non-product targets", () => {
     const plan = createSourcePlan({
       id: "profile-chief-of-staff",
@@ -529,6 +690,7 @@ describe("filterJobsBySearchProfile", () => {
     },
     contentFilter: {
       required: [],
+      targetIndustries: ["fintech"],
       positive: ["fintech", "product strategy"],
       negative: ["BPO"]
     },
@@ -593,32 +755,298 @@ describe("filterJobsBySearchProfile", () => {
     expect(result.summary.byReason.title).toBe(1);
   });
 
-  it("allows remote regions that can include an authorized region", () => {
+  it("keeps product role title variants for ranking even when the exact seed title is missing", () => {
+    const productOwner = jobRecord({
+      id: "product-owner",
+      title: "AI Platform Product Owner",
+      description: "Own product roadmap for fintech platform teams.",
+      location: "Remote India"
+    });
+    const headProduct = jobRecord({
+      id: "head-product",
+      title: "Head - Product",
+      description: "Lead digital banking products and product strategy.",
+      location: "Remote India"
+    });
+    const gmProduct = jobRecord({
+      id: "gm-product",
+      title: "GM Product",
+      description: "Lead payments product portfolio and roadmap.",
+      location: "Remote India"
+    });
+
+    const result = filterJobsBySearchProfile([productOwner, headProduct, gmProduct], searchProfile);
+
+    expect(result.jobs.map((job) => job.id)).toEqual(["product-owner", "head-product", "gm-product"]);
+    expect(result.filtered).toHaveLength(0);
+  });
+
+  it("keeps ambiguous strategy titles for ranking instead of hard-blocking title mismatch", () => {
+    const strategy = jobRecord({
+      id: "strategy",
+      title: "Director Strategy & Innovation",
+      description: "Lead digital banking portfolio strategy, payments, and roadmap choices.",
+      location: "Remote India"
+    });
+
+    const result = filterJobsBySearchProfile([strategy], searchProfile);
+
+    expect(result.jobs.map((job) => job.id)).toEqual(["strategy"]);
+    expect(result.filtered).toHaveLength(0);
+  });
+
+  it("filters target-title jobs that do not show target industry signals", () => {
+    const fintech = jobRecord({
+      id: "banking-product",
+      title: "Head of Product",
+      description: "Lead cards, lending, and digital banking product strategy.",
+      location: "Remote India"
+    });
+    const jewellery = jobRecord({
+      id: "jewellery-product",
+      title: "Head of Product",
+      description: "Lead jewellery collections, retail merchandising, CAD workflows, and CAD platforms like Rhino.",
+      location: "Remote India"
+    });
+
+    const result = filterJobsBySearchProfile([fintech, jewellery], searchProfile);
+
+    expect(result.jobs.map((job) => job.id)).toEqual(["banking-product"]);
+    expect(result.filtered.map((item) => item.job.id)).toEqual(["jewellery-product"]);
+    expect(result.filtered[0]?.reason).toBe("industry");
+    expect(result.summary.byReason.industry).toBe(1);
+  });
+
+  it("keeps strong product roles with missing industry evidence when industry mode is soft", () => {
+    const softIndustryProfile: SourcePlanSearchProfile = {
+      ...searchProfile,
+      contentFilter: {
+        ...searchProfile.contentFilter,
+        industryEvidenceMode: "soft"
+      }
+    };
+    const sparseEmailLead = jobRecord({
+      id: "sparse-product",
+      title: "Product Director",
+      company: "Meesho",
+      description: "Lead product teams and own roadmap.",
+      location: "Bangalore",
+      sourceKind: "email_alert"
+    });
+    const explicitRetail = jobRecord({
+      id: "retail-product",
+      title: "Product Director",
+      description: "Lead retail merchandising, grocery assortment, and store inventory products.",
+      location: "Bangalore"
+    });
+
+    const result = filterJobsBySearchProfile([sparseEmailLead, explicitRetail], softIndustryProfile);
+
+    expect(result.jobs.map((job) => job.id)).toEqual(["sparse-product"]);
+    expect(result.filtered.map((item) => item.job.id)).toEqual(["retail-product"]);
+    expect(result.filtered[0]?.reason).toBe("industry");
+  });
+
+  it("keeps industry evidence hard when configured", () => {
+    const hardIndustryProfile: SourcePlanSearchProfile = {
+      ...searchProfile,
+      contentFilter: {
+        ...searchProfile.contentFilter,
+        industryEvidenceMode: "hard"
+      }
+    };
+    const sparseEmailLead = jobRecord({
+      id: "sparse-product-hard",
+      title: "Product Director",
+      description: "Lead product teams and own roadmap.",
+      location: "Bangalore",
+      sourceKind: "email_alert"
+    });
+
+    const result = filterJobsBySearchProfile([sparseEmailLead], hardIndustryProfile);
+
+    expect(result.jobs).toHaveLength(0);
+    expect(result.filtered[0]?.reason).toBe("industry");
+  });
+
+  it("allows a new industry only after it is added to the generated search profile", () => {
+    const jewelleryProfile: SourcePlanSearchProfile = {
+      ...searchProfile,
+      contentFilter: {
+        ...searchProfile.contentFilter,
+        targetIndustries: ["fintech", "jewellery"],
+        positive: ["fintech", "jewellery", "product strategy"]
+      }
+    };
+    const jewellery = jobRecord({
+      id: "jewellery-product",
+      title: "Head of Product",
+      description: "Lead jewellery collections, retail merchandising, CAD workflows, and CAD platforms like Rhino.",
+      location: "Remote India"
+    });
+
+    const result = filterJobsBySearchProfile([jewellery], jewelleryProfile);
+
+    expect(result.jobs.map((job) => job.id)).toEqual(["jewellery-product"]);
+    expect(result.filtered).toHaveLength(0);
+  });
+
+  it("filters broad remote regions unless the region is explicitly configured", () => {
     const remote = jobRecord({
       id: "remote-asia",
       title: "Product Director",
-      description: "Lead product strategy.",
+      description: "Lead product strategy for fintech customers.",
       location: "Americas, Europe, Asia, Oceania",
       workMode: "remote"
     });
 
     const result = filterJobsBySearchProfile([remote], searchProfile);
 
-    expect(result.jobs).toHaveLength(1);
+    expect(result.jobs).toHaveLength(0);
+    expect(result.filtered[0]?.reason).toBe("location");
+  });
+
+  it("allows explicitly configured broad remote regions", () => {
+    const explicitApacProfile: SourcePlanSearchProfile = {
+      ...searchProfile,
+      locationFilter: {
+        alwaysAllow: ["India", "Remote India"],
+        allow: ["India", "Remote India", "Remote APAC"],
+        askBefore: [],
+        block: []
+      }
+    };
+    const remote = jobRecord({
+      id: "remote-apac",
+      title: "Product Director",
+      description: "Lead product strategy for fintech customers.",
+      location: "Asia Pacific",
+      workMode: "remote"
+    });
+
+    const result = filterJobsBySearchProfile([remote], explicitApacProfile);
+
+    expect(result.jobs.map((job) => job.id)).toEqual(["remote-apac"]);
     expect(result.filtered).toHaveLength(0);
+  });
+
+  it("filters overseas or global remote locations when only India is allowed", () => {
+    const indiaOnlyProfile: SourcePlanSearchProfile = {
+      ...searchProfile,
+      locationFilter: {
+        alwaysAllow: ["India", "Remote India"],
+        allow: ["India", "Remote India"],
+        askBefore: [],
+        block: []
+      }
+    };
+    const remoteIndia = jobRecord({
+      id: "remote-india",
+      title: "Product Director",
+      description: "Lead product strategy for fintech customers.",
+      location: "Remote India",
+      workMode: "remote"
+    });
+    const remoteEurope = jobRecord({
+      id: "remote-europe",
+      title: "Product Director",
+      description: "Lead product strategy for fintech customers.",
+      location: "Remote Europe",
+      workMode: "remote"
+    });
+    const worldwide = jobRecord({
+      id: "remote-worldwide",
+      title: "Product Director",
+      description: "Lead product strategy for fintech customers.",
+      location: "Worldwide",
+      workMode: "remote"
+    });
+
+    const result = filterJobsBySearchProfile([remoteIndia, remoteEurope, worldwide], indiaOnlyProfile);
+
+    expect(result.jobs.map((job) => job.id)).toEqual(["remote-india"]);
+    expect(result.filtered.map((item) => item.job.id)).toEqual(["remote-europe", "remote-worldwide"]);
+    expect(result.summary.byReason.location).toBe(2);
+  });
+
+  it("filters ask-before locations before broad allow terms", () => {
+    const profileWithAskBefore: SourcePlanSearchProfile = {
+      ...searchProfile,
+      locationFilter: {
+        alwaysAllow: ["Remote"],
+        allow: ["Remote"],
+        askBefore: ["Remote Europe"],
+        block: []
+      }
+    };
+    const remoteEurope = jobRecord({
+      id: "remote-europe",
+      title: "Product Director",
+      description: "Lead product strategy for fintech customers.",
+      location: "Remote Europe",
+      workMode: "remote"
+    });
+
+    const result = filterJobsBySearchProfile([remoteEurope], profileWithAskBefore);
+
+    expect(result.jobs).toHaveLength(0);
+    expect(result.filtered[0]?.reason).toBe("location");
+    expect(result.filtered[0]?.detail).toBe("Location matched an ask-before location term.");
   });
 
   it("matches country aliases in provider region-code locations", () => {
     const indiaRole = jobRecord({
       id: "india-region-code",
       title: "Product Director",
-      description: "Lead product strategy.",
+      description: "Lead product strategy for fintech customers.",
       location: "MH, IN"
     });
 
     const result = filterJobsBySearchProfile([indiaRole], searchProfile);
 
     expect(result.jobs).toHaveLength(1);
+    expect(result.filtered).toHaveLength(0);
+  });
+
+  it("matches common Indian city locations when India is allowed", () => {
+    const bangaloreRole = jobRecord({
+      id: "bangalore-city",
+      title: "Product Director",
+      description: "Lead product strategy for fintech customers.",
+      location: "Bangalore"
+    });
+    const ncrRole = jobRecord({
+      id: "ncr-cities",
+      title: "Head of Product",
+      description: "Lead payments product strategy.",
+      location: "Noida, Pune, Gurugram"
+    });
+
+    const result = filterJobsBySearchProfile([bangaloreRole, ncrRole], searchProfile);
+
+    expect(result.jobs.map((job) => job.id)).toEqual(["bangalore-city", "ncr-cities"]);
+    expect(result.filtered).toHaveLength(0);
+  });
+
+  it("matches acquirer platform language as payments industry evidence", () => {
+    const paymentsProfile: SourcePlanSearchProfile = {
+      ...searchProfile,
+      contentFilter: {
+        ...searchProfile.contentFilter,
+        targetIndustries: ["payments"],
+        positive: ["payments"]
+      }
+    };
+    const acquirerRole = jobRecord({
+      id: "acquirer-platform",
+      title: "Director - Digital Product Management - Acquirer Platform Transformation",
+      description: "Lead acquirer platform transformation for merchants.",
+      location: "Bangalore"
+    });
+
+    const result = filterJobsBySearchProfile([acquirerRole], paymentsProfile);
+
+    expect(result.jobs.map((job) => job.id)).toEqual(["acquirer-platform"]);
     expect(result.filtered).toHaveLength(0);
   });
 
@@ -642,7 +1070,7 @@ describe("filterJobsBySearchProfile", () => {
       id: "ats-relevant",
       sourceKind: "ats",
       title: "Director Product Management",
-      description: "Lead product strategy.",
+      description: "Lead product strategy for fintech customers.",
       location: "Remote India"
     });
     const noisy = jobRecord({
@@ -671,7 +1099,7 @@ describe("filterJobsBySearchProfile", () => {
     const product = jobRecord({
       id: "target-product",
       title: "Head of Product",
-      description: "Lead product strategy.",
+      description: "Lead product strategy for fintech customers.",
       location: "Remote India"
     });
     const businessDevelopment = jobRecord({
@@ -746,6 +1174,49 @@ describe("job liveness", () => {
 });
 
 describe("scan history", () => {
+  it("dedupes same-run jobs by URL and same-company similar role while keeping manual jobs visible", () => {
+    const first = jobRecord({
+      id: "growth-1",
+      company: "Acme AI",
+      title: "Senior Product Manager - Growth",
+      description: "Lead product growth.",
+      location: "Remote India",
+      url: "https://boards.example.com/acme/jobs/123"
+    });
+    const sameUrl = jobRecord({
+      id: "growth-1-copy",
+      company: "Acme AI",
+      title: "Senior Product Manager - Growth",
+      description: "Lead product growth.",
+      location: "Remote India",
+      url: "https://boards.example.com/acme/jobs/123"
+    });
+    const similarRole = jobRecord({
+      id: "growth-2",
+      company: "Acme AI",
+      title: "Product Manager, Growth",
+      description: "Lead growth product strategy.",
+      location: "Remote India",
+      url: "https://jobs.example.com/acme/product-growth"
+    });
+    const manual = jobRecord({
+      id: "growth-manual",
+      company: "Acme AI",
+      sourceKind: "manual",
+      title: "Product Manager, Growth",
+      description: "User pasted this job deliberately.",
+      location: "Remote India",
+      url: "https://manual.example.com/acme/product-growth"
+    });
+
+    const result = dedupeJobsForShortlist([first, sameUrl, similarRole, manual]);
+
+    expect(result.jobs.map((job) => job.id)).toEqual(["growth-1", "growth-manual"]);
+    expect(result.summary.skippedJobs).toBe(2);
+    expect(result.summary.skippedByReason.same_url).toBe(1);
+    expect(result.summary.skippedByReason.same_company_similar_role).toBe(1);
+  });
+
   it("skips already prepared non-manual jobs in automation modes", () => {
     const prepared = jobRecord({
       id: "prepared",
@@ -799,6 +1270,48 @@ describe("scan history", () => {
     expect(daily.summary.repostClusters).toBe(0);
     expect(review.jobs.map((job) => job.id)).toEqual(["prepared", "manual-prepared"]);
     expect(review.summary.skippedJobs).toBe(0);
+  });
+
+  it("skips already prepared same-company similar roles even when the new posting has a different URL", () => {
+    const prepared = jobRecord({
+      id: "prepared-growth",
+      company: "Acme AI",
+      title: "Senior Product Manager - Growth",
+      description: "Lead product growth.",
+      location: "Remote India",
+      url: "https://boards.example.com/acme/jobs/123"
+    });
+    const incoming = jobRecord({
+      id: "incoming-growth",
+      company: "Acme AI",
+      title: "Product Manager, Growth",
+      description: "Lead growth product strategy.",
+      location: "Remote India",
+      url: "https://jobs.example.com/acme/product-growth"
+    });
+    const entries = buildScanHistoryEntries(
+      [prepared],
+      [
+        {
+          id: "app-prepared-growth",
+          jobId: prepared.id,
+          status: "prepared",
+          notes: [],
+          createdAt: "2026-07-06T00:00:00.000Z",
+          updatedAt: "2026-07-06T00:00:00.000Z"
+        }
+      ],
+      "2026-07-06T00:00:00.000Z"
+    );
+
+    const result = filterJobsByScanHistory([incoming], entries, {
+      mode: "daily",
+      historyPath: "data/local/scan-history.jsonl"
+    });
+
+    expect(result.jobs).toHaveLength(0);
+    expect(result.skipped.map((item) => item.job.id)).toEqual(["incoming-growth"]);
+    expect(result.summary.skippedPrepared).toBe(1);
   });
 
   it("writes and reads JSONL scan history entries", async () => {
@@ -1923,6 +2436,7 @@ function jobRecord(input: {
   location?: string;
   sourceKind?: JobRecord["source"]["kind"];
   title: string;
+  url?: string;
   workMode?: JobRecord["workMode"];
 }): JobRecord {
   return {
@@ -1934,7 +2448,7 @@ function jobRecord(input: {
     },
     company: input.company ?? "Example",
     title: input.title,
-    url: `https://example.com/${input.id}`,
+    url: input.url ?? `https://example.com/${input.id}`,
     description: input.description,
     workMode: input.workMode ?? "hybrid",
     discoveredAt: "2026-07-06T00:00:00.000Z",

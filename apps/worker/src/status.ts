@@ -1,4 +1,4 @@
-import type { ProgressScanHistorySummary, ProgressSourceOutcomeSummary, ProgressSourceQualitySummary, RunManifest } from "@applycue/core";
+import type { ProgressFreshnessSummary, ProgressScanHistorySummary, ProgressSourceOutcomeSummary, ProgressSourceQualitySummary, RunManifest } from "@applycue/core";
 import { getApplyCueProfileConfigPath, getApplyCueProfileDir } from "@applycue/profile";
 import { access, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
@@ -66,6 +66,7 @@ export interface ApplyCueLatestRunStatus {
   jobs: number;
   profileId: string;
   sourceCodeWriteCount: number;
+  freshness?: ProgressFreshnessSummary;
   scanHistory?: ProgressScanHistorySummary;
   sourceOutcomes?: ProgressSourceOutcomeSummary;
   sourceQuality?: ProgressSourceQualitySummary;
@@ -280,6 +281,11 @@ export function formatApplyCueStatus(report: ApplyCueStatusReport): string {
         `Source quality: ${report.latestRun.sourceQuality.keptJobs} kept of ${report.latestRun.sourceQuality.inputJobs} found.`
       );
     }
+    if (report.latestRun.freshness) {
+      lines.push(
+        `Freshness: ${report.latestRun.freshness.keptJobs} kept in ${report.latestRun.freshness.windowDays} day(s), ${report.latestRun.freshness.filteredOldJobs} older known post(s) held back.`
+      );
+    }
     if (report.latestRun.scanHistory) {
       lines.push(
         `Scan history: ${report.latestRun.scanHistory.skippedJobs} repeat(s) skipped, ${report.latestRun.scanHistory.repostClusters} repost signal(s).`
@@ -387,6 +393,7 @@ async function readLatestRun(manifestPath: string): Promise<ApplyCueLatestRunSta
     profileId: parsed.profileId,
     sourceCodeWriteCount: parsed.sourceCodeWriteCount
   };
+  if (parsed.freshness) latestRun.freshness = parsed.freshness;
   if (parsed.scanHistory) latestRun.scanHistory = parsed.scanHistory;
   if (parsed.sourceOutcomes) latestRun.sourceOutcomes = parsed.sourceOutcomes;
   if (parsed.sourceQuality) latestRun.sourceQuality = parsed.sourceQuality;
@@ -537,7 +544,7 @@ function livePreflightLabel(latestLivePreflight: LiveBrowserPreflightReport): st
 function livePreflightNextSteps(latestLivePreflight: LiveBrowserPreflightReport | undefined): string[] {
   if (!latestLivePreflight) return [];
   if (latestLivePreflight.status === "pass") {
-    return ["Run controlled live apply to fill/upload in review mode, then pause before final submit."];
+    return ["Confirm master form data if needed, then run controlled live apply to fill/upload in review mode and pause before final submit."];
   }
   if (latestLivePreflight.status === "skipped") {
     return ["Run live browser preflight after browser tooling is available before filling real portal forms."];
@@ -608,8 +615,14 @@ function buildCommandCenter(input: {
   if (input.status === "needs_uat") {
     return ["pnpm uat", "pnpm browser-uat", "pnpm status"];
   }
-  if (input.status === "blocked" || input.status === "warning") {
+  if (input.status === "blocked") {
     return ["pnpm uat", "pnpm status"];
+  }
+  if (input.status === "warning" && input.latestBrowserUat && input.latestBrowserUat.status !== "pass") {
+    return ["pnpm browser-uat", "pnpm status"];
+  }
+  if (input.status === "warning") {
+    return ["pnpm form-data", "pnpm apply-route", "pnpm uat", "pnpm status"];
   }
   if (input.latestBrowserUat && input.latestBrowserUat.status !== "pass") {
     return ["pnpm browser-uat", "pnpm status"];
@@ -618,9 +631,9 @@ function buildCommandCenter(input: {
     return livePreflightCommandCenter(input.latestLivePreflight);
   }
   if (input.latestLivePreflight?.status === "pass") {
-    return ["pnpm browser-live-apply", "pnpm browser-live-preflight", "pnpm status"];
+    return ["pnpm form-data", "pnpm browser-live-apply", "pnpm browser-live-preflight", "pnpm status"];
   }
-  return ["pnpm browser-live-preflight", "pnpm status"];
+  return ["pnpm form-data", "pnpm apply-route", "pnpm browser-live-preflight", "pnpm status"];
 }
 
 function livePreflightCommandCenter(latestLivePreflight: LiveBrowserPreflightReport): string[] {
@@ -781,13 +794,13 @@ function nextActionFor(
     return "Fix the failing UAT checks before applying or showing the run as ready.";
   }
   if (status === "warning") {
-    return "Use the latest summary for review, but address the UAT warning before increasing automation.";
+    return "Review and confirm master form data, then run apply-route for prepared applications that passed gates; address the UAT warning before increasing automation.";
   }
   const browserAction = browserNextAction(latestBrowserUat);
   if (browserAction) return browserAction;
   const liveAction = livePreflightNextAction(latestLivePreflight);
   if (liveAction) return liveAction;
-  return "Review the latest summary and dashboard, then apply only approved jobs under the user's policy.";
+  return "Review and confirm master form data, then run apply-route for a prepared application and follow its browser/email/DM/API/manual handoff under the user's policy.";
 }
 
 function browserNextAction(latestBrowserUat: BrowserApplyUatReport | undefined): string | undefined {
@@ -801,7 +814,7 @@ function browserNextAction(latestBrowserUat: BrowserApplyUatReport | undefined):
 function livePreflightNextAction(latestLivePreflight: LiveBrowserPreflightReport | undefined): string | undefined {
   if (!latestLivePreflight) return undefined;
   if (latestLivePreflight.status === "pass") {
-    return "Run controlled live apply to fill/upload in review mode, then pause before final submit.";
+    return "Confirm master form data if needed, then run controlled live apply to fill/upload in review mode and pause before final submit.";
   }
   if (latestLivePreflight.status === "skipped") {
     return "Run live browser preflight after browser tooling is available before filling real portal forms.";

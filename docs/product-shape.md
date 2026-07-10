@@ -16,6 +16,8 @@ agents help a user get a job from thousands of postings every day
 
 ApplyCue is not a generic job board, a search engine, or "Google for jobs." Anything new should be judged against the question: does this help the agent get the user closer to interviews and offers? If the agent can do the work more efficiently by reading the CV, JD, preferences, and feedback, keep it out of code.
 
+ApplyCue should also avoid becoming a brittle precision engine. Role fit is messy: the same title can mean different things across industries, countries, company sizes, and salary bands. The product should use simple user-visible filters first, then let the agent tune the user's config from feedback. Do not fix one role match by editing core code.
+
 It helps a person answer:
 
 - what roles are worth applying to
@@ -48,20 +50,22 @@ Next step: Submit in batch / Ask user / Save / Ignore
 
 Backend ordering signals are for routing, audit, and learning. They should not become the user-facing product.
 
+Shortlist feedback should stay chat-first for now. The dashboard is output-only; it should not become a second interaction surface until we deliberately design that. If quality is noisy, the user can simply tell the agent, or the agent can propose a few reusable labels such as `bad fit`, `band too high`, `band too low`, `salary too low`, `wrong industry`, `wrong geography`, `culture`, `duplicate`, or `scam/risky`. Approved labels become tuning signals or outcome learning that an agent can apply to reusable config.
+
 ## Core Flow
 
 1. Import CV, profile, preferences, constraints, and goals.
 2. Build a profile model with proof-backed claims.
 3. Discover jobs and leads from approved sources.
 4. Normalize jobs into one schema.
-5. Remove obvious no-go roles with hard gates.
+5. Remove obvious no-go roles with simple hard gates.
 6. Let the agent evaluate messy fit: role shape, domain, seniority, company context, and JD quality.
 7. Create a shortlist and batch plan.
 8. Widen sources or soft preferences when the batch is too small, with user-visible reasoning.
 9. Check source trust and fraud signals.
 10. Generate truthful role-specific CVs and application answers.
 11. Apply automatically when the role and form match the user's apply settings.
-12. Pause for exceptions, sensitive fields, unsupported claims, unknown portals, or unclear answers.
+12. Pause for exceptions, sensitive fields, unsupported claims, ask-before portals, scam signals, or unclear answers.
 13. Track replies, interviews, rejections, offers, and follow-ups.
 14. Learn from outcomes and adjust future batches.
 
@@ -81,3 +85,4 @@ The later version can search the user's allowed social and contact sources for p
 - Do not make manual copy-paste the core workflow.
 - Do not build complex matching/search code for work the agent can do better.
 - Do not turn ApplyCue into a generic job board or search engine.
+- Do not silently hide uncertain matches behind clever filters.

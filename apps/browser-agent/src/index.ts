@@ -12,7 +12,7 @@ import {
   createInitialBrowserActionLog,
   recordBrowserAction
 } from "@applycue/apply-assistant";
-import type { ApplicationReceipt, BrowserActionLogEntry, BrowserApplyPlan } from "@applycue/core";
+import type { ApplicationReceipt, BrowserActionLogEntry, BrowserApplyAction, BrowserApplyPlan } from "@applycue/core";
 import { classifyJobLivenessFromText, type JobLivenessVerification } from "@applycue/discovery";
 
 export interface LocalApplyFormFixture {
@@ -328,10 +328,11 @@ export function executeBrowserPlanDryRun(
       case "open_url":
         break;
       case "fill_field":
-        if (!action.target || !fields.has(action.target)) {
+        const dryRunFillTarget = firstDryRunFillTarget(action, fields);
+        if (!dryRunFillTarget) {
           return createDryRunFailure(plan, actionLog, action.id, `Missing local form field: ${action.target ?? "unknown"}.`);
         }
-        actionLog = recordBrowserAction(actionLog, plan, action.id, "done", `Filled ${action.target}.`);
+        actionLog = recordBrowserAction(actionLog, plan, action.id, "done", `Filled ${dryRunFillTarget}.`);
         break;
       case "upload_file":
         if (!action.target || !uploadTargets.has(action.target)) {
@@ -461,8 +462,8 @@ export async function executeBrowserApplyPlan(
           if (!action.target) {
             return createExecutionFailure(plan, actionLog, action.id, "Fill action is missing a target field.");
           }
-          await controller.fillField(action.target, action.value ?? "");
-          actionLog = recordBrowserAction(actionLog, plan, action.id, "done", `Filled ${action.target}.`);
+          const filledTarget = await fillFieldWithAliases(controller, action);
+          actionLog = recordBrowserAction(actionLog, plan, action.id, "done", `Filled ${filledTarget}.`);
           break;
         case "upload_file":
           if (!action.target) {
@@ -665,6 +666,38 @@ function createDryRunFailure(
     }),
     status: "failed"
   };
+}
+
+function firstDryRunFillTarget(action: BrowserApplyPlan["actions"][number], fields: Set<string>): string | undefined {
+  const normalizedFields = new Map([...fields].map((field) => [normalizeFieldKey(field), field]));
+  for (const target of [action.target ?? "", ...(action.targetAliases ?? [])].filter(Boolean)) {
+    if (fields.has(target)) return target;
+    const normalized = normalizeFieldKey(target);
+    const exact = normalizedFields.get(normalized);
+    if (exact) return exact;
+    const fuzzy = [...normalizedFields.entries()].find(([fieldKey]) => fieldKeyMatchesAnswerTarget(fieldKey, normalized));
+    if (fuzzy) return fuzzy[1];
+  }
+  return undefined;
+}
+
+async function fillFieldWithAliases(
+  controller: BrowserApplyController,
+  action: BrowserApplyAction
+): Promise<string> {
+  const targets = uniqueValues([action.target ?? "", ...(action.targetAliases ?? [])]);
+  let lastError: unknown;
+  for (const target of targets) {
+    try {
+      await controller.fillField(target, action.value ?? "");
+      return target;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`Could not fill field ${action.target ?? "unknown"} with approved aliases.`);
 }
 
 function createExecutionFailure(

@@ -1,4 +1,4 @@
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { executeBrowserPlanDryRun, type BrowserPlanDryRunResult } from "@applycue/browser-agent";
 import type { ProgressApplicationItem, UserProfile } from "@applycue/core";
@@ -32,6 +32,7 @@ export interface UatReport {
   };
   paths: {
     dashboard: string;
+    decisionQueue: string;
     manifest: string;
     markdownReport: string;
     profile: string;
@@ -47,18 +48,30 @@ export async function runApplyCueUat(options: SetupApplyCueOptions = {}): Promis
   const batch = await runLocalOrSampleBatch({
     workspaceRoot,
     ...(options.applyCueHome ? { applyCueHome: options.applyCueHome } : {}),
+    ...(typeof options.freshnessDays === "number" ? { freshnessDays: options.freshnessDays } : {}),
     ...(typeof options.generatedSourceExpansion === "boolean" ? { generatedSourceExpansion: options.generatedSourceExpansion } : {}),
+    ...(typeof options.includeOlderPosts === "boolean" ? { includeOlderPosts: options.includeOlderPosts } : {}),
     ...(options.profileKey ? { profileKey: options.profileKey } : {}),
+    ...(typeof options.targetRankingQueue === "number" ? { targetRankingQueue: options.targetRankingQueue } : {}),
     writeFiles: true
   });
   const dashboardPath = path.join(batch.outputRoot, "outputs", "dashboard", "latest.html");
   const manifestPath = path.join(batch.outputRoot, "outputs", "runs", `${batch.manifest.id}.json`);
+  const decisionQueuePath = path.join(batch.outputRoot, "outputs", "runs", "latest-job-decisions.json");
   const reportPath = path.join(batch.outputRoot, "outputs", "runs", "uat-report.json");
   const markdownReportPath = path.join(batch.outputRoot, "outputs", "runs", "uat-report.md");
   const summaryPath = path.join(batch.outputRoot, "outputs", "runs", "latest-summary.md");
   const browserDryRuns = await writeBrowserDryRunReceipts(batch);
   await writeRunViewsWithBrowserReceipts(batch, browserDryRuns, dashboardPath, summaryPath);
-  const checks = await buildChecks(setup.jobSpyStatus, batch, browserDryRuns, dashboardPath, manifestPath, summaryPath);
+  const checks = await buildChecks(
+    setup.jobSpyStatus,
+    batch,
+    browserDryRuns,
+    dashboardPath,
+    decisionQueuePath,
+    manifestPath,
+    summaryPath
+  );
   const status = summarizeStatus(checks);
   const counts = {
     applications: batch.applications.length,
@@ -78,6 +91,7 @@ export async function runApplyCueUat(options: SetupApplyCueOptions = {}): Promis
     counts,
     paths: {
       dashboard: dashboardPath,
+      decisionQueue: decisionQueuePath,
       manifest: manifestPath,
       markdownReport: markdownReportPath,
       profile: setup.profileDir,
@@ -98,11 +112,13 @@ async function buildChecks(
   batch: SampleBatchResult,
   browserDryRuns: BrowserPlanDryRunResult[],
   dashboardPath: string,
+  decisionQueuePath: string,
   manifestPath: string,
   summaryPath: string
 ): Promise<UatCheck[]> {
   const cvCompleteness = analyzeRenderedCvCompleteness(batch);
   const closedJobSafety = analyzeClosedJobSafety(batch);
+  const decisionQueue = await readDecisionQueueArtifact(decisionQueuePath);
   return [
     {
       id: "profile-loaded",
@@ -147,6 +163,12 @@ async function buildChecks(
       detail: cvCompleteness.detail
     },
     {
+      id: "ats-diagnostics",
+      label: "ATS Diagnostics",
+      status: atsDiagnosticsStatus(batch),
+      detail: formatAtsDiagnosticsDetail(batch)
+    },
+    {
       id: "application-output",
       label: "Application Drafts",
       status: batch.applications.length > 0 ? "pass" : "fail",
@@ -157,6 +179,12 @@ async function buildChecks(
       label: "Browser Plans",
       status: batch.browserPlans.length === batch.applications.length && batch.browserPlans.length > 0 ? "pass" : "fail",
       detail: `${batch.browserPlans.length} browser plan(s) created for ${batch.applications.length} application draft(s).`
+    },
+    {
+      id: "apply-route-output",
+      label: "Apply Routes",
+      status: applyRoutesCoverApplications(batch) ? "pass" : "fail",
+      detail: `${batch.applyRoutes.length} apply route(s) created for ${batch.applications.length} application draft(s).`
     },
     {
       id: "browser-plan-docx",
@@ -205,6 +233,18 @@ async function buildChecks(
       label: "Chat Summary Written",
       status: await fileExists(summaryPath) ? "pass" : "fail",
       detail: summaryPath
+    },
+    {
+      id: "decision-queue",
+      label: "Ranked Decision Queue",
+      status: decisionQueue &&
+        decisionQueue.queueCount === batch.jobDecisions.length &&
+        decisionQueue.decisions.length === batch.jobDecisions.length
+        ? "pass"
+        : "fail",
+      detail: decisionQueue
+        ? `${decisionQueue.decisions.length} ranked decision(s) written to ${decisionQueuePath}.`
+        : `Missing or unreadable ranked decision queue at ${decisionQueuePath}.`
     },
     {
       id: "manifest",
@@ -284,8 +324,12 @@ async function writeRunViewsWithBrowserReceipts(
     outputRoot: batch.outputRoot,
     profileId: batch.profile.id,
     runId: batch.manifest.id,
+    ...(batch.manifest.atsDiagnostics ? { atsDiagnostics: batch.manifest.atsDiagnostics } : {}),
     ...(batch.manifest.cvQuality ? { cvQuality: batch.manifest.cvQuality } : {}),
+    ...(batch.manifest.freshness ? { freshness: batch.manifest.freshness } : {}),
     ...(batch.manifest.scanHistory ? { scanHistory: batch.manifest.scanHistory } : {}),
+    ...(batch.manifest.dedupe ? { dedupe: batch.manifest.dedupe } : {}),
+    ...(batch.manifest.safety ? { safety: batch.manifest.safety } : {}),
     ...(batch.manifest.sourceScorecards ? { sourceScorecards: batch.manifest.sourceScorecards } : {}),
     ...(batch.manifest.sourceOutcomes ? { sourceOutcomes: batch.manifest.sourceOutcomes } : {}),
     ...(batch.manifest.sourceQuality ? { sourceQuality: batch.manifest.sourceQuality } : {}),
@@ -311,6 +355,22 @@ function attachBrowserReceipts(
       browserReceiptStatus: receipt.status
     };
   });
+}
+
+function atsDiagnosticsStatus(batch: SampleBatchResult): UatStatus {
+  if (
+    batch.atsDiagnosticReports.length !== batch.cvVariants.length ||
+    (batch.manifest.atsDiagnostics?.reports ?? 0) !== batch.cvVariants.length
+  ) {
+    return "fail";
+  }
+  return (batch.manifest.atsDiagnostics?.warnings ?? 0) === 0 ? "pass" : "warn";
+}
+
+function formatAtsDiagnosticsDetail(batch: SampleBatchResult): string {
+  const summary = batch.manifest.atsDiagnostics;
+  if (!summary) return "No ATS diagnostic summary was written to the manifest.";
+  return `${summary.reports} diagnostic report(s), ${summary.warnings} warning(s), ${summary.missingSupportedTerms} missing supported JD term(s).`;
 }
 
 function buildUatProgressNextActions(batch: SampleBatchResult): string[] {
@@ -626,6 +686,16 @@ function browserPlansUploadDocx(batch: SampleBatchResult): boolean {
     });
 }
 
+function applyRoutesCoverApplications(batch: SampleBatchResult): boolean {
+  if (batch.applications.length === 0 || batch.applyRoutes.length !== batch.applications.length) return false;
+  const applicationIds = new Set(batch.applications.map((application) => application.id));
+  return batch.applyRoutes.every((route) =>
+    applicationIds.has(route.applicationId) &&
+    Boolean(route.type) &&
+    Boolean(route.status)
+  );
+}
+
 function browserPlansPreflightSafely(batch: SampleBatchResult, results: BrowserPlanDryRunResult[]): boolean {
   return results.length === batch.browserPlans.length &&
     results.length > 0 &&
@@ -692,9 +762,23 @@ ${checks}
 
 - Dashboard: ${report.paths.dashboard}
 - Summary: ${report.paths.summary}
+- Decision queue: ${report.paths.decisionQueue}
 - Manifest: ${report.paths.manifest}
 - JSON report: ${report.paths.report}
 `;
+}
+
+async function readDecisionQueueArtifact(filePath: string): Promise<{ queueCount: number; decisions: unknown[] } | undefined> {
+  try {
+    const parsed = JSON.parse(await readFile(filePath, "utf8")) as { queueCount?: unknown; decisions?: unknown };
+    if (typeof parsed.queueCount !== "number" || !Array.isArray(parsed.decisions)) return undefined;
+    return {
+      queueCount: parsed.queueCount,
+      decisions: parsed.decisions
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 async function fileExists(filePath: string): Promise<boolean> {

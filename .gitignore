@@ -33,6 +33,8 @@ writing-samples/*
 config/profile.yml
 portals.yml
 modes/_profile.md
+.applycue/
+assets/
 .update-dismissed
 .update-lock
 

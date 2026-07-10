@@ -2,6 +2,8 @@ import type {
   ApplicationAnswer,
   ApplicationDraft,
   ApplicationReceipt,
+  ApplicationRecord,
+  ApplyRoute,
   BrowserActionLogEntry,
   BrowserApplyAction,
   BrowserApplyActionStatus,
@@ -28,6 +30,15 @@ export interface CreateApplicationReceiptInput {
   now?: string;
   plan: BrowserApplyPlan;
   status: ApplicationReceipt["status"];
+}
+
+export interface CreateApplyRouteInput {
+  application: ApplicationRecord;
+  browserPlan: BrowserApplyPlan;
+  draft: ApplicationDraft;
+  job: JobRecord;
+  now?: string;
+  profile: UserProfile;
 }
 
 export function createApplicationDraft(
@@ -120,6 +131,10 @@ function splitCandidateName(name: string): { firstName?: string; lastName?: stri
 function addApprovedApplicationAnswers(draft: ApplicationDraft, answers: ApplicationAnswer[]): void {
   for (const answer of answers) {
     if (answer.approvedByUser !== true) continue;
+    const aliases = uniqueValues([
+      ...(answer.aliases ?? []),
+      ...defaultApplicationAnswerAliases(answer.field)
+    ]);
     const options: {
       aliases?: string[];
       needsApproval?: boolean;
@@ -128,9 +143,64 @@ function addApprovedApplicationAnswers(draft: ApplicationDraft, answers: Applica
       needsApproval: answer.needsApproval ?? false,
       sourceRef: answer.sourceRef ?? answer.id
     };
-    if (answer.aliases?.length) options.aliases = answer.aliases;
+    if (aliases.length > 0) options.aliases = aliases;
     addAnswer(draft, answer.field, answer.value, options);
   }
+}
+
+function defaultApplicationAnswerAliases(field: string): string[] {
+  const normalized = field.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  const aliases: Record<string, string[]> = {
+    current_company: ["Current company", "Present employer", "Current employer", "Where do you currently work?"],
+    current_salary: [
+      "Current salary",
+      "Current compensation",
+      "Current CTC",
+      "Present salary",
+      "Present compensation",
+      "Present CTC"
+    ],
+    current_title: ["Current title", "Current designation", "Current role", "Present designation"],
+    expected_salary: [
+      "desired_salary",
+      "Expected salary",
+      "Expected compensation",
+      "Expected CTC",
+      "Desired salary",
+      "Desired compensation",
+      "What is your desired salary?",
+      "What is your expected salary?"
+    ],
+    location: ["Current location", "City", "Where are you located?", "Location"],
+    notice_period: ["notice period", "What is your notice period?", "When can you join?", "availability to join", "joining date"],
+    office_location_availability: [
+      "Are you willing to work from office?",
+      "Can you work onsite?",
+      "Preferred office location",
+      "Willing to relocate to office location"
+    ],
+    product_management_years: [
+      "Product management experience",
+      "Years of product management experience",
+      "How many years of PM experience do you have?"
+    ],
+    relocation_availability: ["Are you willing to relocate?", "Willing to relocate", "Relocation"],
+    total_experience_years: ["Total experience", "Years of experience", "Total years of experience"],
+    visa_sponsorship: [
+      "Do you require visa sponsorship?",
+      "Will you now or in the future require sponsorship?",
+      "Sponsorship required"
+    ],
+    work_authorization: [
+      "Are you authorized to work?",
+      "Are you legally authorized to work?",
+      "Right to work",
+      "Work authorization",
+      "Work eligibility"
+    ],
+    working_hours_availability: ["Working hours", "Shift availability", "Preferred shift", "Can you work this shift?"]
+  };
+  return aliases[normalized] ?? [];
 }
 
 function addContactLinkAnswers(draft: ApplicationDraft, profile: UserProfile): void {
@@ -203,14 +273,15 @@ function applicationPolicyPauseReasons(job: JobRecord, profile: UserProfile): Pa
     reasons.push("fraud_signal");
   }
   if (profile.sourceSettings.blockedPortals.some((term) => textContainsPhrase(sourceText, term))) {
-    reasons.push("unknown_portal");
+    reasons.push("platform_rule");
   }
 
   const trusted = profile.sourceSettings.trustedPortals.some((term) => textContainsPhrase(sourceText, term));
   const askBefore = profile.sourceSettings.askBeforePortals.some((term) => textContainsPhrase(sourceText, term));
-  if (!trusted && (askBefore || profile.sourceSettings.defaultPortalApplyPolicy === "ask")) {
+  if (!trusted && askBefore) {
     reasons.push("unknown_portal");
   }
+  if (!trusted && profile.sourceSettings.defaultPortalApplyPolicy === "block") reasons.push("platform_rule");
   return [...new Set(reasons)];
 }
 
@@ -229,6 +300,14 @@ function fraudTermMatches(text: string, term: string): boolean {
   }
   if (normalizedTerm === "payment required") {
     return /\b(payment|required|pay|fee)\b.{0,40}\b(payment|required|pay|fee)\b/.test(normalizedText);
+  }
+  if (normalizedTerm === "profile database") {
+    return /\b(profile|resume|cv|candidate)\b.{0,80}\b(database|data bank|db|registration|register|pool)\b/.test(normalizedText) ||
+      /\b(database|data bank|db|registration|register|pool)\b.{0,80}\b(profile|resume|cv|candidate)\b/.test(normalizedText);
+  }
+  if (normalizedTerm === "document before interview") {
+    return /\b(aadhaar|aadhar|pan|passport|bank statement|salary slip|uan|pf)\b.{0,100}\b(before|prior|pre interview|shortlist|shortlisted|call|discussion|interview)\b/.test(normalizedText) ||
+      /\b(before|prior|pre interview|shortlist|shortlisted|call|discussion|interview)\b.{0,100}\b(aadhaar|aadhar|pan|passport|bank statement|salary slip|uan|pf)\b/.test(normalizedText);
   }
   return normalizedText.includes(normalizedTerm);
 }
@@ -336,6 +415,147 @@ export function describeBrowserPlan(draft: ApplicationDraft): string {
   return `Prepare ${fieldCount} field(s), submit under policy, and capture the receipt.`;
 }
 
+export function createApplyRoute(input: CreateApplyRouteInput): ApplyRoute {
+  const createdAt = input.now ?? NOW;
+  const policyPauseReasons = [...new Set(input.browserPlan.pauseReasons)];
+  const base = {
+    id: `${input.application.id}-apply-route`,
+    applicationId: input.application.id,
+    jobId: input.job.id,
+    canSubmit: input.browserPlan.canSubmit,
+    submitRequiresApproval: input.browserPlan.submitRequiresApproval,
+    pauseReasons: policyPauseReasons,
+    createdAt,
+    artifacts: {
+      browserPlanId: input.browserPlan.id,
+      ...(input.browserPlan.cvPath ? { cvPath: input.browserPlan.cvPath } : {})
+    }
+  };
+
+  if (hasBlockingPauseReason(policyPauseReasons)) {
+    return {
+      ...base,
+      type: "manual_review",
+      status: "blocked",
+      label: "Manual review",
+      reason: "ApplyCue policy found a blocking reason before execution.",
+      execution: {
+        manualReview: {
+          questions: policyPauseReasons.map((reason) => `Resolve ${humanizeIdentifier(reason)} before applying.`)
+        }
+      },
+      notes: ["Do not open or submit this application until the blocker is resolved."]
+    };
+  }
+
+  const apiAdapter = knownApiAdapter(input.job);
+  if (apiAdapter) {
+    return {
+      ...base,
+      type: "api",
+      status: input.browserPlan.canSubmit ? "ready" : "paused",
+      label: "API apply",
+      reason: `Known safe adapter: ${apiAdapter.adapterId}.`,
+      execution: {
+        api: {
+          adapterId: apiAdapter.adapterId,
+          ...(apiAdapter.endpoint ? { endpoint: apiAdapter.endpoint } : {}),
+          method: "POST"
+        }
+      },
+      notes: [
+        "Use only the adapter named in this route.",
+        "If the adapter is unavailable, fall back to a fresh browser preflight."
+      ]
+    };
+  }
+
+  const emailAddresses = extractApplicationEmails(input.job);
+  if (emailAddresses.length > 0) {
+    const attachmentPaths = input.browserPlan.cvPath ? [input.browserPlan.cvPath] : [];
+    return {
+      ...base,
+      type: "email",
+      status: input.profile.applySettings.messagePolicy === "auto_send_simple" && input.draft.canAutoSubmit
+        ? "ready"
+        : "draft_only",
+      label: "Email apply",
+      reason: "The job post exposes an application email address.",
+      execution: {
+        email: {
+          to: emailAddresses,
+          subject: `Application for ${input.job.title} - ${input.profile.name ?? "Candidate"}`,
+          body: createApplicationEmailBody(input.job, input.profile),
+          attachmentPaths
+        }
+      },
+      notes: [
+        "Draft the email from this route.",
+        input.profile.applySettings.messagePolicy === "auto_send_simple"
+          ? "Send only when the page and draft still match the user's policy."
+          : "Do not send automatically; user approval is required."
+      ]
+    };
+  }
+
+  if (shouldUseDmRoute(input.job, input.profile)) {
+    const attachmentPaths = input.browserPlan.cvPath ? [input.browserPlan.cvPath] : [];
+    return {
+      ...base,
+      type: "dm",
+      status: "draft_only",
+      label: "DM draft",
+      reason: "The source is a social or recruiter message and recruiter DM drafts are enabled.",
+      execution: {
+        dm: {
+          platform: inferDmPlatform(input.job),
+          targetUrl: input.job.url,
+          message: createRecruiterDmBody(input.job, input.profile),
+          attachmentPaths
+        }
+      },
+      notes: ["Draft only. User approval is required before sending a DM."]
+    };
+  }
+
+  if (isHttpUrl(input.job.url)) {
+    return {
+      ...base,
+      type: "browser",
+      status: "needs_preflight",
+      label: "Browser apply",
+      reason: "No safe direct API/email route is known, so the agent should use browser control.",
+      execution: {
+        browser: {
+          planId: input.browserPlan.id,
+          preflightCommand: `pnpm applycue:browser-live-preflight -- --plan-id ${input.browserPlan.id}`,
+          applyCommand: `pnpm applycue:browser-live-apply -- --plan-id ${input.browserPlan.id}`
+        }
+      },
+      notes: [
+        "Run live preflight before filling the page.",
+        input.browserPlan.canSubmit
+          ? "Submit only when the plan, command, and user policy all allow it."
+          : "Fill/upload can run in review mode, then pause before final submit."
+      ]
+    };
+  }
+
+  return {
+    ...base,
+    type: "manual_review",
+    status: "paused",
+    label: "Manual review",
+    reason: "ApplyCue could not find a safe executable application route.",
+    execution: {
+      manualReview: {
+        questions: ["Find a current application URL, email address, or recruiter contact for this role."]
+      }
+    },
+    notes: ["The agent should research a safe route or ask the user before applying."]
+  };
+}
+
 export function createInitialBrowserActionLog(plan: BrowserApplyPlan, now = NOW): BrowserActionLogEntry[] {
   return plan.actions.map((action) => ({
     id: `${action.id}-planned`,
@@ -398,4 +618,85 @@ function slugify(value: string): string {
 
 function uniqueValues(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function hasBlockingPauseReason(reasons: Array<PauseReason | "user_approval_required">): boolean {
+  return reasons.some((reason) => reason === "fraud_signal" || reason === "platform_rule" || reason === "unsupported_cv_claim");
+}
+
+function knownApiAdapter(job: JobRecord): { adapterId: string; endpoint?: string } | undefined {
+  const provider = String((job.source as { provider?: unknown }).provider ?? "");
+  const sourceText = `${job.source.id} ${job.source.name} ${provider}`.toLowerCase();
+  if (!/\b(api_apply|direct_apply_api|applycue_api_adapter)\b/.test(sourceText)) return undefined;
+  return {
+    adapterId: provider || job.source.id,
+    ...(job.url ? { endpoint: job.url } : {})
+  };
+}
+
+function extractApplicationEmails(job: JobRecord): string[] {
+  const mailto = job.url.match(/^mailto:([^?]+)/i)?.[1];
+  if (mailto) return uniqueValues([mailto]);
+
+  const text = `${job.url} ${job.description}`;
+  const emailPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+  const emails: string[] = [];
+  for (const match of text.matchAll(emailPattern)) {
+    const email = match[0];
+    const start = Math.max(0, match.index - 120);
+    const end = Math.min(text.length, match.index + email.length + 120);
+    const before = text.slice(Math.max(0, match.index - 40), match.index);
+    const context = text.slice(start, end);
+    if (looksLikeApplicationEmailContext(context, before)) emails.push(email);
+  }
+  return uniqueValues(emails);
+}
+
+function shouldUseDmRoute(job: JobRecord, profile: UserProfile): boolean {
+  return profile.applySettings.allowRecruiterDmDrafts &&
+    (job.source.kind === "social_post" || job.source.kind === "recruiter_message");
+}
+
+function looksLikeApplicationEmailContext(context: string, beforeEmail: string): boolean {
+  if (/\b(from|reply-to|sender|sent by)\s*:?\s*$/i.test(beforeEmail)) return false;
+  return /\b(apply|application|careers?|cv|email|mail|resume|send|share)\b/i.test(context) &&
+    !/\b(from|reply-to|unsubscribe|sent by)\s*:?\s*$/i.test(context.slice(0, 40));
+}
+
+function isHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value);
+}
+
+function createApplicationEmailBody(job: JobRecord, profile: UserProfile): string {
+  const candidate = profile.name ?? "Candidate";
+  return [
+    `Hi,`,
+    ``,
+    `I am applying for the ${job.title} role at ${job.company}.`,
+    `I have attached my CV for your review.`,
+    ``,
+    `Regards,`,
+    candidate
+  ].join("\n");
+}
+
+function createRecruiterDmBody(job: JobRecord, profile: UserProfile): string {
+  const candidate = profile.name ?? "Candidate";
+  return [
+    `Hi, I noticed the ${job.title} role at ${job.company}.`,
+    `I am interested and would like to apply. I can share my CV if this is still open.`,
+    `Thanks, ${candidate}`
+  ].join("\n");
+}
+
+function inferDmPlatform(job: JobRecord): string {
+  const url = job.url.toLowerCase();
+  if (url.includes("linkedin.com")) return "linkedin";
+  if (url.includes("x.com") || url.includes("twitter.com")) return "x";
+  if (url.includes("facebook.com")) return "facebook";
+  return job.source.kind === "recruiter_message" ? "recruiter_message" : "social";
+}
+
+function humanizeIdentifier(value: string): string {
+  return value.replace(/_/g, " ");
 }

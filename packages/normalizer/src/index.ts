@@ -27,6 +27,7 @@ export interface RawJobInput {
   employmentType?: EmploymentType;
   companyStage?: CompanyStage;
   compensation?: Compensation;
+  postedAt?: string;
   liveState?: JobLiveState;
 }
 
@@ -35,6 +36,7 @@ export function normalizeJob(input: RawJobInput): JobRecord {
   const seniorityEvidence = input.seniorityEvidence ?? buildSeniorityEvidence(input, inferredSeniority);
   const requiredExperienceYears = input.requiredExperienceYears ?? inferRequiredExperienceYears(input.description ?? "");
   const companyMarketGrade = input.companyMarketGrade ?? inferCompanyMarketGrade(input.company, input.url);
+  const postedAt = normalizePostedAt(input.postedAt);
   const job: JobRecord = {
     id: stableJobId(input.company, input.title, input.url),
     source: input.source,
@@ -55,6 +57,7 @@ export function normalizeJob(input: RawJobInput): JobRecord {
   if (input.employmentType) job.employmentType = input.employmentType;
   if (input.companyStage) job.companyStage = input.companyStage;
   if (input.compensation) job.compensation = input.compensation;
+  if (postedAt) job.postedAt = postedAt;
 
   return job;
 }
@@ -171,6 +174,13 @@ function normalizeExperienceRange(range: ExperienceRange): ExperienceRange | und
   if (typeof min === "number") return { min };
   if (typeof max === "number") return { max };
   return undefined;
+}
+
+function normalizePostedAt(value?: string): string | undefined {
+  if (!value?.trim()) return undefined;
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return undefined;
+  return new Date(timestamp).toISOString();
 }
 
 const GLOBAL_ENTERPRISE_MARKERS = [

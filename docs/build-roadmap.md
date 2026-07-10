@@ -233,7 +233,7 @@ Learn what works.
 Build:
 
 - reply/rejection/interview/offer state updates
-- email connector or browser-assisted email review
+- native agent email connector review first, browser-assisted email review only with user permission
 - daily and weekly progress reports
 - outcome feedback loop
 
@@ -254,7 +254,7 @@ Current implementation status:
   - submitted, replies, interviews, offers, and rejections
   - positive outcomes by source
 - Source learning is an operations signal, not a visible candidate-worth score.
-- Email connector/browser-assisted email review is still a later slice; for now the agent records known outcomes through the command.
+- Native agent email connector review is still a later slice; browser-assisted email review is fallback only with user permission. For now the agent records known outcomes through the command.
 
 ## Parked Features
 
@@ -361,7 +361,8 @@ Shortlist parity improvement now in place:
 target title anchor -> can enter today's preparation queue
 adjacent-only, description-only, or wrong-family role match -> skip unless the user explicitly targets it
 broad remote region that includes the user's authorized region -> do not hard-block at discovery/shortlist time
-explicit user blockers -> source-kind/company/portal/fraud/work-mode/seniority/experience/employment/company-stage/work-auth/sponsorship/compensation/shift/travel/timezone gates
+explicit user blockers -> source-kind/company/portal/fraud/work-mode/known-experience/employment/company-stage/work-auth/sponsorship/compensation/shift/travel/timezone gates
+seniority/title level -> advisory by default, review or hard only by `matchSettings.seniorityGateMode`
 decision bucket -> simple backend ordering by policy, role anchor, proof, source confidence, and recency
 reusable ambiguity prompts -> saved-question handoff for policy edge cases
 ```
@@ -420,7 +421,7 @@ Current UAT evidence:
 1130 discovered jobs -> 24 source-quality kept -> 5 CVs -> 5 application drafts -> 5 browser plans -> 0 blocked reconciliations -> 5 browser dry-run receipts
 ```
 
-The latest local UAT now fills the configured daily review batch: 5 prepared of 5 configured per day. The remaining problem is source noise, not volume: only 24 of 1130 discovered jobs survived source-quality filtering. Do not fake quality by weakening hard blockers. The next path is real portal UAT on the prepared queue, tighter source queries where the funnel is noisy, and explicit user approval before relaxing saved preferences.
+The latest local UAT filled the configured daily review batch, but later India-focused runs exposed a second problem: source-quality title filtering was acting like a fuzzy matcher and throwing away too much supply before ranking. Do not fake quality by hiding uncertain jobs. Source quality should block explicit no-go terms, clear wrong role families, scam/fraud signals, location/work-authorization conflicts, duplicates, and stale roles when the data is known. Ambiguous title fit should reach ranking or agent review, with reusable tuning applied only after user or agent approval.
 
 Funnel health guidance now accompanies every run:
 
@@ -440,21 +441,21 @@ no proof -> unsupported -> block
 
 This reduces false positives from shared words while preserving false-negative fixes through explicit aliases such as product roadmap/roadmap, SaaS/B2B SaaS, payments/payment gateway, GTM/go-to-market, and digital banking/banking.
 
-Transient source expansion now runs before preference relaxation when the batch is short:
+Transient source expansion is now an explicit more-results action, not first-run behavior:
 
 ```text
-generated source plan + approved public job-board sources -> wider no-config-edit scan -> source-quality filter -> hard gates/shortlist
+user asks for more results -> generated source plan + approved public job-board sources -> wider no-config-edit scan -> source-quality filter -> hard gates/shortlist
 ```
 
-This can rerun approved public JobSpy/remote-board queries with wider `resultsWanted`, `hoursOld`, or `limit` values. It does not edit source config, generated source plans, CVs, or user assets.
+This can rerun approved public JobSpy/remote-board queries with wider `resultsWanted`, `hoursOld`, or `limit` values. It does not edit source config, generated source plans, CVs, or user assets. The clean first run should show the best saved sources only; relaxation options are shown in plain language when the user asks for more volume.
 
 base workflow parity / repeat-control improvement now in place:
 
 ```text
-post-filter jobs -> scan-history filter -> skip already prepared/closed non-manual jobs in daily/push -> record seen/prepared/closed -> detect repost signals
+post-filter jobs -> current-run dedupe -> scan-history filter -> skip already prepared/closed non-manual jobs in daily/push -> record seen/prepared/closed -> detect repost signals
 ```
 
-The scan history file lives in the user store at `data/local/scan-history.jsonl`. Review mode keeps repeated jobs visible for UAT and manual inspection; daily and push runs avoid re-preparing jobs already handled from automated sources. Repost clusters are shown as source-quality warnings and do not block applications by themselves.
+The scan history file lives in the user store at `data/local/scan-history.jsonl`. Review mode keeps repeated jobs visible for UAT and manual inspection; daily and push runs avoid re-preparing jobs already handled from automated sources. Current-run dedupe removes exact URL repeats and same-company/similar-role repeats before ranking, CV generation, and application planning. Daily and push also skip same-company/similar-role jobs already prepared in prior automated runs, even when the repost or aggregator link has a different URL. Manual imports stay visible because they are deliberate user or agent input. The dashboard/chat summary shows duplicate counts and safety-block counts so the user sees protection without reviewing junk. Repost clusters are shown as source-quality warnings and do not block applications by themselves.
 
 base workflow parity / outcome-learning improvement now in place:
 
@@ -498,11 +499,13 @@ Build order:
 15. Local lexical retrieval list in backend ordering. Done. Do not expand this into a ranking platform without a new product decision.
 16. Source scorecards in manifest, dashboard, and chat summary. Done.
 17. Reusable ambiguity prompts in manifest, dashboard, and chat summary. Done.
-18. Transient generated public job-board expansion for short batches without editing user config. Done.
+18. Explicit `--more-results` generated public job-board expansion for short batches without editing user config. Done.
 19. Senior title-variant matching for accepted seniority plus target role anchor. Done.
-20. Crawl4AI adapter for public pages with no API.
-21. Browser-visible extraction for login-backed sources.
-22. Key-required APIs such as Adzuna only with user-owned credentials.
+20. Multi-location, market-aware generated source packs for job-board searches. Done.
+21. User inbox lead source planning and local import through native Codex, Claude, Hermes, or similar agent connector export, with browser fallback only by user permission. Done for source-plan, docs, and `pnpm applycue:import-email-leads`; mailbox search execution remains agent-managed.
+22. Crawl4AI adapter for public pages with no API.
+23. Browser-visible extraction for login-backed sources.
+24. Key-required APIs such as Adzuna only with user-owned credentials.
 
 See `docs/prebuilt-providers-and-libraries.md`.
 

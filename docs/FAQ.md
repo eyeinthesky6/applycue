@@ -20,7 +20,7 @@ Repo-local files still work during the transition, but real CVs and generated ou
 
 ## Can it apply automatically?
 
-Yes, only inside the user's configured policy. It must pause on unclear answers, sensitive fields, unsupported claims, unknown portals, payment requests, or anything that changes a public profile.
+Yes, only inside the user's configured policy. It must pause on unclear answers, sensitive fields, unsupported claims, ask-before portals, blocked or scammy portals, payment requests, or anything that changes a public profile.
 
 ## Should scores be shown to users?
 

@@ -10,6 +10,7 @@ import { buildSourceOutcomeSummary, parseOutcomeEventsJsonLines } from "@applycu
 import { access, appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { LiveBrowserPreflightReport } from "./live-preflight.js";
+import { isMasterFormDataConfirmed } from "./master-form-data.js";
 import type { SetupApplyCueOptions } from "./setup.js";
 
 export type LiveBrowserApplyStatus = "pass" | "fail" | "skipped";
@@ -37,6 +38,8 @@ export interface LiveBrowserApplyReport {
   checks: LiveBrowserApplyCheck[];
   paths: {
     markdownReport: string;
+    masterFormData?: string;
+    masterFormDataPreview?: string;
     outcomes?: string;
     plan: string;
     receipt: string;
@@ -47,7 +50,7 @@ export interface LiveBrowserApplyReport {
 
 export interface LiveBrowserApplyOptions extends SetupApplyCueOptions {
   allowSubmit?: boolean;
-  batch?: Pick<SampleBatchResult, "browserPlans" | "outputRoot">;
+  batch?: Pick<SampleBatchResult, "browserPlans" | "drafts" | "outputRoot">;
   importPlaywright?: DynamicImport;
   jobId?: string;
   planId?: string;
@@ -102,6 +105,30 @@ export async function runLiveBrowserApply(options: LiveBrowserApplyOptions = {})
   }
 
   const paths = liveApplyPaths(batch.outputRoot, outputDir, safeFileSegment(selectedPlan.id));
+  const formDataGate = await isMasterFormDataConfirmed(batch);
+  if (!formDataGate.confirmed) {
+    return writeLiveApplyReport(batch, reportForPreLaunchFailure({
+      allowSubmit: Boolean(options.allowSubmit),
+      checks: [
+        {
+          id: "browser-plan",
+          label: "Browser Plan Available",
+          status: "pass",
+          detail: `Selected ${selectedPlan.id}.`
+        },
+        {
+          id: "master-form-data",
+          label: "Master Form Data Confirmed",
+          status: "fail",
+          detail: `Master form data is ${formDataGate.report.status}; show ${formDataGate.report.fieldCount} field(s) to the user and confirm before portal fill.`
+        }
+      ],
+      paths,
+      plan: selectedPlan,
+      summary: "Live browser apply blocked: confirm master form data before filling the portal."
+    }));
+  }
+
   const preflightGate = validatePassedPreflight(preflightReport, selectedPlan);
   if (preflightGate.status === "fail") {
     return writeLiveApplyReport(batch, reportForPreLaunchFailure({
@@ -562,6 +589,8 @@ function liveApplyPaths(
 ): LiveBrowserApplyReport["paths"] {
   return {
     markdownReport: path.join(outputDir, "live-apply-report.md"),
+    masterFormData: path.join(outputRoot, "data", "local", "master-form-data.json"),
+    masterFormDataPreview: path.join(outputRoot, "outputs", "form-data", "master-form-data.md"),
     plan: path.join(outputDir, `${planSegment}-execution-plan.json`),
     receipt: path.join(outputRoot, "outputs", "browser-receipts", `${planSegment}-receipt.json`),
     report: path.join(outputDir, "live-apply-report.json")
@@ -759,6 +788,7 @@ function hasProgressBatchData(
 ): batch is SampleBatchResult {
   const candidate = batch as Partial<SampleBatchResult>;
   return Array.isArray(candidate.applications) &&
+    Array.isArray(candidate.applyRoutes) &&
     Array.isArray(candidate.cvDocxs) &&
     Array.isArray(candidate.cvHtmls) &&
     Array.isArray(candidate.cvMarkdowns) &&
@@ -804,6 +834,8 @@ ${checks}
 
 - Execution plan: ${report.paths.plan}
 - Receipt: ${report.paths.receipt}
+- Master form data: ${report.paths.masterFormData ?? "not checked"}
+- Master form preview: ${report.paths.masterFormDataPreview ?? "not checked"}
 - Outcomes: ${report.paths.outcomes ?? "not updated"}
 - JSON report: ${report.paths.report}
 `;

@@ -18,10 +18,12 @@ ApplyCue is not a generic job board, search engine, or score dashboard. The goal
 
 ## Current Shape
 
-This branch has two layers:
+ApplyCue is currently a local-first agent product:
 
-- **Base workflow:** scanners, pipeline, tracker, reports, CV/PDF primitives, agent modes, dashboard/TUI, and batch workflow.
-- **ApplyCue additions:** TypeScript packages under `packages/`, worker/browser apps under `apps/`, external profile store docs, CV truth policy, browser UAT policy, source approval flow, and product docs.
+- TypeScript packages under `packages/` own profile loading, discovery, ranking, CV tailoring, application planning, and dashboard data.
+- Worker/browser apps under `apps/` expose the commands an agent runs.
+- `skills/applycue/SKILL.md` is the canonical user-facing workflow for agents.
+- Repo-local scripts from the base workflow still exist, but the ApplyCue commands are the launch path.
 
 User assets should live outside the repo, preferably under:
 
@@ -32,6 +34,8 @@ User assets should live outside the repo, preferably under:
 Repo-local user files still work during the transition.
 
 ## Local Setup
+
+The current distribution path is GitHub repo + agent skill. npm/package install and SaaS are later.
 
 ```bash
 git clone https://github.com/eyeinthesky6/applycue.git
@@ -89,9 +93,18 @@ discover -> evaluate -> truthful tailored CV -> DOCX/PDF/HTML artifact -> browse
 
 Until this works reliably, dashboard polish and complex matching math are secondary.
 
+## Launch Readiness
+
+See [Launch readiness](docs/launch-readiness.md) for the current distribution plan, release gate, privacy guard, and what is not part of v0.1.
+
+For real multi-candidate sessions, use the [Live usage runbook](docs/live-usage-runbook.md). It defines the default-profile first run, one profile per candidate, and the search-UAT-before-apply flow.
+
 ## Important Docs
 
 - [Agent rules](AGENTS.md)
+- [Launch readiness](docs/launch-readiness.md)
+- [Live usage runbook](docs/live-usage-runbook.md)
+- [Pivot history](docs/pivot-history.md)
 - [Data contract](DATA_CONTRACT.md)
 - [Build decision](docs/build-decision.md)
 - [Agent development guide](docs/agent-development-guide.md)

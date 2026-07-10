@@ -2,11 +2,15 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { JobRecord, SourcePlan, UserProfile } from "@applycue/core";
+import type { JobSpyRunRequest } from "@applycue/discovery";
+import { createProfile } from "@applycue/profile";
 import { describe, expect, it } from "vitest";
 import {
   approveApplicationAnswers,
   approveSourceSuggestions,
+  applyTuningSignals,
   recordOutcomeEvent,
+  recordTuningSignal,
   runBatch,
   runLocalOrSampleBatch,
   runSampleBatch
@@ -22,10 +26,15 @@ describe("runSampleBatch", () => {
     expect(result.cvDocxs[0]?.docx.subarray(0, 2).toString("utf8")).toBe("PK");
     expect(result.cvHtmls).toHaveLength(result.cvVariants.length);
     expect(result.browserPlans).toHaveLength(result.applications.length);
+    expect(result.applyRoutes).toHaveLength(result.applications.length);
     expect(result.manifest.sourceCodeWriteCount).toBe(0);
+    expect(result.manifest.applyRouteIds).toHaveLength(result.applyRoutes.length);
     expect(result.manifest.cvQuality?.generatedCvs).toBe(result.cvVariants.length);
     expect(result.manifest.cvQuality?.minimumCvChars).toBeGreaterThan(0);
     expect(result.manifest.cvQuality?.minimumBullets).toBeGreaterThan(0);
+    expect(result.atsDiagnosticReports).toHaveLength(result.cvVariants.length);
+    expect(result.manifest.atsDiagnostics?.reports).toBe(result.cvVariants.length);
+    expect(result.progressItems[0]?.atsDiagnosticsPath).toContain("outputs/ats-diagnostics/");
     expect(result.progressItems.length).toBe(result.applications.length);
     expect(result.progressItems[0]?.cvDocxPath).toContain("outputs/cvs/");
     expect(result.progressItems[0]?.cvDocxPath).toContain(".docx");
@@ -34,7 +43,11 @@ describe("runSampleBatch", () => {
     expect(result.progressItems[0]?.cvPath).toContain("outputs/cvs/");
     expect(result.progressItems[0]?.jdPath).toContain("outputs/jds/");
     expect(result.progressItems[0]?.jdPath).toContain(".md");
+    expect(result.progressItems[0]?.applyRoutePath).toContain("outputs/apply-routes/");
+    expect(result.progressItems[0]?.applyRouteType).toBe("browser");
+    expect(result.progressItems[0]?.applyRouteStatus).toBe("needs_preflight");
     expect(result.browserPlans[0]?.cvPath).toContain(".docx");
+    expect(result.applyRoutes[0]?.execution.browser?.planId).toBe(result.browserPlans[0]?.id);
     expect(result.progressItems[0]?.reconciliationPath).toContain("outputs/reconciliation/");
     expect(result.cvVariants.every((variant) => variant.formatMode === "standard_ats_v1")).toBe(true);
     expect(result.cvVariants.every((variant) => variant.reconciliationStatus === "passed")).toBe(true);
@@ -42,12 +55,35 @@ describe("runSampleBatch", () => {
     expect(result.manifest.generatedFiles.some((file) => file.path === "outputs/dashboard/latest.html")).toBe(true);
     expect(result.manifest.generatedFiles.some((file) => file.kind === "cv_docx")).toBe(true);
     expect(result.manifest.generatedFiles.some((file) => file.kind === "cv_html")).toBe(true);
+    expect(result.manifest.generatedFiles.some((file) => file.kind === "ats_diagnostics_json")).toBe(true);
     expect(result.manifest.generatedFiles.some((file) => file.kind === "job_description_markdown")).toBe(true);
+    expect(result.manifest.generatedFiles.some((file) => file.kind === "apply_route_json")).toBe(true);
     expect(result.manifest.generatedFiles.some((file) => file.kind === "browser_plan_json")).toBe(true);
     expect(result.manifest.generatedFiles.some((file) => file.kind === "source_plan_json")).toBe(true);
     expect(result.manifest.generatedFiles.some((file) => file.kind === "run_summary_markdown")).toBe(true);
+    expect(result.manifest.generatedFiles.some((file) => file.kind === "job_decisions_json")).toBe(true);
     expect(result.manifest.generatedFiles.some((file) => file.path === "outputs/runs/latest-summary.md")).toBe(true);
+    expect(result.jobDecisions).toHaveLength(result.jobs.length);
     expect(result.sourcePlan.status).toBe("generated_for_review");
+  });
+
+  it("writes the full ranked decision queue for agent review", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-decisions-"));
+    const result = await runSampleBatch({ workspaceRoot, writeFiles: true });
+
+    const queuePath = path.join(workspaceRoot, "outputs", "runs", "latest-job-decisions.json");
+    const queue = JSON.parse(await readFile(queuePath, "utf8")) as {
+      runId: string;
+      profileId: string;
+      queueCount: number;
+      decisions: Array<{ jobId: string; decision: string; reasons: string[] }>;
+    };
+
+    expect(queue.runId).toBe(result.manifest.id);
+    expect(queue.profileId).toBe(result.profile.id);
+    expect(queue.queueCount).toBe(result.jobDecisions.length);
+    expect(queue.decisions).toHaveLength(result.jobDecisions.length);
+    expect(queue.decisions[0]?.reasons.length).toBeGreaterThan(0);
   });
 
   it("uses local config and local job files when present", async () => {
@@ -124,6 +160,134 @@ describe("runSampleBatch", () => {
     expect(result.reconciliationReports[0]?.status).toBe("passed");
   });
 
+  it("keeps recent known posts first and holds older known posts until expansion", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-freshness-"));
+    const applyCueHome = path.join(workspaceRoot, "applycue-home");
+    const profileDir = path.join(applyCueHome, "profiles", "default");
+    await mkdir(profileDir, { recursive: true });
+    await writeFile(
+      path.join(profileDir, "applycue.json"),
+      JSON.stringify({
+        profile: {
+          name: "Freshness Candidate",
+          email: "freshness@example.com"
+        },
+        preferences: {
+          targetRoleTerms: ["head of product"],
+          targetIndustries: ["fintech"],
+          preferredLocations: ["Remote India"],
+          acceptableWorkModes: ["remote"],
+          targetSeniorities: ["director", "vp"],
+          acceptableSeniorities: ["director", "vp"],
+          employmentTypes: ["full_time"],
+          niceToHaveKeywords: ["product strategy", "roadmap"]
+        },
+        searchSettings: {
+          freshnessDays: 30,
+          includeUnknownPostDates: true
+        },
+        applySettings: {
+          mode: "review",
+          applicationsPerDay: 5,
+          minimumFitToApply: 0.5
+        },
+        matchSettings: {
+          widenIfFewerThan: 20,
+          relaxOrder: ["source", "recency"],
+          minimumFitFloor: 0.5
+        },
+        proofBank: [
+          {
+            id: "proof-product",
+            claim: "Led product strategy work.",
+            evidence: "Profile includes product strategy leadership.",
+            tags: ["product strategy", "roadmap", "fintech"],
+            kind: "work"
+          }
+        ],
+        sources: {
+          jobBoards: [
+            {
+              label: "Approved JobSpy freshness search",
+              provider: "jobspy",
+              query: "head of product fintech",
+              options: {
+                siteNames: ["indeed"],
+                location: "India",
+                resultsWanted: 10
+              }
+            }
+          ]
+        }
+      }),
+      "utf8"
+    );
+    const recentDate = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+    const oldDate = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString();
+    const requests: Array<{ hoursOld?: number }> = [];
+    const jobSpyRunner = async (request: JobSpyRunRequest) => {
+      requests.push(typeof request.hours_old === "number" ? { hoursOld: request.hours_old } : {});
+      return [
+        {
+          site: "indeed",
+          title: "Head of Product",
+          company: "Fresh Fintech",
+          job_url: "https://jobs.example.test/fresh-product",
+          location: "Remote India",
+          is_remote: true,
+          job_type: "full_time",
+          date_posted: recentDate,
+          description: "Lead product strategy, roadmap, and fintech platform growth."
+        },
+        {
+          site: "indeed",
+          title: "Head of Product",
+          company: "Old Fintech",
+          job_url: "https://jobs.example.test/old-product",
+          location: "Remote India",
+          is_remote: true,
+          job_type: "full_time",
+          date_posted: oldDate,
+          description: "Lead product strategy, roadmap, and fintech platform growth."
+        },
+        {
+          site: "indeed",
+          title: "Head of Product",
+          company: "Unknown Date Fintech",
+          job_url: "https://jobs.example.test/unknown-date-product",
+          location: "Remote India",
+          is_remote: true,
+          job_type: "full_time",
+          description: "Lead product strategy, roadmap, and fintech platform growth."
+        }
+      ];
+    };
+
+    const clean = await runLocalOrSampleBatch({
+      workspaceRoot,
+      applyCueHome,
+      jobSpyRunner,
+      writeFiles: false
+    });
+
+    expect(requests[0]).toEqual({ hoursOld: 720 });
+    expect(clean.jobs.map((job) => job.company)).toEqual(["Fresh Fintech", "Unknown Date Fintech"]);
+    expect(clean.manifest.freshness?.filteredOldJobs).toBe(1);
+    expect(clean.manifest.freshness?.unknownPostDateJobs).toBe(1);
+
+    const widened = await runLocalOrSampleBatch({
+      workspaceRoot,
+      applyCueHome,
+      includeOlderPosts: true,
+      jobSpyRunner,
+      writeFiles: false
+    });
+
+    expect(widened.jobs.map((job) => job.company)).toEqual(["Fresh Fintech", "Old Fintech", "Unknown Date Fintech"]);
+    expect(widened.manifest.freshness?.includeOlderPosts).toBe(true);
+    expect(widened.manifest.freshness?.filteredOldJobs).toBe(0);
+  });
+
   it("does not silently load repo job fixtures for an external user profile", async () => {
     const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-no-fallback-workspace-"));
     const applyCueHome = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-no-fallback-home-"));
@@ -175,7 +339,7 @@ describe("runSampleBatch", () => {
     expect(result.manifest.notes).toContain("No manual local job file configured; using approved source connectors only.");
   });
 
-  it("uses transient generated public job-board expansion when the configured batch is short", async () => {
+  it("does not use generated public job-board expansion on the clean first run", async () => {
     const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-expansion-"));
     const applyCueHome = path.join(workspaceRoot, "applycue-home");
     const profileDir = path.join(applyCueHome, "profiles", "default");
@@ -232,13 +396,13 @@ describe("runSampleBatch", () => {
       writeFiles: true,
       jobSpyRunner: async (request) => {
         requests.push(request.search_term ?? "");
-        if (request.search_term !== "vice president product") return [];
+        if (request.search_term !== "head of product fintech") return [];
         return [
           {
             site: "indeed",
             title: "Vice President Product",
             company: "Expansion Fintech",
-            job_url: "https://careers.expansionfintech.test/jobs/vp-product",
+            job_url: "https://careers.expansionfintech.test/jobs/head-product",
             location: "Remote India",
             is_remote: true,
             job_type: "full_time",
@@ -248,7 +412,87 @@ describe("runSampleBatch", () => {
       }
     });
 
-    expect(requests).toContain("vice president product");
+    expect(requests).toEqual([]);
+    expect(result.jobs.map((job) => job.company)).not.toContain("Expansion Fintech");
+    expect(result.applications).toHaveLength(0);
+    expect(result.manifest.notes.some((note) => note.includes("Transient source expansion ran"))).toBe(false);
+  });
+
+  it("uses transient generated public job-board expansion only when more results are requested", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-expansion-requested-"));
+    const applyCueHome = path.join(workspaceRoot, "applycue-home");
+    const profileDir = path.join(applyCueHome, "profiles", "default");
+    await mkdir(profileDir, { recursive: true });
+    await writeFile(
+      path.join(profileDir, "applycue.json"),
+      JSON.stringify({
+        profile: {
+          name: "Expansion Candidate",
+          email: "expansion@example.com",
+          currentDesignation: "Head of Product",
+          currentCountry: "India"
+        },
+        preferences: {
+          targetRoleTerms: ["head of product"],
+          targetIndustries: ["fintech"],
+          preferredLocations: ["Remote India"],
+          acceptableWorkModes: ["remote"],
+          targetSeniorities: ["vp"],
+          acceptableSeniorities: ["director", "vp"],
+          employmentTypes: ["full_time"],
+          niceToHaveKeywords: ["product strategy", "roadmap"]
+        },
+        applySettings: {
+          mode: "review",
+          applicationsPerDay: 1,
+          minimumFitToApply: 0.5
+        },
+        matchSettings: {
+          widenIfFewerThan: 20,
+          relaxOrder: ["source", "recency"],
+          minimumFitFloor: 0.5
+        },
+        proofBank: [
+          {
+            id: "proof-product",
+            claim: "Led product strategy and roadmap for fintech products.",
+            evidence: "Approved profile proof.",
+            tags: ["head of product", "product strategy", "roadmap", "fintech"],
+            kind: "work"
+          }
+        ],
+        sources: {
+          jobBoards: []
+        }
+      }),
+      "utf8"
+    );
+    const requests: string[] = [];
+
+    const result = await runLocalOrSampleBatch({
+      workspaceRoot,
+      applyCueHome,
+      generatedSourceExpansion: true,
+      writeFiles: true,
+      jobSpyRunner: async (request) => {
+        requests.push(request.search_term ?? "");
+        if (request.search_term !== "head of product fintech") return [];
+        return [
+          {
+            site: "indeed",
+            title: "Vice President Product",
+            company: "Expansion Fintech",
+            job_url: "https://careers.expansionfintech.test/jobs/head-product",
+            location: "Remote India",
+            is_remote: true,
+            job_type: "full_time",
+            description: "Lead product strategy, roadmap, and fintech platform growth."
+          }
+        ];
+      }
+    });
+
+    expect(requests).toContain("head of product fintech");
     expect(result.jobs.map((job) => job.company)).toContain("Expansion Fintech");
     expect(result.applications).toHaveLength(1);
     expect(result.manifest.notes.some((note) => note.includes("Transient source expansion ran"))).toBe(true);
@@ -321,6 +565,7 @@ describe("runSampleBatch", () => {
     const result = await runLocalOrSampleBatch({
       workspaceRoot,
       applyCueHome,
+      generatedSourceExpansion: true,
       writeFiles: true,
       jobSpyRunner: async (request) => {
         const recordedRequest: { hoursOld?: number; resultsWanted?: number; searchTerm?: string } = {};
@@ -328,7 +573,7 @@ describe("runSampleBatch", () => {
         if (typeof request.results_wanted === "number") recordedRequest.resultsWanted = request.results_wanted;
         if (request.search_term) recordedRequest.searchTerm = request.search_term;
         requests.push(recordedRequest);
-        if (request.search_term !== "vice president product" || request.hours_old !== 336) return [];
+        if (request.search_term !== "vice president product" || request.hours_old !== 720) return [];
         return [
           {
             site: "indeed",
@@ -345,14 +590,213 @@ describe("runSampleBatch", () => {
     });
 
     expect(requests).toContainEqual(
-      expect.objectContaining({ searchTerm: "vice president product", resultsWanted: 5, hoursOld: 24 })
+      expect.objectContaining({ searchTerm: "vice president product", resultsWanted: 5, hoursOld: 720 })
     );
     expect(requests).toContainEqual(
-      expect.objectContaining({ searchTerm: "vice president product", resultsWanted: 35, hoursOld: 336 })
+      expect.objectContaining({ searchTerm: "vice president product", resultsWanted: 35, hoursOld: 720 })
     );
     expect(result.jobs.map((job) => job.company)).toContain("Widened Expansion Fintech");
     expect(result.applications).toHaveLength(1);
     expect(result.manifest.notes.some((note) => note.includes("Transient source expansion ran"))).toBe(true);
+  });
+
+  it("uses an explicit target ranking queue to expand even above the default small-batch threshold", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-target-queue-"));
+    const applyCueHome = path.join(workspaceRoot, "applycue-home");
+    const profileDir = path.join(applyCueHome, "profiles", "default");
+    await mkdir(profileDir, { recursive: true });
+    await writeFile(
+      path.join(profileDir, "applycue.json"),
+      JSON.stringify({
+        profile: {
+          name: "Target Queue Candidate",
+          email: "target@example.com",
+          currentDesignation: "Head of Product",
+          currentCountry: "India"
+        },
+        preferences: {
+          targetRoleTerms: ["vice president product"],
+          targetIndustries: ["fintech"],
+          preferredLocations: ["Remote India"],
+          acceptableWorkModes: ["remote"],
+          targetSeniorities: ["vp"],
+          acceptableSeniorities: ["vp"],
+          employmentTypes: ["full_time"],
+          niceToHaveKeywords: ["product strategy", "roadmap"]
+        },
+        applySettings: {
+          mode: "review",
+          applicationsPerDay: 1,
+          minimumFitToApply: 0.5
+        },
+        matchSettings: {
+          widenIfFewerThan: 20,
+          relaxOrder: ["source", "recency"],
+          minimumFitFloor: 0.5
+        },
+        proofBank: [
+          {
+            id: "proof-product",
+            claim: "Led product strategy and roadmap for fintech products.",
+            evidence: "Approved profile proof.",
+            tags: ["vice president product", "product strategy", "roadmap", "fintech"],
+            kind: "work"
+          }
+        ],
+        sources: {
+          jobBoards: [
+            {
+              id: "approved-vp-product-target",
+              label: "Approved VP Product target search",
+              provider: "jobspy",
+              query: "vice president product",
+              options: {
+                siteNames: ["indeed"],
+                location: "India",
+                resultsWanted: 25,
+                hoursOld: 720
+              }
+            }
+          ]
+        }
+      }),
+      "utf8"
+    );
+    const requests: Array<{ resultsWanted?: number; searchTerm?: string }> = [];
+
+    const result = await runLocalOrSampleBatch({
+      workspaceRoot,
+      applyCueHome,
+      generatedSourceExpansion: true,
+      targetRankingQueue: 30,
+      writeFiles: true,
+      jobSpyRunner: async (request) => {
+        requests.push({
+          ...(typeof request.results_wanted === "number" ? { resultsWanted: request.results_wanted } : {}),
+          ...(request.search_term ? { searchTerm: request.search_term } : {})
+        });
+        if (request.search_term !== "vice president product") return [];
+        if (request.results_wanted === 25) {
+          return Array.from({ length: 25 }, (_, index) => ({
+            site: "indeed",
+            title: `Vice President Product ${index + 1}`,
+            company: `Target Queue Fintech ${index + 1}`,
+            job_url: `https://careers.target-queue.test/jobs/vp-product-${index + 1}`,
+            location: "Remote India",
+            is_remote: true,
+            job_type: "full_time",
+            description: "Lead product strategy, roadmap, and fintech platform growth."
+          }));
+        }
+        if (request.results_wanted === 35) {
+          return [
+            {
+              site: "indeed",
+              title: "Vice President Product Expansion",
+              company: "Target Queue Expansion Fintech",
+              job_url: "https://careers.target-queue.test/jobs/vp-product-expansion",
+              location: "Remote India",
+              is_remote: true,
+              job_type: "full_time",
+              description: "Lead product strategy, roadmap, and fintech platform growth."
+            }
+          ];
+        }
+        return [];
+      }
+    });
+
+    expect(requests).toContainEqual(expect.objectContaining({ searchTerm: "vice president product", resultsWanted: 25 }));
+    expect(requests).toContainEqual(expect.objectContaining({ searchTerm: "vice president product", resultsWanted: 35 }));
+    expect(result.sourceQuality?.keptJobs).toBeGreaterThan(20);
+    expect(result.jobs.map((job) => job.company)).toContain("Target Queue Expansion Fintech");
+    expect(result.manifest.notes.some((note) => note.includes("Transient source expansion ran"))).toBe(true);
+  });
+
+  it("does not spend explicit-geo expansion on global no-location boards", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-expansion-explicit-geo-"));
+    const applyCueHome = path.join(workspaceRoot, "applycue-home");
+    const profileDir = path.join(applyCueHome, "profiles", "default");
+    await mkdir(profileDir, { recursive: true });
+    const coveredQueries = [
+      "head of product",
+      "head of product fintech",
+      "vice president product",
+      "vice president product fintech",
+      "vice president product management",
+      "vice president product management fintech"
+    ];
+    await writeFile(
+      path.join(profileDir, "applycue.json"),
+      JSON.stringify({
+        profile: {
+          name: "Explicit Geo Candidate",
+          email: "explicit-geo@example.com",
+          currentDesignation: "Head of Product",
+          currentCountry: "India"
+        },
+        preferences: {
+          targetRoleTerms: ["head of product"],
+          targetIndustries: ["fintech"],
+          preferredLocations: ["Remote India"],
+          acceptableWorkModes: ["remote"],
+          targetSeniorities: ["vp"],
+          acceptableSeniorities: ["vp"],
+          employmentTypes: ["full_time"],
+          niceToHaveKeywords: ["product strategy", "roadmap"]
+        },
+        applySettings: {
+          mode: "review",
+          applicationsPerDay: 5,
+          minimumFitToApply: 0.5
+        },
+        matchSettings: {
+          widenIfFewerThan: 20,
+          relaxOrder: ["source", "recency"],
+          minimumFitFloor: 0.5
+        },
+        proofBank: [
+          {
+            id: "proof-product",
+            claim: "Led product strategy and roadmap for fintech products.",
+            evidence: "Approved profile proof.",
+            tags: ["head of product", "product strategy", "roadmap", "fintech"],
+            kind: "work"
+          }
+        ],
+        sources: {
+          jobBoards: coveredQueries.map((query) => ({
+            id: `covered-${query.replace(/[^a-z0-9]+/gi, "-")}`,
+            label: `Covered ${query}`,
+            provider: "jobspy",
+            query,
+            options: {
+              siteNames: ["indeed"],
+              location: "India",
+              resultsWanted: 100,
+              hoursOld: 999
+            }
+          }))
+        }
+      }),
+      "utf8"
+    );
+    const fetchedUrls: string[] = [];
+
+    const result = await runLocalOrSampleBatch({
+      workspaceRoot,
+      applyCueHome,
+      generatedSourceExpansion: true,
+      writeFiles: true,
+      jobSpyRunner: async () => [],
+      jobBoardFetchJson: async (url) => {
+        fetchedUrls.push(String(url));
+        return { jobs: [], page_count: 1, results: [] };
+      }
+    });
+
+    expect(result.jobs).toHaveLength(0);
+    expect(fetchedUrls).toEqual([]);
   });
 
   it("removes obvious demo jobs from real external user runs", async () => {
@@ -547,6 +991,205 @@ describe("runSampleBatch", () => {
     expect(result.outcomesPath).toBe(path.join(workspaceRoot, "config", "data", "local", "outcomes.jsonl"));
     expect(result.event.id).toContain("app-123");
     expect(await readFile(result.outcomesPath, "utf8")).toContain("\"type\":\"interview\"");
+  });
+
+  it("records user and agent tuning signals without editing active config", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-record-tuning-"));
+    const configPath = path.join(workspaceRoot, "config", "applycue.local.json");
+    await mkdir(path.dirname(configPath), { recursive: true });
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        profile: {
+          name: "Tuning Candidate",
+          email: "tuning@example.com"
+        },
+        preferences: {
+          targetRoleTerms: ["head of product"]
+        }
+      }),
+      "utf8"
+    );
+    const originalConfig = await readFile(configPath, "utf8");
+
+    const agentSignal = await recordTuningSignal({
+      workspaceRoot,
+      applyCueHome: path.join(workspaceRoot, "empty-applycue-home"),
+      origin: "agent_analysis",
+      target: "title_variant",
+      action: "promote",
+      value: "group product manager",
+      reason: "Several senior product jobs use this title in large companies.",
+      confidence: "medium",
+      evidenceRefs: ["outputs/runs/latest-summary.md"],
+      createdAt: "2026-07-07T11:00:00.000Z"
+    });
+
+    const userSignal = await recordTuningSignal({
+      workspaceRoot,
+      applyCueHome: path.join(workspaceRoot, "empty-applycue-home"),
+      origin: "user_feedback",
+      target: "role_term",
+      action: "block",
+      value: "product marketing",
+      reason: "User said this is not a target role.",
+      approvedByUser: true,
+      createdAt: "2026-07-07T11:05:00.000Z"
+    });
+
+    expect(agentSignal.tuningSignalsPath).toBe(path.join(workspaceRoot, "config", "data", "local", "tuning-signals.jsonl"));
+    expect(agentSignal.signal.status).toBe("proposed");
+    expect(userSignal.signal.status).toBe("approved");
+    expect(await readFile(configPath, "utf8")).toBe(originalConfig);
+    const rows = (await readFile(agentSignal.tuningSignalsPath, "utf8")).trim().split(/\r?\n/).map((row) => JSON.parse(row));
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({
+      origin: "agent_analysis",
+      target: "title_variant",
+      action: "promote",
+      value: "group product manager",
+      status: "proposed"
+    });
+    expect(rows[1]).toMatchObject({
+      origin: "user_feedback",
+      target: "role_term",
+      action: "block",
+      value: "product marketing",
+      status: "approved",
+      approvedByUser: true
+    });
+  });
+
+  it("applies approved tuning signals into editable config with dry-run support", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-apply-tuning-"));
+    const configPath = path.join(workspaceRoot, "config", "applycue.local.json");
+    const tuningSignalsPath = path.join(workspaceRoot, "config", "data", "local", "tuning-signals.jsonl");
+    await mkdir(path.dirname(configPath), { recursive: true });
+    await mkdir(path.dirname(tuningSignalsPath), { recursive: true });
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        profile: {
+          name: "Tuning Apply Candidate",
+          email: "tuning-apply@example.com"
+        },
+        preferences: {
+          targetRoleTerms: ["head of product"],
+          noGoRoleTerms: [],
+          targetIndustries: ["fintech"]
+        },
+        sourceSettings: {
+          trustedPortals: [],
+          askBeforePortals: [],
+          blockedPortals: []
+        }
+      }),
+      "utf8"
+    );
+    await writeFile(
+      tuningSignalsPath,
+      [
+        {
+          id: "signal-approved-title",
+          origin: "user_feedback",
+          target: "title_variant",
+          action: "promote",
+          value: "group product manager",
+          reason: "User approved this as a relevant senior title variant.",
+          status: "approved",
+          approvedByUser: true,
+          createdAt: "2026-07-07T12:00:00.000Z"
+        },
+        {
+          id: "signal-block-role",
+          origin: "user_feedback",
+          target: "role_term",
+          action: "block",
+          value: "product marketing",
+          reason: "User said this is not a target role.",
+          status: "approved",
+          approvedByUser: true,
+          createdAt: "2026-07-07T12:05:00.000Z"
+        },
+        {
+          id: "signal-proposed-industry",
+          origin: "agent_analysis",
+          target: "industry",
+          action: "promote",
+          value: "healthtech",
+          reason: "Agent saw several interesting roles, but user has not approved yet.",
+          status: "proposed",
+          createdAt: "2026-07-07T12:10:00.000Z"
+        },
+        {
+          id: "signal-block-source",
+          origin: "user_feedback",
+          target: "source",
+          action: "block",
+          value: "noisy.example",
+          reason: "User marked this portal as noisy.",
+          status: "approved",
+          approvedByUser: true,
+          createdAt: "2026-07-07T12:15:00.000Z"
+        },
+        {
+          id: "signal-unsupported-seniority",
+          origin: "agent_analysis",
+          target: "seniority",
+          action: "promote",
+          value: "large-company principal maps to director",
+          reason: "Needs human interpretation before becoming reusable config.",
+          status: "approved",
+          createdAt: "2026-07-07T12:20:00.000Z"
+        }
+      ].map((row) => JSON.stringify(row)).join("\n"),
+      "utf8"
+    );
+    const originalConfig = await readFile(configPath, "utf8");
+
+    const dryRun = await applyTuningSignals({
+      workspaceRoot,
+      applyCueHome: path.join(workspaceRoot, "empty-applycue-home"),
+      dryRun: true,
+      applyAll: true
+    });
+
+    expect(dryRun.appliedCount).toBe(3);
+    expect(dryRun.skippedCount).toBe(2);
+    expect(await readFile(configPath, "utf8")).toBe(originalConfig);
+
+    const applied = await applyTuningSignals({
+      workspaceRoot,
+      applyCueHome: path.join(workspaceRoot, "empty-applycue-home"),
+      applyAll: true
+    });
+
+    expect(applied.appliedCount).toBe(3);
+    expect(applied.updates.find((update) => update.signalId === "signal-proposed-industry")?.status).toBe("skipped");
+    expect(applied.updates.find((update) => update.signalId === "signal-unsupported-seniority")?.status).toBe("skipped");
+    const updatedConfig = JSON.parse(await readFile(configPath, "utf8")) as {
+      preferences?: {
+        targetRoleTerms?: string[];
+        noGoRoleTerms?: string[];
+        targetIndustries?: string[];
+      };
+      sourceSettings?: {
+        blockedPortals?: string[];
+      };
+    };
+    expect(updatedConfig.preferences?.targetRoleTerms).toEqual(["head of product", "group product manager"]);
+    expect(updatedConfig.preferences?.noGoRoleTerms).toEqual(["product marketing"]);
+    expect(updatedConfig.preferences?.targetIndustries).toEqual(["fintech"]);
+    expect(updatedConfig.sourceSettings?.blockedPortals).toEqual(["noisy.example"]);
+
+    const secondRun = await applyTuningSignals({
+      workspaceRoot,
+      applyCueHome: path.join(workspaceRoot, "empty-applycue-home"),
+      applyAll: true
+    });
+
+    expect(secondRun.appliedCount).toBe(0);
+    expect(secondRun.skippedCount).toBe(5);
   });
 
   it("prefers an external ApplyCue profile store over repo-local config", async () => {
@@ -1073,16 +1716,24 @@ Lead product strategy and automation.
     expect(result.cvVariants).toHaveLength(1);
     expect(result.manifest.notes).toContain("Loaded 2 job(s) from 1 job-board source(s).");
     expect(result.manifest.notes).toContain("Source quality kept 1 of 2 discovered job(s); filtered 1 (1 title).");
-    expect(result.manifest.sourceQuality).toEqual({
-      inputJobs: 2,
-      keptJobs: 1,
-      filteredJobs: 1,
-      byReason: {
-        title: 1,
-        location: 0,
-        content: 0
-      }
-    });
+    expect(result.manifest.sourceQuality).toEqual(
+      expect.objectContaining({
+        inputJobs: 2,
+        keptJobs: 1,
+        filteredJobs: 1,
+        byReason: {
+          title: 1,
+          industry: 0,
+          location: 0,
+          content: 0
+        },
+        examplesByReason: expect.objectContaining({
+          title: [
+            "Remote Engineering Co - Principal Engineer, Full Stack, VP, Worldwide via Remotive product (remotive): Title matched an obvious non-target role family."
+          ]
+        })
+      })
+    );
     expect(result.manifest.sourceScorecards?.fetchedJobs).toBe(2);
     expect(result.manifest.sourceScorecards?.keptJobs).toBe(1);
     expect(result.manifest.sourceScorecards?.filteredJobs).toBe(1);
@@ -1202,6 +1853,8 @@ Lead product strategy and automation.
     expect(await readFile(path.join(workspaceRoot, "config", "data", "local", "scan-history.jsonl"), "utf8")).toContain("prepared");
     expect(second.jobs.map((job) => job.company)).toEqual(["Fresh Product Co"]);
     expect(second.applications).toHaveLength(1);
+    expect(second.manifest.dedupe?.alreadyHandledRepeats).toBe(2);
+    expect(second.manifest.dedupe?.totalAvoided).toBe(2);
     expect(second.manifest.scanHistory?.skippedPrepared).toBe(2);
     expect(second.manifest.scanHistory?.keptJobs).toBe(1);
     expect(second.manifest.notes).toContain("Scan history kept 1 of 3 post-filter job(s); skipped 2 already handled job(s).");
@@ -1417,7 +2070,7 @@ Lead product strategy and automation.
     expect(result.jobDecisions.find((item) => item.jobId === "weak-adjacent")?.decision).toBe("skip");
   });
 
-  it("explains low batch volume through source filters and preference gates", async () => {
+  it("explains low batch volume through source filters without seniority hard blocks by default", async () => {
     const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-funnel-health-"));
     const profile: UserProfile = {
       id: "funnel-health-user",
@@ -1467,7 +2120,7 @@ Lead product strategy and automation.
       },
       applySettings: {
         mode: "daily",
-        applicationsPerDay: 3,
+        applicationsPerDay: 5,
         minimumFitToApply: 0.65,
         allowedSourceKinds: ["manual", "job_board"],
         messagePolicy: "draft_only",
@@ -1552,22 +2205,21 @@ Lead product strategy and automation.
         filteredJobs: 147,
         byReason: {
           title: 120,
+          industry: 0,
           location: 20,
           content: 7
         }
       }
     });
 
-    expect(result.applications).toHaveLength(1);
+    expect(result.applications).toHaveLength(3);
     expect(result.manifest.funnelHealth?.status).toBe("low_volume");
     expect(result.manifest.funnelHealth?.dominantFilters[0]).toEqual(
       expect.objectContaining({ id: "title", count: 120 })
     );
-    expect(result.manifest.funnelHealth?.dominantGateBlocks[0]).toEqual(
-      expect.objectContaining({ id: "seniority", count: 2 })
-    );
-    expect(result.manifest.funnelHealth?.suggestedActions.join(" ")).toContain("Daily target short by 2");
-    expect(result.manifest.funnelHealth?.suggestedActions.join(" ")).toContain("company-specific title levels");
+    expect(result.manifest.funnelHealth?.dominantGateBlocks.some((item) => item.id === "seniority")).toBe(false);
+    expect(result.manifest.funnelHealth?.suggestedActions.join(" ")).toContain("More results option");
+    expect(result.manifest.funnelHealth?.suggestedActions.join(" ")).toContain("search more public job boards");
   });
 
   it("fills review batches down to the match floor when strict apply threshold is short", async () => {
@@ -1724,11 +2376,77 @@ Lead product strategy and automation.
     expect(result.browserPlans).toHaveLength(2);
     expect(result.cvVariants.map((variant) => variant.jobId)).not.toContain("blocked-product-co-head-of-product-example-com-blocked");
     expect(result.reconciliationReports.every((report) => report.status === "passed")).toBe(true);
-    expect(result.manifest.notes).toContain("Skipped 1 candidate CV(s) because reconciliation did not pass.");
+    expect(result.manifest.notes).toContain("Skipped 1 candidate CV(s) because reconciliation or CV completeness did not pass.");
     const blockedDecision = result.jobDecisions.find((decision) => decision.company === "Blocked Product Co");
     expect(blockedDecision?.reconciliationStatus).toBe("blocked");
     expect(blockedDecision?.skippedReason).toContain("Unsupported requirement must not be claimed");
     expect(blockedDecision?.nextStep).toBe("Skipped until CV reconciliation passes.");
+  });
+
+  it("skips candidates whose generated CV fails completeness", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-cv-quality-skip-"));
+    const profile = createProfile({
+      id: "thin-cv-user",
+      name: "Thin CV Candidate",
+      baseCvText: `Thin CV Candidate\n\n${"Long base CV evidence line.\n".repeat(260)}`,
+      preferences: {
+        targetRoleTerms: ["head of product"],
+        targetIndustries: ["fintech"],
+        acceptableWorkModes: ["remote", "unknown"],
+        employmentTypes: ["full_time"],
+        niceToHaveKeywords: ["product strategy"]
+      },
+      applySettings: {
+        mode: "review",
+        applicationsPerDay: 1,
+        minimumFitToApply: 0.5
+      },
+      matchSettings: {
+        minimumFitFloor: 0.5
+      },
+      proofBank: [
+        {
+          id: "proof-product",
+          claim: "Led product strategy work.",
+          evidence: "Approved profile proof.",
+          tags: ["product strategy", "fintech"],
+          kind: "work"
+        }
+      ]
+    });
+    const jobs: JobRecord[] = [
+      {
+        id: "thin-cv-job",
+        source: { id: "manual", kind: "manual", name: "Manual" },
+        company: "Thin CV Co",
+        title: "Head of Product",
+        url: "https://example.com/thin-cv",
+        description: "Lead product strategy for fintech.",
+        location: "Remote India",
+        workMode: "remote",
+        seniority: "director",
+        employmentType: "full_time",
+        discoveredAt: "2026-07-05T00:00:00.000Z",
+        liveState: "live"
+      }
+    ];
+
+    const result = await runBatch({
+      workspaceRoot,
+      outputRoot: workspaceRoot,
+      profile,
+      jobs,
+      runId: "thin-cv-skip",
+      kind: "daily_batch",
+      writeFiles: false
+    });
+
+    expect(result.applications).toHaveLength(0);
+    expect(result.cvVariants).toHaveLength(0);
+    expect(result.manifest.notes).toContain("Skipped 1 candidate CV(s) because reconciliation or CV completeness did not pass.");
+    const skippedDecision = result.jobDecisions.find((decision) => decision.jobId === "thin-cv-job");
+    expect(skippedDecision?.skippedReason).toContain("Generated CV failed completeness");
+    expect(skippedDecision?.nextStep).toBe("Skipped until the generated CV meets completeness checks.");
   });
 
   it("approves generated source suggestions into editable config without touching the generated plan", async () => {

@@ -122,6 +122,7 @@ function resolveGreenhouseApiUrl(source: AtsCompanySourceConfig): string {
 function toGreenhouseRawJob(job: unknown, source: AtsCompanySourceConfig): RawJobInput {
   const item = asRecord(job);
   const jobSource = createAtsJobSource(source, "greenhouse");
+  const postedAt = firstDateString(item, ["first_published", "published_at", "created_at", "updated_at"]);
   return {
     source: jobSource,
     company: source.company,
@@ -130,7 +131,8 @@ function toGreenhouseRawJob(job: unknown, source: AtsCompanySourceConfig): RawJo
     description: htmlToText(stringValue(item.content)),
     location: stringValue(asRecord(item.location).name),
     workMode: inferWorkMode(stringValue(asRecord(item.location).name)),
-    liveState: "live"
+    liveState: "live",
+    ...(postedAt ? { postedAt } : {})
   };
 }
 
@@ -155,6 +157,7 @@ function toLeverRawJob(job: unknown, source: AtsCompanySourceConfig): RawJobInpu
   const location = stringValue(categories.location);
   const jobSource = createAtsJobSource(source, "lever");
   const employmentType = parseEmploymentType(stringValue(categories.commitment));
+  const postedAt = firstDateString(item, ["createdAt", "created_at", "updatedAt", "updated_at"]);
   return {
     source: jobSource,
     company: source.company,
@@ -164,7 +167,8 @@ function toLeverRawJob(job: unknown, source: AtsCompanySourceConfig): RawJobInpu
     location,
     workMode: inferWorkMode(location),
     liveState: "live",
-    ...(employmentType ? { employmentType } : {})
+    ...(employmentType ? { employmentType } : {}),
+    ...(postedAt ? { postedAt } : {})
   };
 }
 
@@ -191,6 +195,7 @@ function toAshbyRawJob(job: unknown, source: AtsCompanySourceConfig): RawJobInpu
   const jobSource = createAtsJobSource(source, "ashby");
   const employmentType = parseEmploymentType(stringValue(item.employmentType));
   const compensation = parseAshbyCompensation(item.compensation);
+  const postedAt = firstDateString(item, ["publishedDate", "publishedAt", "createdAt", "updatedAt"]);
   const raw: RawJobInput = {
     source: jobSource,
     company: source.company,
@@ -200,7 +205,8 @@ function toAshbyRawJob(job: unknown, source: AtsCompanySourceConfig): RawJobInpu
     workMode,
     liveState: "live",
     ...(employmentType ? { employmentType } : {}),
-    ...(compensation ? { compensation } : {})
+    ...(compensation ? { compensation } : {}),
+    ...(postedAt ? { postedAt } : {})
   };
   if (location) raw.location = location;
   return raw;
@@ -335,6 +341,7 @@ function toSmartRecruitersRawJob(job: unknown, detail: unknown, source: AtsCompa
   const location = formatSmartRecruitersLocation(asRecord(item.location));
   const employmentType = parseEmploymentType(stringValue(item.typeOfEmployment) || stringValue(detailRecord.typeOfEmployment));
   const url = publicSmartRecruitersUrl(item, slug);
+  const postedAt = firstDateString({ ...detailRecord, ...item }, ["releasedDate", "postingDate", "createdOn", "updatedOn"]);
   const raw: RawJobInput = {
     source: createAtsJobSource(source, "smartrecruiters"),
     company: source.company,
@@ -343,7 +350,8 @@ function toSmartRecruitersRawJob(job: unknown, detail: unknown, source: AtsCompa
     description: smartRecruitersDescription(detailRecord) || stringValue(item.name) || "",
     workMode: inferWorkMode(location, asRecord(item.location).remote === true),
     liveState: "live",
-    ...(employmentType ? { employmentType } : {})
+    ...(employmentType ? { employmentType } : {}),
+    ...(postedAt ? { postedAt } : {})
   };
   if (location) raw.location = location;
   return raw;
@@ -421,6 +429,7 @@ function toBambooHrRawJob(job: unknown, source: AtsCompanySourceConfig, origin: 
   const employmentType = parseEmploymentType(stringValue(item.employmentStatusLabel) || stringValue(item.employmentType));
   const description = bambooHrDescription(item, title, location);
   const rawUrl = stringValue(item.jobOpeningShareUrl) || stringValue(item.url);
+  const postedAt = firstDateString(item, ["datePosted", "postedAt", "createdDate", "postingDate"]);
 
   return {
     source: createAtsJobSource(source, "bamboohr"),
@@ -431,7 +440,8 @@ function toBambooHrRawJob(job: unknown, source: AtsCompanySourceConfig, origin: 
     workMode: inferWorkMode(location, isTruthy(item.isRemote)),
     liveState: "live",
     ...(location ? { location } : {}),
-    ...(employmentType ? { employmentType } : {})
+    ...(employmentType ? { employmentType } : {}),
+    ...(postedAt ? { postedAt } : {})
   };
 }
 
@@ -518,6 +528,7 @@ function toBreezyRawJob(job: unknown, source: AtsCompanySourceConfig, origin: st
 
   const location = formatBreezyLocation(item);
   const description = breezyDescription(item, title, location);
+  const postedAt = firstDateString(item, ["creation_date", "published_at", "created_at", "updated_at"]);
 
   return {
     source: createAtsJobSource(source, "breezy"),
@@ -527,7 +538,8 @@ function toBreezyRawJob(job: unknown, source: AtsCompanySourceConfig, origin: st
     description,
     workMode: inferWorkMode(location, isTruthy(asRecord(item.location).is_remote) || isTruthy(item.is_remote)),
     liveState: "live",
-    ...(location ? { location } : {})
+    ...(location ? { location } : {}),
+    ...(postedAt ? { postedAt } : {})
   };
 }
 
@@ -618,6 +630,7 @@ function toRecruiteeRawJob(job: unknown, source: AtsCompanySourceConfig): RawJob
     stringValue(item.employmentType) ||
     stringValue(item.type)
   );
+  const postedAt = firstDateString(item, ["created_at", "published_at", "updated_at"]);
 
   return {
     source: createAtsJobSource(source, "recruitee"),
@@ -628,7 +641,8 @@ function toRecruiteeRawJob(job: unknown, source: AtsCompanySourceConfig): RawJob
     workMode: inferWorkMode(location, isTruthy(item.remote)),
     liveState: "live",
     ...(location ? { location } : {}),
-    ...(employmentType ? { employmentType } : {})
+    ...(employmentType ? { employmentType } : {}),
+    ...(postedAt ? { postedAt } : {})
   };
 }
 
@@ -713,6 +727,7 @@ function toPinpointRawJob(job: unknown, source: AtsCompanySourceConfig): RawJobI
     stringValue(item.employmentType) ||
     stringValue(item.type)
   );
+  const postedAt = firstDateString(item, ["created_at", "published_at", "updated_at", "date_posted"]);
 
   return {
     source: createAtsJobSource(source, "pinpoint"),
@@ -723,7 +738,8 @@ function toPinpointRawJob(job: unknown, source: AtsCompanySourceConfig): RawJobI
     workMode: inferWorkMode(location, isTruthy(item.remote) || isTruthy(asRecord(item.location).remote)),
     liveState: "live",
     ...(location ? { location } : {}),
-    ...(employmentType ? { employmentType } : {})
+    ...(employmentType ? { employmentType } : {}),
+    ...(postedAt ? { postedAt } : {})
   };
 }
 
@@ -811,6 +827,7 @@ function parsePersonioXml(xml: string, company: string, host: string): RawJobInp
       personioTagText(scalar, "schedule") ||
       personioTagText(scalar, "jobType")
     );
+    const postedAt = personioPostedAt(scalar);
 
     jobs.push({
       source: createAtsJobSource({ company, careersUrl: `https://${host}` }, "personio"),
@@ -821,10 +838,19 @@ function parsePersonioXml(xml: string, company: string, host: string): RawJobInp
       workMode: inferWorkMode(location),
       liveState: "live",
       ...(location ? { location } : {}),
-      ...(employmentType ? { employmentType } : {})
+      ...(employmentType ? { employmentType } : {}),
+      ...(postedAt ? { postedAt } : {})
     });
   }
   return jobs;
+}
+
+function personioPostedAt(block: string): string | undefined {
+  return dateString(
+    personioTagText(block, "recruitingStartDate") ||
+    personioTagText(block, "createdAt") ||
+    personioTagText(block, "updatedAt")
+  );
 }
 
 function formatPersonioLocation(block: string): string {
@@ -992,6 +1018,7 @@ function toWorkdayRawJob(job: unknown, source: AtsCompanySourceConfig, endpoint:
     stringValue(item.workerSubType) ||
     stringValue(item.jobType)
   );
+  const postedAt = firstDateString(item, ["postedOn", "postedOnDate", "startDate", "createdAt", "updatedAt"]);
 
   return {
     source: createAtsJobSource(source, "workday"),
@@ -1002,7 +1029,8 @@ function toWorkdayRawJob(job: unknown, source: AtsCompanySourceConfig, endpoint:
     workMode: inferWorkMode(location),
     liveState: "live",
     ...(location ? { location } : {}),
-    ...(employmentType ? { employmentType } : {})
+    ...(employmentType ? { employmentType } : {}),
+    ...(postedAt ? { postedAt } : {})
   };
 }
 
@@ -1101,6 +1129,7 @@ function toRipplingRawJob(job: unknown, source: AtsCompanySourceConfig): RawJobI
 
   const location = ripplingLocation(item.workLocation);
   const department = stringValue(asRecord(item.department).label);
+  const postedAt = firstDateString(item, ["createdAt", "updatedAt", "postedAt"]);
   return {
     source: createAtsJobSource(source, "rippling"),
     company: source.company,
@@ -1109,7 +1138,8 @@ function toRipplingRawJob(job: unknown, source: AtsCompanySourceConfig): RawJobI
     description: [title, department, location].filter(Boolean).join(" · "),
     workMode: inferWorkMode(location),
     liveState: "live",
-    ...(location ? { location } : {})
+    ...(location ? { location } : {}),
+    ...(postedAt ? { postedAt } : {})
   };
 }
 
@@ -1345,6 +1375,26 @@ function scalarString(value: unknown): string {
   if (typeof value === "string") return value.trim();
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   return "";
+}
+
+function firstDateString(record: Record<string, unknown>, fields: string[]): string | undefined {
+  for (const field of fields) {
+    const value = record[field];
+    const date = dateString(value);
+    if (date) return date;
+  }
+  return undefined;
+}
+
+function dateString(value: unknown): string | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const milliseconds = value < 10_000_000_000 ? value * 1000 : value;
+    return new Date(milliseconds).toISOString();
+  }
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return undefined;
+  return new Date(timestamp).toISOString();
 }
 
 function isTruthy(value: unknown): boolean {

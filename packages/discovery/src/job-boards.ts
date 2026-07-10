@@ -262,6 +262,7 @@ function toJobSpyRawJob(row: unknown, source: JobBoardSourceConfig): RawJobInput
     interval: item.interval
   });
   const employmentType = parseEmploymentType(stringValue(item.job_type));
+  const postedAt = firstDateString(item, ["date_posted", "datePosted", "posted_at", "postedAt"]);
   const raw: RawJobInput = {
     source: createJobBoardSource(source, site, url),
     company,
@@ -271,7 +272,8 @@ function toJobSpyRawJob(row: unknown, source: JobBoardSourceConfig): RawJobInput
     workMode: item.is_remote === true ? "remote" : inferWorkMode(location),
     ...(location ? { location } : {}),
     ...(employmentType ? { employmentType } : {}),
-    ...(compensation ? { compensation } : {})
+    ...(compensation ? { compensation } : {}),
+    ...(postedAt ? { postedAt } : {})
   };
   return raw;
 }
@@ -296,6 +298,7 @@ function toRemotiveRawJob(job: unknown, source: JobBoardSourceConfig): RawJobInp
   const description = htmlToText(stringValue(item.description) ?? "");
   const compensation = parseSalaryText(stringValue(item.salary));
   const employmentType = parseEmploymentType(stringValue(item.job_type));
+  const postedAt = firstDateString(item, ["publication_date", "date_posted", "published_at", "posted_at"]);
   return {
     source: createJobBoardSource(source, "remotive", url),
     company: stringValue(item.company_name) ?? "Unknown company",
@@ -306,7 +309,8 @@ function toRemotiveRawJob(job: unknown, source: JobBoardSourceConfig): RawJobInp
     liveState: "live",
     ...(location ? { location } : {}),
     ...(employmentType ? { employmentType } : {}),
-    ...(compensation ? { compensation } : {})
+    ...(compensation ? { compensation } : {}),
+    ...(postedAt ? { postedAt } : {})
   };
 }
 
@@ -320,6 +324,7 @@ function toRemoteOkRawJob(job: unknown, source: JobBoardSourceConfig): RawJobInp
     currency: item.currency,
     interval: "year"
   });
+  const postedAt = firstDateString(item, ["date", "posted_at", "publication_date", "epoch"]);
   return {
     source: createJobBoardSource(source, "remoteok", url),
     company: stringValue(item.company) ?? "RemoteOK",
@@ -329,7 +334,8 @@ function toRemoteOkRawJob(job: unknown, source: JobBoardSourceConfig): RawJobInp
     workMode: "remote",
     liveState: "live",
     location,
-    ...(compensation ? { compensation } : {})
+    ...(compensation ? { compensation } : {}),
+    ...(postedAt ? { postedAt } : {})
   };
 }
 
@@ -338,6 +344,7 @@ function toWorkingNomadsRawJob(job: unknown, source: JobBoardSourceConfig): RawJ
   const url = stringValue(item.url) ?? "";
   const location = stringValue(item.location) ?? "Remote";
   const employmentType = parseEmploymentType(stringValue(item.job_type) ?? stringValue(item.type));
+  const postedAt = firstDateString(item, ["pub_date", "pubDate", "date", "created_at", "posted_at"]);
   return {
     source: createJobBoardSource(source, "workingnomads", url),
     company: stringValue(item.company_name) ?? stringValue(item.company) ?? "Working Nomads",
@@ -347,7 +354,8 @@ function toWorkingNomadsRawJob(job: unknown, source: JobBoardSourceConfig): RawJ
     workMode: "remote",
     liveState: "live",
     location,
-    ...(employmentType ? { employmentType } : {})
+    ...(employmentType ? { employmentType } : {}),
+    ...(postedAt ? { postedAt } : {})
   };
 }
 
@@ -367,6 +375,7 @@ function toJobicyRawJob(job: unknown, source: JobBoardSourceConfig): RawJobInput
     currency: stringValue(item.salaryCurrency) ?? "USD",
     interval: "year"
   });
+  const postedAt = firstDateString(item, ["pubDate", "pub_date", "published_at", "date"]);
   return {
     source: createJobBoardSource(source, "jobicy", url),
     company: stringValue(item.companyName) ?? "Jobicy",
@@ -376,7 +385,8 @@ function toJobicyRawJob(job: unknown, source: JobBoardSourceConfig): RawJobInput
     workMode: "remote",
     liveState: "live",
     ...(location ? { location } : {}),
-    ...(compensation ? { compensation } : {})
+    ...(compensation ? { compensation } : {}),
+    ...(postedAt ? { postedAt } : {})
   };
 }
 
@@ -390,6 +400,7 @@ function toHimalayasRawJob(job: unknown, source: JobBoardSourceConfig): RawJobIn
   const item = asRecord(job);
   const url = stringValue(item.applicationLink) ?? stringValue(item.guid) ?? stringValue(item.url) ?? "";
   const location = locationRestrictions(item.locationRestrictions);
+  const postedAt = firstDateString(item, ["pubDate", "publishedAt", "createdAt", "postedAt"]);
   return {
     source: createJobBoardSource(source, "himalayas", url),
     company: stringValue(item.companyName) ?? stringValue(item.company) ?? "Himalayas",
@@ -398,7 +409,8 @@ function toHimalayasRawJob(job: unknown, source: JobBoardSourceConfig): RawJobIn
     description: htmlToText(stringValue(item.description) ?? ""),
     workMode: "remote",
     liveState: "live",
-    ...(location ? { location } : {})
+    ...(location ? { location } : {}),
+    ...(postedAt ? { postedAt } : {})
   };
 }
 
@@ -418,6 +430,7 @@ function toTheMuseRawJob(job: unknown, source: JobBoardSourceConfig): RawJobInpu
   const location = formatTheMuseLocations(item);
   const employmentType = parseEmploymentType(stringValue(asRecord(item.type).name) ?? stringValue(item.type));
   const compensation = parseSalaryText(stringValue(item.salary));
+  const postedAt = firstDateString(item, ["publication_date", "date_posted", "published_at"]);
 
   return {
     source: createJobBoardSource(source, "themuse", url),
@@ -429,7 +442,8 @@ function toTheMuseRawJob(job: unknown, source: JobBoardSourceConfig): RawJobInpu
     liveState: "live",
     ...(location ? { location } : {}),
     ...(employmentType ? { employmentType } : {}),
-    ...(compensation ? { compensation } : {})
+    ...(compensation ? { compensation } : {}),
+    ...(postedAt ? { postedAt } : {})
   };
 }
 
@@ -715,6 +729,26 @@ function stringValue(value: unknown): string | undefined {
 function numberValue(value: unknown): number | undefined {
   const number = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
   return Number.isFinite(number) ? number : undefined;
+}
+
+function firstDateString(record: Record<string, unknown>, fields: string[]): string | undefined {
+  for (const field of fields) {
+    const value = record[field];
+    const date = dateString(value);
+    if (date) return date;
+  }
+  return undefined;
+}
+
+function dateString(value: unknown): string | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const milliseconds = value < 10_000_000_000 ? value * 1000 : value;
+    return new Date(milliseconds).toISOString();
+  }
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return undefined;
+  return new Date(timestamp).toISOString();
 }
 
 function stringArray(value: unknown): string[] {

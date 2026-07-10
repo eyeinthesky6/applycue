@@ -8,9 +8,12 @@ import { getApplyCueHome, getApplyCueProfileConfigPath, getApplyCueProfileDir } 
 export interface SetupApplyCueOptions {
   autoApproveSources?: boolean;
   applyCueHome?: string;
+  freshnessDays?: number;
   generatedSourceExpansion?: boolean;
+  includeOlderPosts?: boolean;
   installTools?: boolean;
   profileKey?: string;
+  targetRankingQueue?: number;
   workspaceRoot?: string;
 }
 
@@ -58,8 +61,11 @@ export async function setupApplyCue(options: SetupApplyCueOptions = {}): Promise
   const firstRun = await runLocalOrSampleBatch({
     workspaceRoot,
     applyCueHome,
+    ...(typeof options.freshnessDays === "number" ? { freshnessDays: options.freshnessDays } : {}),
     ...(typeof options.generatedSourceExpansion === "boolean" ? { generatedSourceExpansion: options.generatedSourceExpansion } : {}),
+    ...(typeof options.includeOlderPosts === "boolean" ? { includeOlderPosts: options.includeOlderPosts } : {}),
     ...(options.profileKey ? { profileKey: options.profileKey } : {}),
+    ...(typeof options.targetRankingQueue === "number" ? { targetRankingQueue: options.targetRankingQueue } : {}),
     writeFiles: true
   });
 
@@ -67,20 +73,32 @@ export async function setupApplyCue(options: SetupApplyCueOptions = {}): Promise
     .filter((suggestion) => isSafeNoLoginProvider(suggestion.provider))
     .filter((suggestion) => !suggestion.requiresLogin && !suggestion.requiresBrowser)
     .map((suggestion) => suggestion.id);
+  const cleanStarterSourceIds = firstRun.sourcePlan.suggestions
+    .filter((suggestion) => isCleanStarterSource(suggestion))
+    .slice(0, 3)
+    .map((suggestion) => suggestion.id);
+  const sourceIdsToApprove = options.autoApproveSources === true ? safeSourceIds : cleanStarterSourceIds;
 
   let approvedSourceCount = 0;
+  if (options.autoApproveSources !== true) {
+    notes.push("Using clean starter source approval only. Bulk source approval waits until the user asks for more results.");
+  }
   if (options.autoApproveSources === false) {
-    notes.push("Skipped safe source auto-approval by setup option.");
-  } else if (safeSourceIds.length > 0 && await hasTargetRoles(configPath)) {
+    notes.push("Skipped source approval by setup option.");
+  } else if (sourceIdsToApprove.length > 0 && await hasTargetRoles(configPath)) {
     const approval = await approveSourceSuggestions({
       workspaceRoot,
       applyCueHome,
       ...(options.profileKey ? { profileKey: options.profileKey } : {}),
-      suggestionIds: safeSourceIds
+      suggestionIds: sourceIdsToApprove
     });
     approvedSourceCount = approval.addedCount;
     if (approval.addedCount > 0) {
-      notes.push(`Approved ${approval.addedCount} safe no-login source(s) for the user's config.`);
+      notes.push(
+        options.autoApproveSources === true
+          ? `Approved ${approval.addedCount} safe no-login source(s) for the user's config.`
+          : `Approved ${approval.addedCount} clean starter source(s) for the user's config.`
+      );
     }
   } else {
     notes.push("Skipped source auto-approval until target roles are present in the user profile.");
@@ -90,8 +108,11 @@ export async function setupApplyCue(options: SetupApplyCueOptions = {}): Promise
     ? await runLocalOrSampleBatch({
         workspaceRoot,
         applyCueHome,
+        ...(typeof options.freshnessDays === "number" ? { freshnessDays: options.freshnessDays } : {}),
         ...(typeof options.generatedSourceExpansion === "boolean" ? { generatedSourceExpansion: options.generatedSourceExpansion } : {}),
+        ...(typeof options.includeOlderPosts === "boolean" ? { includeOlderPosts: options.includeOlderPosts } : {}),
         ...(options.profileKey ? { profileKey: options.profileKey } : {}),
+        ...(typeof options.targetRankingQueue === "number" ? { targetRankingQueue: options.targetRankingQueue } : {}),
         writeFiles: true
       })
     : firstRun;
@@ -152,6 +173,19 @@ function isSafeNoLoginProvider(provider: string | undefined): boolean {
     provider === "themuse";
 }
 
+function isCleanStarterSource(suggestion: {
+  kind?: string;
+  label?: string;
+  provider?: string;
+  requiresBrowser?: boolean;
+  requiresLogin?: boolean;
+}): boolean {
+  if (suggestion.provider !== "jobspy" || suggestion.kind !== "job_board") return false;
+  if (suggestion.requiresBrowser || suggestion.requiresLogin) return false;
+  const label = suggestion.label?.toLowerCase() ?? "";
+  return label === "jobspy board search" || label.startsWith("jobspy targeted search - ");
+}
+
 async function createUserStore(profileDir: string): Promise<void> {
   await Promise.all([
     mkdir(path.join(profileDir, "assets", "base-cvs"), { recursive: true }),
@@ -176,6 +210,10 @@ async function writeStarterConfig(configPath: string): Promise<void> {
       preferredLocations: [],
       acceptableWorkModes: ["remote", "hybrid", "onsite"],
       employmentTypes: ["full_time"]
+    },
+    searchSettings: {
+      freshnessDays: 30,
+      includeUnknownPostDates: true
     },
     applySettings: {
       mode: "review",

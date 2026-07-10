@@ -352,6 +352,7 @@ function hasProgressBatchData(
 ): batch is SampleBatchResult {
   const candidate = batch as Partial<SampleBatchResult>;
   return Array.isArray(candidate.applications) &&
+    Array.isArray(candidate.applyRoutes) &&
     Array.isArray(candidate.cvDocxs) &&
     Array.isArray(candidate.cvHtmls) &&
     Array.isArray(candidate.cvMarkdowns) &&
@@ -529,15 +530,19 @@ function dedupeAnswerPrompts(prompts: LiveBrowserAnswerPrompt[]): LiveBrowserAns
 
 function inferAnswerField(question: string): string {
   const normalized = question.toLowerCase();
-  if (/notice\s+period|when\s+can\s+you\s+join|availability\s+to\s+join|joining/.test(normalized)) return "notice_period";
+  if (/notice\s+period|when\s+can\s+you\s+join|availability\s+to\s+join|joining|start\s+date/.test(normalized)) return "notice_period";
+  if (/current\s+(company|employer)|present\s+(company|employer)|where\s+do\s+you\s+currently\s+work/.test(normalized)) return "current_company";
+  if (/current\s+(title|role|designation)|present\s+(title|role|designation)/.test(normalized)) return "current_title";
   if (/current\s+(salary|compensation|ctc)|present\s+(salary|compensation|ctc)/.test(normalized)) return "current_salary";
   if (/(desired|expected)\s+(salary|compensation|ctc)|salary\s+expectation/.test(normalized)) return "expected_salary";
+  if (/total\s+(years?\s+of\s+)?experience|years?\s+of\s+experience|overall\s+experience/.test(normalized)) return "total_experience_years";
   if (/years?.*(pm|product\s+manager|product\s+management)|pm\s+experience/.test(normalized)) return "product_management_years";
   if (/insurance|insurtech/.test(normalized)) return "insurance_or_insurtech_experience";
+  if (/relocat/.test(normalized)) return "relocation_availability";
   if (/bangalore|bengaluru|office|onsite|on-site/.test(normalized)) return "office_location_availability";
   if (/11\s*am|8\s*pm|shift|working\s+hours|ist/.test(normalized)) return "working_hours_availability";
-  if (/work\s*authori[sz]ation|right\s+to\s+work/.test(normalized)) return "work_authorization";
-  if (/visa|sponsor/.test(normalized)) return "visa_sponsorship";
+  if (/work\s*authori[sz]ation|legally\s+authori[sz]ed|right\s+to\s+work|work\s+eligibility/.test(normalized)) return "work_authorization";
+  if (/visa|sponsor|sponsorship/.test(normalized)) return "visa_sponsorship";
   return slugify(question).replace(/-/g, "_") || "application_answer";
 }
 

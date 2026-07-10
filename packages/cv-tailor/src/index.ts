@@ -23,6 +23,8 @@ import type {
   WorkHistoryItem
 } from "@applycue/core";
 
+export { createAtsDiagnosticReport, summarizeAtsDiagnosticReports } from "./ats-diagnostics.js";
+
 export interface CvGenerationResult {
   contentPlan: CvContentPlan;
   html: string;
@@ -34,6 +36,7 @@ export interface CvGenerationResult {
 interface RequirementTerm {
   aliases?: string[];
   category: FactCategory;
+  required?: boolean;
   text: string;
 }
 
@@ -111,8 +114,11 @@ export function createCvContentPlan(job: JobRecord, profile: UserProfile): CvCon
   const requirements = extractJobRequirements(job, profile);
   const requirementMatches = requirements.map((requirement) => matchRequirement(requirement, profile));
   const changes = buildCvChanges(requirementMatches, requirements);
+  const requiredRequirementIds = new Set(
+    requirements.filter((requirement) => requirement.required).map((requirement) => requirement.id)
+  );
   const unsupportedRequirements = requirementMatches
-    .filter((match) => match.status === "unsupported")
+    .filter((match) => match.status === "unsupported" && requiredRequirementIds.has(match.requirementId))
     .map((match) => match.requirement);
 
   return {
@@ -137,7 +143,7 @@ export function extractJobRequirements(job: JobRecord, profile?: UserProfile): J
       id: `${job.id}-requirement-${slugify(term.text)}`,
       text: term.text,
       category: term.category,
-      required: true,
+      required: term.required ?? true,
       source: "job_description" as const
     }));
 
@@ -560,13 +566,14 @@ function buildRequirementCoverage(
 function mergeRequirementTerms(profile?: UserProfile): RequirementTerm[] {
   const dynamicTerms: RequirementTerm[] = [];
   if (profile) {
-    for (const term of [
-      ...profile.preferences.targetRoleTerms,
-      ...profile.preferences.requiredKeywords,
-      ...profile.preferences.niceToHaveKeywords,
-      ...profile.proofBank.flatMap((proof) => proof.tags)
-    ]) {
+    for (const term of profile.preferences.requiredKeywords) {
       dynamicTerms.push({ text: term, category: inferCategory(term) });
+    }
+    for (const term of profile.preferences.niceToHaveKeywords) {
+      dynamicTerms.push({ text: term, category: inferCategory(term), required: false });
+    }
+    for (const term of profile.proofBank.flatMap((proof) => proof.tags)) {
+      dynamicTerms.push({ text: term, category: inferCategory(term), required: false });
     }
   }
   return [...REQUIREMENT_TERMS, ...dynamicTerms];

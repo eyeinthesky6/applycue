@@ -123,7 +123,8 @@ export function createDefaultMatchSettings(): MatchSettings {
     relaxOrder: ["source", "title", "industry", "location", "recency", "minimum_fit"],
     minimumFitFloor: 0.55,
     allowAdjacentTitles: true,
-    allowAdjacentIndustries: true
+    allowAdjacentIndustries: true,
+    seniorityGateMode: "off"
   };
 }
 
@@ -134,6 +135,8 @@ export function createDefaultSearchSettings(): SearchSettings {
     remoteRegions: [],
     agentMayExpandSearchArea: true,
     informUserOnSearchAreaChange: true,
+    freshnessDays: 30,
+    includeUnknownPostDates: true,
     standardHoursOnly: true,
     preferredShifts: ["standard"],
     askBeforeShifts: ["night", "rotational", "weekend"]
@@ -147,7 +150,23 @@ export function createDefaultSourceSettings(): SourceSettings {
     trustedPortals: [],
     askBeforePortals: [],
     blockedPortals: [],
-    fraudSignalTerms: ["payment required", "registration fee", "training fee", "deposit", "crypto wallet"]
+    fraudSignalTerms: [
+      "payment required",
+      "registration fee",
+      "training fee",
+      "deposit",
+      "crypto wallet",
+      "processing fee",
+      "job placement fee",
+      "paid registration",
+      "pay to apply",
+      "refundable deposit",
+      "profile database",
+      "resume database",
+      "candidate database",
+      "candidate data bank",
+      "document before interview"
+    ]
   };
 }
 
@@ -250,6 +269,8 @@ export function createProfile(input: {
       searchCountries: input.searchSettings?.searchCountries ?? defaultSearchSettings.searchCountries,
       searchAreas: input.searchSettings?.searchAreas ?? defaultSearchSettings.searchAreas,
       remoteRegions: input.searchSettings?.remoteRegions ?? defaultSearchSettings.remoteRegions,
+      freshnessDays: input.searchSettings?.freshnessDays ?? defaultSearchSettings.freshnessDays ?? 30,
+      includeUnknownPostDates: input.searchSettings?.includeUnknownPostDates ?? defaultSearchSettings.includeUnknownPostDates ?? true,
       preferredShifts: input.searchSettings?.preferredShifts ?? defaultSearchSettings.preferredShifts,
       askBeforeShifts: input.searchSettings?.askBeforeShifts ?? defaultSearchSettings.askBeforeShifts
     },

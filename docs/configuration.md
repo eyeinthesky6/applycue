@@ -18,7 +18,7 @@ For a real user, the agent should create a private local config outside the repo
 
 `pnpm applycue:first-build` uses that external user config when it exists. If it does not exist, the command falls back to development-only `config/applycue.local.json`, then to the sample fixture.
 
-Do not put secrets in config files. Account access should use approved connectors, local browser sessions, or a secure secret store later.
+Do not put secrets in config files. Account access should use native agent connectors such as Codex, Claude, Hermes, or similar when available. Local browser sessions are fallback only with user permission. A secure secret store can come later.
 
 Each user must use their own provider login or API key. ApplyCue must not use the developer's key, another user's key, or a shared project key for discovery or applications.
 
@@ -71,6 +71,10 @@ Agents can use this format when they extract a job from a browser tab. That keep
 ## Company And ATS Sources
 
 Use `sources.companyPages` for public ATS/company job feeds.
+
+If `sources.companyPages` is empty, ApplyCue is not scanning company career pages in that run. It may still use job-board sources such as JobSpy, Remotive, or The Muse, plus approved ATS-directory sources. To scan company pages, approve concrete public careers or ATS URLs here; do not paste broad `site:...` search queries into `companyPages`.
+
+Company website scanning means actual jobs posted on a company's own public careers page or the ATS page behind it. The agent may use search/browser tools to find that URL, but the executable source must be the concrete careers or ATS URL, such as `https://jobs.lever.co/<company>` or `https://job-boards.greenhouse.io/<company>`. Broad search queries remain leads until a real board URL is confirmed.
 
 Example:
 
@@ -410,6 +414,22 @@ The secret value itself belongs in the user's own environment or future secure c
 
 Market-specific source choices live in `sourceSettings`, not in source-plan code.
 
+Built-in source behavior is market-aware, not globally forced. If the user config has multiple `searchSettings.searchAreas`, ApplyCue generates separate job-board searches for those locations. If `searchAreas` is empty, it falls back to `searchCountries`, approved remote regions, and non-generic preferred locations. India-specific boards such as Naukri are only used for India searches; they are not reused for UK, US, Australia, or global remote searches.
+
+Examples:
+
+```json
+{
+  "searchSettings": {
+    "searchCountries": ["India", "United Kingdom", "Australia"],
+    "searchAreas": ["India", "United Kingdom", "Australia"],
+    "remoteRegions": ["India"]
+  }
+}
+```
+
+Use `searchAreas` when the user really wants several active search markets. Use `preferredLocations`, `extraLocations`, `acceptableWorkModes`, `remoteOnly`, and `allowRelocation` to control filtering and ranking without silently widening search.
+
 Example:
 
 ```json
@@ -435,6 +455,34 @@ Example:
         "queryTemplate": "\"{role}\" \"{industry}\" site:iimjobs.com",
         "priority": 0.78,
         "requiresBrowser": true
+      },
+      {
+        "label": "Instahyre search",
+        "kind": "job_board",
+        "queryTemplate": "\"{role}\" \"{location}\" site:instahyre.com",
+        "priority": 0.76,
+        "requiresBrowser": true
+      },
+      {
+        "label": "Cutshort search",
+        "kind": "job_board",
+        "queryTemplate": "\"{role}\" \"{industry}\" site:cutshort.io",
+        "priority": 0.74,
+        "requiresBrowser": true
+      },
+      {
+        "label": "Foundit search",
+        "kind": "job_board",
+        "queryTemplate": "\"{role}\" \"{location}\" site:foundit.in",
+        "priority": 0.72,
+        "requiresBrowser": true
+      },
+      {
+        "label": "Hirist search",
+        "kind": "job_board",
+        "queryTemplate": "\"{role}\" \"{industry}\" site:hirist.tech",
+        "priority": 0.7,
+        "requiresBrowser": true
       }
     ]
   }
@@ -448,6 +496,79 @@ Supported template values:
 - `{location}`
 
 Normal users should not manually install JobSpy. The ApplyCue setup command or agent skill should install optional tools into the user's local `~/.applycue/tools/` folder.
+
+## Email And Inbox Sources
+
+The user's own mailbox is a source of job leads, but ApplyCue must not own email sending or store mailbox credentials.
+
+Inbox leads are high signal because the user has already subscribed to portals, recruiters, newsletters, and saved searches. The mailbox search query can therefore be broad. The first public-board/company run should complete first, then the agent should ask whether to add Gmail/Outlook job alerts as a source. Prefer native Codex, Claude, Hermes, or similar connected email tools. Do not enable mailbox access silently.
+
+Recommended flow:
+
+```text
+agent uses native Codex/Claude/Hermes-style Gmail/Outlook connector first, or user-approved browser session only if no connector is available
+-> search recent mails for job alerts, recruiter mails, and apply links
+-> write raw connector results to a local JSON/JSONL file
+-> run pnpm applycue:scan-email-leads -- --input <raw-mail-export.json|jsonl> --import
+-> ApplyCue filters, dedupes, generates CV/application packet
+-> agent applies through browser/API/email draft route with user policy
+```
+
+Generated source plans may include a `kind: "email_alert"` suggestion with `provider: "user_email"`. That is an agent-tool lead, not a direct engine scraper. Email search and drafting should use native Codex, Claude, Hermes, or similar connected email tools when available. Browser control is a fallback only when connector access is unavailable and the user approves it. ApplyCue can prepare email apply drafts when a job exposes an application email, but it does not send the email. Final send always needs explicit user confirmation.
+
+Mailbox scam filtering:
+
+- import only mails with a real role, company, JD/apply link, or recruiter identity
+- reject or pause emails asking for registration fees, processing fees, training fees, refundable deposits, or payment before interview
+- reject or pause emails asking for Aadhaar/PAN/passport/bank/salary documents before a verified interview or offer
+- reject or pause vague "you are shortlisted" emails that ask the user to register a profile, update a candidate database, or share data before naming the company and role
+- do not block every consultant or recruiter email; many real jobs come through recruiters
+- if unclear, import as manual review instead of generating a CV/application packet
+
+For a local personal setup, prefer the agent host's native Gmail/Outlook connector, such as Codex, Claude, Hermes, or similar integrated mail tools. Use the user's logged-in browser session only when native connector access is unavailable and the user approves that session. A third-party connector platform is optional and should use the smallest possible OAuth scope, visible audit logs, and user revocation. ApplyCue should store only a connector reference or imported job records, never mailbox tokens.
+
+Email scan accepts raw connector exports shaped as a single message, a JSON array, JSONL, or an envelope with `messages`, `emails`, `results`, `items`, or `data`. Each message should include the fields the connector can provide:
+
+```json
+{
+  "messages": [
+    {
+      "id": "gmail-message-id",
+      "from": "jobs@example.com",
+      "subject": "Recommended product jobs",
+      "date": "2026-07-09T07:00:00.000Z",
+      "body": "[VP Product\n\nExample Co\n\nIndia\n\nApply](https://example.com/jobs/vp-product)"
+    }
+  ]
+}
+```
+
+Run:
+
+```powershell
+pnpm applycue:scan-email-leads -- --input <raw-mail-export.json|jsonl> --import
+```
+
+The scanner extracts job cards and links, unwraps common tracking redirects, skips generic/profile/course links, writes normalized leads to `assets/inbox-leads/`, and can import them into the normal local job source with `--import`.
+
+`import-email-leads` is the lower-level command for already-normalized extracted rows:
+
+```json
+[
+  {
+    "messageId": "gmail-message-id",
+    "from": "jobs@example.com",
+    "subject": "VP Product opening at Example",
+    "company": "Example",
+    "title": "VP Product",
+    "url": "https://example.com/jobs/vp-product",
+    "location": "India",
+    "body": "Useful JD text copied from the email or linked job post."
+  }
+]
+```
+
+The importer is conservative. It skips rows missing company, title, or job/apply URL, skips duplicates, and skips configured fraud signals such as registration fees, refundable deposits, profile database harvesting, or document-before-interview requests.
 
 ## Base CV Library
 
@@ -528,6 +649,7 @@ Rules:
 - blank fields or blank values are ignored
 - exact portal questions can be stored in `field` when needed
 - `aliases` help preflight match longer labels without creating extra fill actions
+- common canonical fields get default aliases in generated browser plans, so `notice_period` can match "When can you join?" and `work_authorization` can match "Are you legally authorized to work?"
 - sensitive answers such as current salary, notice period, work authorization, relocation, or compensation must come from explicit user confirmation or preferences
 - do not store passwords, OTPs, session cookies, payment details, or private IDs here
 - do not edit source code for one application question; ask the user, save the approved answer in config, then rerun the engine
@@ -557,6 +679,15 @@ pnpm applycue:approve-answers -- --from-file "~/.applycue/profiles/default/outpu
 
 The command only saves reusable template rows with a non-empty value and `approveForReuse: true`. One-off answers are ignored for reusable config.
 
+After saving reusable answers, refresh and confirm master form data:
+
+```powershell
+pnpm applycue:form-data
+pnpm applycue:form-data -- --confirm
+```
+
+The confirmation is stable while the field/value/alias set stays the same. If a new reusable field is added or an approved value changes, ApplyCue asks for confirmation again before portal filling.
+
 Use `--replace` only when the user explicitly changes a previously approved answer:
 
 ```powershell
@@ -578,6 +709,7 @@ ApplyCue stores the normal job-search parameters an agent needs:
 - roles to target
 - adjacent roles to include when widening
 - roles to avoid
+- freshness window for known post dates
 - industries to target
 - industries to avoid
 - preferred, extra, and ask-before locations
@@ -614,7 +746,6 @@ Hard blockers now include:
 - no-go role terms, excluded industries, and excluded keywords
 - wrong role family
 - unacceptable work mode or `remoteOnly` conflict
-- unacceptable seniority, including inferred title level and approved company-level overrides
 - unacceptable known experience range
 - unacceptable employment type
 - unacceptable company stage
@@ -624,11 +755,28 @@ Hard blockers now include:
 - blocked portals
 - configured fraud signals
 - default portal policy `block` when the portal is not trusted
+- known post date older than the active freshness window for a clean first run
 - explicit non-standard shift conflict when `standardHoursOnly` is true
 - explicit travel percent above `maxTravelPercent`
 - explicit timezone requirement outside `preferredTimezones`
 
-Unknown data is not guessed into a hard blocker. If compensation, travel, shift, sponsorship, or timezone is missing from the JD/source, the role can still proceed to ranking or browser preflight. Browser submit still pauses on unknown or ask-before portals unless the source is trusted.
+Unknown data is not guessed into a hard blocker. If compensation, travel, shift, sponsorship, timezone, or post date is missing from the JD/source, the role can still proceed to ranking or browser preflight. Unknown-date jobs should rank below known fresh jobs, but they should not disappear as "old" without evidence. A normal unlisted company portal is not blocked just because it is unfamiliar; pause only for configured ask-before portals, blocked portals, fraud signals, sensitive form fields, or submit policy.
+
+Seniority is not a hard blocker by default. Titles and grades vary too much across companies: a large-company manager can be more senior than a small-company VP, and final title/level can be negotiated. Use `matchSettings.seniorityGateMode` only when the user wants stricter behavior:
+
+```json
+{
+  "matchSettings": {
+    "seniorityGateMode": "off"
+  }
+}
+```
+
+- `off`: default. Keep seniority as an advisory signal only.
+- `review`: do not block, but surface reusable seniority questions when company grade/title level is ambiguous.
+- `hard`: block roles whose inferred or user-overridden seniority is outside `preferences.acceptableSeniorities`.
+
+Prefer known required experience ranges for out-of-band filtering. If the JD says `0-2 years` and the user's range starts at `8+`, block it. If only the title says `Manager`, `AVP`, `Director`, or `VP`, keep it reviewable unless strict mode is on.
 
 ## What Does Not Live In Config
 
@@ -661,10 +809,10 @@ Use `applicationsPerDay` as the main knob:
 ## Match Range
 
 - `tight`: closest matches only.
-- `normal`: close matches first, then widen if the batch is short.
-- `wide`: more volume, still inside hard rules.
+- `normal`: close matches first; do not widen until the user asks for more results.
+- `wide`: more volume after user approval, still inside hard rules.
 
-Use `relaxOrder` to decide what widens first.
+Use `relaxOrder` to decide what widens first after the user asks for more results.
 
 Default:
 
@@ -672,11 +820,39 @@ Default:
 source -> title -> industry -> location -> recency -> batch strictness
 ```
 
+For a one-off wider queue, the agent can request a ranked queue target without saving new sources:
+
+```powershell
+pnpm applycue:first-build -- --more-results --target-ranking-queue 200
+```
+
+This should widen source fetch size and generated public-board searches first, while keeping geography, work authorization, blocked companies, fraud, and unsafe-portal rules intact.
+
+Freshness defaults:
+
+```json
+{
+  "searchSettings": {
+    "freshnessDays": 30,
+    "includeUnknownPostDates": true
+  }
+}
+```
+
+First run uses the freshness window and presents latest known posts first. If the user asks for more volume, the agent can widen recency, for example from 30 days to 60 or 90 days, or include all still-live older posts. The agent should say this plainly in chat or the dashboard:
+
+```text
+I used jobs posted in the last 30 days first. I held back 18 older known posts. Want me to include older live posts too?
+```
+
 Location should be explicit:
 
 - `preferredLocations`: start here.
 - `extraLocations`: use these when the batch is short.
 - `askBeforeLocations`: pause before using these.
+- `remote` is a work mode, not a world-wide location. If `searchCountries`, `searchAreas`, or `remoteRegions` are set, generic terms such as `remote`, `anywhere`, `global`, or `worldwide` must not expand geography. Use explicit terms such as `Remote India`, `India`, or an approved remote region.
+- Country preferences do not automatically imply broad remote regions. `India` should not silently become `APAC`, `Asia`, or `global remote`; add those regions only when the user approves them.
+- Global or overseas remote jobs can still have visa, residence, timezone, or work-authorization requirements. If the JD says the applicant must be authorized to work in another country, the work-authorization gate should block it unless the user's profile allows that country.
 
 Example:
 
@@ -709,13 +885,15 @@ Non-blocking examples:
 
 ## Source Trust
 
-Use three simple source buckets:
+Use simple source buckets:
 
-- trusted: search and apply under policy
-- ask-before: search, then pause before applying
-- blocked: skip
+- public job boards: search normally by configured country/city.
+- company portals: allow normal company career pages and startup sites through the pipeline unless they match fraud or blocked rules.
+- social/community sources: search when configured or agent-approved; logged-in action follows browser/connectors policy.
+- ask-before: search, then pause before applying or submitting.
+- blocked: skip or pause as a platform rule.
 
-Unknown portals should be checked for fraud signals. If a portal asks for payment, fees, deposits, crypto wallets, or strange personal documents, pause and ask.
+Known scammy websites and scam patterns should be eliminated without asking the user. Do not block jobs merely because the company is small, the portal is custom, or the ATS/provider is unfamiliar. If a portal asks for payment, fees, deposits, crypto wallets, or strange personal documents, pause and ask.
 
 ## Parked Later Settings
 

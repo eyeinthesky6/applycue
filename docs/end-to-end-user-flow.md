@@ -168,6 +168,18 @@ Use this when the user needs interviews quickly.
 
 Default for personal power use can be `daily` after initial calibration. `push` is for urgent searches.
 
+## 4A. Apply Routes
+
+For every prepared application, ApplyCue chooses one route for the agent:
+
+- `api`: use a known safe endpoint or portal adapter.
+- `browser`: open the real page, preflight, fill fields, upload the generated CV, then pause or submit under policy.
+- `email`: draft an application email with the generated CV attached.
+- `dm`: draft a recruiter or referral message.
+- `manual_review`: pause when the page, portal, answer, or policy is unclear.
+
+The user should not care which technical path is used. The agent should pick the route, execute it, and store a receipt. API and browser routes can submit when the user's apply policy allows it. Email and DM routes start as drafts unless the user's message policy allows sending. Manual review is the fallback when there is risk or ambiguity.
+
 ## 5. Proof Bank
 
 The proof bank is the truth layer.
@@ -200,12 +212,21 @@ The user sets a simple match range:
 - `normal`: close matches first, then sensible expansion
 - `wide`: more volume, still inside hard rules
 
-The user also sets `applicationsPerDay`. If ApplyCue cannot find enough roles to fill the daily batch, it relaxes soft filters in order.
+The user also sets `applicationsPerDay`. The first run stays clean and uses saved sources/preferences only. If ApplyCue cannot find enough roles and the user asks for more results, the agent offers simple relaxation options and then widens only the approved area.
 
 Default relax order:
 
 ```text
 source -> title -> industry -> location -> recency -> batch strictness
+```
+
+Freshness example:
+
+```text
+Start: jobs posted in the last 30 days
+Then: jobs posted in the last 60 to 90 days
+Then: older still-live roles only if the user asks
+Unknown post date: keep visible, but rank below known fresh jobs
 ```
 
 Geography example:
@@ -325,7 +346,7 @@ What is user-controlled:
 - message-send policy
 - pause rules
 
-Unknown portals are not all equal. ApplyCue should inspect them for fraud signals, such as payment requests, registration fees, crypto wallet requests, unclear company identity, or strange document requests. If a portal looks risky, it should pause.
+Unlisted portals are not all equal. ApplyCue should let normal company career pages and startup application forms through, while inspecting for fraud signals such as payment requests, registration fees, crypto wallet requests, unclear company identity, or strange document requests. If a portal looks risky, it should pause.
 
 ## 8. Job And Lead Normalization
 
@@ -353,6 +374,7 @@ Each becomes a lead record with:
 - work mode
 - seniority
 - compensation if known
+- posted date if known
 - discovered date
 - liveness state
 - duplicate status
@@ -408,6 +430,8 @@ Signals:
 - past outcome performance by source and role type
 
 These signals help the agent order work. They are not the product UI and should not be treated as a precise chance of success.
+
+Freshness is shown as a simple operational note, not a candidate score. The default shortlist should favor jobs posted in the last 30 days. If the first batch is too small, the agent asks before expanding to older historical postings.
 
 Batch output:
 
@@ -621,7 +645,7 @@ First useful local version:
 - CV import
 - proof bank
 - source discovery from public pages, job boards where available, and logged-in browser sessions where the user allows it
-- email tracking through connector or browser control if available
+- email tracking through native Codex, Claude, Hermes, or similar connected tools where available; browser control only with user permission
 - deterministic hard gates
 - batch shortlisting
 - applications per day
@@ -641,9 +665,17 @@ Personal MVP:
 - agent edits config files
 - browser control handles web actions
 
-Developer distribution:
+Current v0.1 distribution:
 
-- npm package
+- GitHub repo link
+- canonical ApplyCue skill
+- thin CLI-specific bridge files
+- setup and runs performed by the user's agent
+- local user store under `~/.applycue`
+
+Developer distribution later:
+
+- npm scaffolder package
 - CLI for setup and scheduled runs
 - optional GitHub repo storage for power users
 

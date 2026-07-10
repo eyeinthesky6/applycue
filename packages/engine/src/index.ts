@@ -1,9 +1,11 @@
 import { access, appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { createApplicationDraft, createBrowserApplyPlan } from "@applycue/apply-assistant";
+import { createApplicationDraft, createApplyRoute, createBrowserApplyPlan } from "@applycue/apply-assistant";
 import type {
   ApplicationDraft,
   ApplicationRecord,
+  ApplyRoute,
+  AtsDiagnosticReport,
   BrowserApplyPlan,
   CvVariant,
   GeneratedFileManifest,
@@ -13,10 +15,13 @@ import type {
   PendingQuestion,
   ProgressApplicationItem,
   ProgressCvQualitySummary,
+  ProgressDedupeSummary,
+  ProgressFreshnessSummary,
   ProgressFunnelHealthSummary,
   ProgressFunnelPressureItem,
   ProgressJobDecisionItem,
   ProgressLivePreflightSummary,
+  ProgressSafetySummary,
   ProgressScanHistorySummary,
   ProgressSnapshot,
   ProgressSourceOutcomeSummary,
@@ -27,15 +32,27 @@ import type {
   RunManifest,
   ScanHistoryEntry,
   SourcePlan,
+  TuningSignal,
+  TuningSignalAction,
+  TuningSignalOrigin,
+  TuningSignalStatus,
+  TuningSignalTarget,
   UserProfile
 } from "@applycue/core";
-import { generateJobSpecificCv, renderStandardAtsDocx, type CvGenerationResult } from "@applycue/cv-tailor";
+import {
+  createAtsDiagnosticReport,
+  generateJobSpecificCv,
+  renderStandardAtsDocx,
+  summarizeAtsDiagnosticReports,
+  type CvGenerationResult
+} from "@applycue/cv-tailor";
 import {
   createSourcePlan,
   discoverJobsFromAtsDirectories,
   discoverJobsFromJobBoards,
   discoverJobsFromCompanyPages,
   discoverJobsFromPath,
+  dedupeJobsForShortlist,
   filterJobsBySearchProfile,
   filterJobsByScanHistory,
   buildScanHistoryEntries,
@@ -67,9 +84,12 @@ import {
 
 export * from "./source-approval.js";
 export * from "./application-answer-approval.js";
+export * from "./tuning-application.js";
 
 export interface SampleBatchResult {
   applications: ApplicationRecord[];
+  applyRoutes: ApplyRoute[];
+  atsDiagnosticReports: AtsDiagnosticReport[];
   browserPlans: BrowserApplyPlan[];
   cvDocxs: Array<{ cvVariantId: string; docx: Buffer }>;
   cvHtmls: Array<{ cvVariantId: string; html: string }>;
@@ -84,7 +104,10 @@ export interface SampleBatchResult {
   profile: UserProfile;
   progressItems: ProgressApplicationItem[];
   reconciliationReports: ReconciliationReport[];
+  freshness?: ProgressFreshnessSummary;
   scanHistory?: ProgressScanHistorySummary;
+  dedupe?: ProgressDedupeSummary;
+  safety?: ProgressSafetySummary;
   sourceOutcomes?: ProgressSourceOutcomeSummary;
   sourcePlan: SourcePlan;
   sourceScorecards?: ProgressSourceScorecardSummary;
@@ -116,6 +139,8 @@ export interface RunBatchOptions extends RunSampleBatchOptions {
   runId: string;
   scanHistoryEntries?: ScanHistoryEntry[];
   scanHistory?: ProgressScanHistorySummary;
+  freshness?: ProgressFreshnessSummary;
+  dedupe?: ProgressDedupeSummary;
   scanHistoryPath?: string;
   sourceScorecardJobs?: {
     fetchedJobs: JobRecord[];
@@ -124,6 +149,7 @@ export interface RunBatchOptions extends RunSampleBatchOptions {
   };
   sourcePlan?: SourcePlan;
   sourceQuality?: ProgressSourceQualitySummary;
+  hasApprovedInboxSource?: boolean;
 }
 
 export interface RunLocalBatchOptions extends RunSampleBatchOptions {
@@ -132,12 +158,15 @@ export interface RunLocalBatchOptions extends RunSampleBatchOptions {
   companyPageFetchJson?: FetchJson;
   configPath?: string;
   generatedSourceExpansion?: boolean;
+  includeOlderPosts?: boolean;
+  freshnessDays?: number;
   jobBoardFetchJson?: FetchJson;
   jobSpyRunner?: JobSpyRunner;
   jobsPath?: string;
   livenessVerifier?: JobLivenessVerifier;
   profileKey?: string;
   scanHistoryPath?: string;
+  targetRankingQueue?: number;
 }
 
 export interface RecordOutcomeEventOptions {
@@ -156,6 +185,34 @@ export interface RecordOutcomeEventResult {
   configPath: string;
   event: OutcomeEvent;
   outcomesPath: string;
+}
+
+export interface RecordTuningSignalOptions {
+  action: TuningSignalAction;
+  applicationId?: string;
+  applyCueHome?: string;
+  approvedByUser?: boolean;
+  confidence?: TuningSignal["confidence"];
+  configPath?: string;
+  createdAt?: string;
+  evidenceRefs?: string[];
+  id?: string;
+  jobId?: string;
+  origin: TuningSignalOrigin;
+  profileKey?: string;
+  reason: string;
+  sourceId?: string;
+  sourceName?: string;
+  status?: TuningSignalStatus;
+  target: TuningSignalTarget;
+  value: string;
+  workspaceRoot?: string;
+}
+
+export interface RecordTuningSignalResult {
+  configPath: string;
+  signal: TuningSignal;
+  tuningSignalsPath: string;
 }
 
 interface SkippedReconciliation {
@@ -218,8 +275,13 @@ export async function runLocalOrSampleBatch(options: RunLocalBatchOptions = {}):
   const sourcePlan = createSourcePlan(loaded.profile, {
     approvedSources: buildApprovedSources(approvedSourceInput)
   });
+  const hasApprovedInboxSource = hasApprovedEmailLeadSource(loaded.config.sources);
   const sourceWarnings: string[] = [];
-  const jobBoardSources = parseJobBoardSources(loaded.config.sources?.jobBoards);
+  const jobBoardSources = applyJobBoardFreshnessDefaults(
+    parseJobBoardSources(loaded.config.sources?.jobBoards),
+    loaded.profile,
+    options
+  );
   const companyPageJobs = await discoverJobsFromCompanyPages(companyPages, {
     ...(options.companyPageFetchJson ? { fetchJson: options.companyPageFetchJson } : {}),
     onWarning: (message) => sourceWarnings.push(message)
@@ -239,10 +301,14 @@ export async function runLocalOrSampleBatch(options: RunLocalBatchOptions = {}):
   });
   let discoveredJobs = demoGuard.jobs;
   let sourceQuality = filterJobsBySearchProfile(discoveredJobs, sourcePlan.searchProfile);
-  const expansionSources = generatedPublicJobBoardExpansionSources(sourcePlan, loaded.profile, jobBoardSources);
+  const expansionSources = applyJobBoardFreshnessDefaults(
+    generatedPublicJobBoardExpansionSources(sourcePlan, loaded.profile, jobBoardSources, options.targetRankingQueue),
+    loaded.profile,
+    options
+  );
   let expansionAttempted = false;
   let expansionJobs: JobRecord[] = [];
-  if (shouldRunGeneratedSourceExpansion(loaded.profile, sourceQuality.summary.keptJobs, expansionEnabled(options), expansionSources)) {
+  if (shouldRunGeneratedSourceExpansion(loaded.profile, sourceQuality.summary.keptJobs, expansionEnabled(options), expansionSources, options.targetRankingQueue)) {
     expansionAttempted = true;
     expansionJobs = await discoverJobsFromJobBoards(expansionSources, {
       ...(options.jobBoardFetchJson ? { fetchJson: options.jobBoardFetchJson } : {}),
@@ -256,12 +322,27 @@ export async function runLocalOrSampleBatch(options: RunLocalBatchOptions = {}):
     discoveredJobs = demoGuard.jobs;
     sourceQuality = filterJobsBySearchProfile(discoveredJobs, sourcePlan.searchProfile);
   }
+  const freshnessOptions: Pick<RunLocalBatchOptions, "freshnessDays" | "includeOlderPosts"> = {
+    includeOlderPosts: options.includeOlderPosts === true
+  };
+  if (typeof options.freshnessDays === "number") freshnessOptions.freshnessDays = options.freshnessDays;
+  const freshness = filterJobsByFreshness(sourceQuality.jobs, loaded.profile, freshnessOptions);
   const scanHistoryPath = options.scanHistoryPath ?? path.join(loaded.configDir, "data", "local", "scan-history.jsonl");
   const scanHistoryEntries = await readScanHistoryEntries(scanHistoryPath);
-  const scanHistory = filterJobsByScanHistory(sourceQuality.jobs, scanHistoryEntries, {
+  const currentRunDedupe = dedupeJobsForShortlist(freshness.jobs);
+  const scanHistory = filterJobsByScanHistory(currentRunDedupe.jobs, scanHistoryEntries, {
     historyPath: scanHistoryPath,
     mode: loaded.profile.applySettings.mode
   });
+  const dedupeSummary: ProgressDedupeSummary = {
+    inputJobs: currentRunDedupe.summary.inputJobs,
+    keptJobs: scanHistory.summary.keptJobs,
+    blockedDuplicates: currentRunDedupe.summary.skippedJobs,
+    sameUrl: currentRunDedupe.summary.skippedByReason.same_url,
+    sameCompanySimilarRole: currentRunDedupe.summary.skippedByReason.same_company_similar_role,
+    alreadyHandledRepeats: scanHistory.summary.skippedPrepared,
+    totalAvoided: currentRunDedupe.summary.skippedJobs + scanHistory.summary.skippedPrepared
+  };
   const outcomeEventsPath = path.join(loaded.configDir, "data", "local", "outcomes.jsonl");
   const outcomeEvents = await readOutcomeEventsIfExists(outcomeEventsPath);
   const jobs = scanHistory.jobs;
@@ -277,20 +358,23 @@ export async function runLocalOrSampleBatch(options: RunLocalBatchOptions = {}):
     sourcePlan,
     scanHistoryEntries,
     scanHistory: scanHistory.summary,
+    freshness: freshness.summary,
+    dedupe: dedupeSummary,
     scanHistoryPath,
     sourceScorecardJobs: {
       fetchedJobs: discoveredJobs,
-      filteredJobs: sourceQuality.filtered.map((item) => item.job),
-      keptJobs: sourceQuality.jobs
+      filteredJobs: [...sourceQuality.filtered.map((item) => item.job), ...freshness.filtered],
+      keptJobs: freshness.jobs
     },
     sourceQuality: sourceQuality.summary,
+    hasApprovedInboxSource,
     ...(options.livenessVerifier ? { livenessVerifier: options.livenessVerifier } : {}),
     notes: [
       `Loaded profile config: ${path.relative(workspaceRoot, loaded.configPath)}`,
       jobsPath
         ? localJobs.length > 0
           ? `Loaded jobs from: ${path.relative(workspaceRoot, jobsPath)}`
-          : `No local job path found at: ${path.relative(workspaceRoot, jobsPath)}`
+          : `Local job import path configured but no supported job rows found yet: ${path.relative(workspaceRoot, jobsPath)}`
         : "No manual local job file configured; using approved source connectors only.",
       `Loaded ${companyPageJobs.length} job(s) from ${companyPages.filter((source) => source.enabled !== false).length} company/ATS source(s).`,
       `Loaded ${atsDirectoryJobs.length} job(s) from ${atsDirectorySources.filter((source) => source.enabled !== false).length} reverse ATS source(s).`,
@@ -308,6 +392,10 @@ export async function runLocalOrSampleBatch(options: RunLocalBatchOptions = {}):
       sourceQuality.summary.filteredJobs > 0
         ? `Source quality kept ${sourceQuality.summary.keptJobs} of ${sourceQuality.summary.inputJobs} discovered job(s); filtered ${sourceQuality.summary.filteredJobs} (${formatSourceQualityReasons(sourceQuality.summary.byReason)}).`
         : `Source quality kept all ${sourceQuality.summary.keptJobs} discovered job(s).`,
+      formatFreshnessNote(freshness.summary),
+      currentRunDedupe.summary.skippedJobs > 0
+        ? `Dedupe kept ${currentRunDedupe.summary.keptJobs} of ${currentRunDedupe.summary.inputJobs} source-quality job(s); skipped ${formatDedupeReasons(currentRunDedupe.summary.skippedByReason)} duplicate(s).`
+        : `Dedupe kept all ${currentRunDedupe.summary.keptJobs} source-quality job(s).`,
       scanHistory.summary.skippedJobs > 0
         ? `Scan history kept ${scanHistory.summary.keptJobs} of ${scanHistory.summary.inputJobs} post-filter job(s); skipped ${scanHistory.summary.skippedJobs} already handled job(s).`
         : scanHistory.summary.mode === "review"
@@ -347,6 +435,45 @@ export async function recordOutcomeEvent(options: RecordOutcomeEventOptions): Pr
     configPath: loaded.configPath,
     event,
     outcomesPath
+  };
+}
+
+export async function recordTuningSignal(options: RecordTuningSignalOptions): Promise<RecordTuningSignalResult> {
+  const workspaceRoot = options.workspaceRoot ?? process.cwd();
+  const configPath = await resolveConfigPath(options, workspaceRoot);
+  if (!configPath || !(await fileExists(configPath))) {
+    throw new Error("ApplyCue profile config was not found. Run setup before recording tuning signals.");
+  }
+  const loaded = await loadApplyCueConfig(configPath);
+  const tuningSignalsDir = path.join(loaded.configDir, "data", "local");
+  const tuningSignalsPath = path.join(tuningSignalsDir, "tuning-signals.jsonl");
+  const createdAt = options.createdAt ?? new Date().toISOString();
+  const status = options.status ?? defaultTuningSignalStatus(options);
+  const signal: TuningSignal = {
+    id: options.id ?? createTuningSignalId(options.origin, options.target, options.value, createdAt),
+    origin: options.origin,
+    target: options.target,
+    action: options.action,
+    value: options.value,
+    reason: options.reason,
+    status,
+    createdAt,
+    ...(options.confidence ? { confidence: options.confidence } : {}),
+    ...(options.applicationId ? { applicationId: options.applicationId } : {}),
+    ...(options.jobId ? { jobId: options.jobId } : {}),
+    ...(options.sourceId ? { sourceId: options.sourceId } : {}),
+    ...(options.sourceName ? { sourceName: options.sourceName } : {}),
+    ...(options.evidenceRefs && options.evidenceRefs.length > 0 ? { evidenceRefs: options.evidenceRefs } : {}),
+    ...(typeof options.approvedByUser === "boolean" ? { approvedByUser: options.approvedByUser } : {})
+  };
+
+  await mkdir(tuningSignalsDir, { recursive: true });
+  await appendFile(tuningSignalsPath, `${JSON.stringify(signal)}\n`, "utf8");
+
+  return {
+    configPath: loaded.configPath,
+    signal,
+    tuningSignalsPath
   };
 }
 
@@ -478,11 +605,22 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function formatSourceQualityReasons(byReason: Record<"title" | "location" | "content", number>): string {
+function formatSourceQualityReasons(byReason: Record<"title" | "industry" | "location" | "content", number>): string {
   return [
     ["title", byReason.title],
+    ["industry", byReason.industry],
     ["location", byReason.location],
     ["content", byReason.content]
+  ]
+    .filter((entry): entry is [string, number] => Number(entry[1]) > 0)
+    .map(([reason, count]) => `${count} ${reason}`)
+    .join(", ") || "0";
+}
+
+function formatDedupeReasons(byReason: Record<"same_url" | "same_company_similar_role", number>): string {
+  return [
+    ["same URL", byReason.same_url],
+    ["same company/similar role", byReason.same_company_similar_role]
   ]
     .filter((entry): entry is [string, number] => Number(entry[1]) > 0)
     .map(([reason, count]) => `${count} ${reason}`)
@@ -492,7 +630,8 @@ function formatSourceQualityReasons(byReason: Record<"title" | "location" | "con
 function generatedPublicJobBoardExpansionSources(
   sourcePlan: SourcePlan,
   profile: UserProfile,
-  existingSources: JobBoardSourceConfig[]
+  existingSources: JobBoardSourceConfig[],
+  targetRankingQueue?: number
 ): JobBoardSourceConfig[] {
   const existingByKey = new Map(existingSources.map((source) => [jobBoardSourceKey(source), source]));
   const emittedKeys = new Set<string>();
@@ -502,9 +641,14 @@ function generatedPublicJobBoardExpansionSources(
       suggestion.kind === "job_board" &&
       !suggestion.requiresBrowser &&
       !suggestion.requiresLogin &&
-      Boolean(suggestion.provider)
+      Boolean(suggestion.provider) &&
+      shouldUseExpansionSuggestion(suggestion, profile)
     )
-    .sort((left, right) => right.priority - left.priority || left.label.localeCompare(right.label))
+    .sort((left, right) =>
+      expansionSuggestionPriority(right, profile, existingSources) - expansionSuggestionPriority(left, profile, existingSources) ||
+      right.priority - left.priority ||
+      left.label.localeCompare(right.label)
+    )
     .flatMap((suggestion) => {
       const entry = {
         id: `transient-${suggestion.id}`,
@@ -512,7 +656,7 @@ function generatedPublicJobBoardExpansionSources(
         provider: suggestion.provider,
         query: suggestion.query,
         enabled: true,
-        options: relaxedExpansionOptions(suggestion.provider, suggestion.options)
+        options: relaxedExpansionOptions(suggestion.provider, suggestion.options, targetRankingQueue)
       };
       const parsed = parseJobBoardSources([entry]);
       return parsed.filter((source) => {
@@ -530,6 +674,46 @@ function generatedPublicJobBoardExpansionSources(
   return entries.slice(0, generatedSourceExpansionLimit(profile));
 }
 
+function shouldUseExpansionSuggestion(suggestion: SourcePlan["suggestions"][number], profile: UserProfile): boolean {
+  if (suggestion.provider === "jobspy") return true;
+  if (profile.matchSettings.range === "wide") return true;
+  return !hasExplicitSearchRegion(profile);
+}
+
+function expansionSuggestionPriority(
+  suggestion: SourcePlan["suggestions"][number],
+  profile: UserProfile,
+  existingSources: JobBoardSourceConfig[]
+): number {
+  let priority = suggestion.provider === "jobspy" ? 10 : 0;
+  const query = suggestion.query ?? "";
+  if (isAlreadyApprovedSourceQuery(suggestion, existingSources)) priority += 5;
+  if (queryMatchesAnyTerm(query, profile.preferences.targetIndustries)) priority += 4;
+  if (queryMatchesAnyTerm(query, profile.preferences.targetRoleTerms)) priority += 2;
+  return priority;
+}
+
+function isAlreadyApprovedSourceQuery(
+  suggestion: SourcePlan["suggestions"][number],
+  existingSources: JobBoardSourceConfig[]
+): boolean {
+  const suggestionQuery = normalizeComparable(suggestion.query ?? "");
+  if (!suggestionQuery) return false;
+  return existingSources.some((source) =>
+    source.enabled !== false &&
+    source.provider === suggestion.provider &&
+    normalizeComparable(source.query ?? "") === suggestionQuery
+  );
+}
+
+function queryMatchesAnyTerm(query: string, terms: string[]): boolean {
+  const normalizedQuery = normalizeComparable(query);
+  return terms.some((term) => {
+    const normalizedTerm = normalizeComparable(term);
+    return Boolean(normalizedTerm) && normalizedQuery.includes(normalizedTerm);
+  });
+}
+
 function isWiderExpansionSource(source: JobBoardSourceConfig, existing: JobBoardSourceConfig): boolean {
   if (source.provider === "jobspy") {
     return (
@@ -543,22 +727,51 @@ function isWiderExpansionSource(source: JobBoardSourceConfig, existing: JobBoard
   return false;
 }
 
+function hasExplicitSearchRegion(profile: UserProfile): boolean {
+  return [
+    ...profile.searchSettings.searchCountries,
+    ...profile.searchSettings.searchAreas,
+    ...profile.searchSettings.remoteRegions,
+    ...profile.preferences.preferredLocations,
+    ...profile.preferences.extraLocations,
+    profile.currentCountry ?? "",
+    profile.currentLocation ?? ""
+  ].some((term) => !isGenericRemoteSearchTerm(term));
+}
+
+function isGenericRemoteSearchTerm(term: string): boolean {
+  const normalized = normalizeComparable(term);
+  return !normalized ||
+    normalized === "remote" ||
+    normalized === "work from home" ||
+    normalized === "wfh" ||
+    normalized === "anywhere" ||
+    normalized === "global" ||
+    normalized === "worldwide";
+}
+
+function normalizeComparable(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
 function shouldRunGeneratedSourceExpansion(
   profile: UserProfile,
   keptJobs: number,
   writeFiles: boolean,
-  expansionSources: JobBoardSourceConfig[]
+  expansionSources: JobBoardSourceConfig[],
+  targetRankingQueue?: number
 ): boolean {
   if (!writeFiles) return false;
   if (expansionSources.length === 0) return false;
   if (!profile.matchSettings.relaxOrder.includes("source")) return false;
+  if (typeof targetRankingQueue === "number") return keptJobs < targetRankingQueue;
   const dailyTarget = Math.max(1, Math.floor(profile.applySettings.applicationsPerDay || 1));
   const widenTarget = Math.max(dailyTarget, Math.min(20, Math.floor(profile.matchSettings.widenIfFewerThan || dailyTarget)));
   return keptJobs < widenTarget;
 }
 
 function expansionEnabled(options: RunLocalBatchOptions): boolean {
-  return (options.writeFiles ?? true) && options.generatedSourceExpansion !== false;
+  return (options.writeFiles ?? true) && options.generatedSourceExpansion === true;
 }
 
 function generatedSourceExpansionLimit(profile: UserProfile): number {
@@ -568,13 +781,41 @@ function generatedSourceExpansionLimit(profile: UserProfile): number {
   return Math.min(10, Math.max(5, dailyTarget * 2));
 }
 
-function relaxedExpansionOptions(provider: unknown, options: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+function applyJobBoardFreshnessDefaults(
+  sources: JobBoardSourceConfig[],
+  profile: UserProfile,
+  options: Pick<RunLocalBatchOptions, "freshnessDays" | "includeOlderPosts">
+): JobBoardSourceConfig[] {
+  const configuredHours = resolveFreshnessDays(profile, options.freshnessDays) * 24;
+  return sources.map((source) => {
+    if (source.provider !== "jobspy") return source;
+    const currentOptions = { ...(source.options ?? {}) };
+    if (options.includeOlderPosts === true) {
+      delete currentOptions.hoursOld;
+      const nextSource: JobBoardSourceConfig = { ...source };
+      if (Object.keys(currentOptions).length > 0) nextSource.options = currentOptions;
+      else delete nextSource.options;
+      return nextSource;
+    }
+    currentOptions.hoursOld = Math.max(numberOption(currentOptions.hoursOld) ?? 0, configuredHours);
+    return { ...source, options: currentOptions };
+  });
+}
+
+function relaxedExpansionOptions(
+  provider: unknown,
+  options: Record<string, unknown> | undefined,
+  targetRankingQueue?: number
+): Record<string, unknown> | undefined {
   const current = { ...(options ?? {}) };
+  const targetSizedLimit = typeof targetRankingQueue === "number"
+    ? Math.min(100, Math.max(35, Math.ceil(targetRankingQueue / 4)))
+    : 35;
   if (provider === "jobspy") {
-    current.resultsWanted = Math.max(numberOption(current.resultsWanted) ?? 0, 35);
-    current.hoursOld = Math.max(numberOption(current.hoursOld) ?? 0, 336);
+    current.resultsWanted = Math.max(numberOption(current.resultsWanted) ?? 0, targetSizedLimit);
+    current.hoursOld = Math.max(numberOption(current.hoursOld) ?? 0, 720);
   } else if (provider === "remotive" || provider === "remoteok" || provider === "workingnomads" || provider === "jobicy" || provider === "himalayas" || provider === "themuse") {
-    current.limit = Math.max(numberOption(current.limit) ?? 0, 75);
+    current.limit = Math.max(numberOption(current.limit) ?? 0, Math.max(75, targetSizedLimit));
   }
   return Object.keys(current).length > 0 ? current : undefined;
 }
@@ -592,6 +833,118 @@ function numberOption(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+interface FreshnessFilterResult {
+  filtered: JobRecord[];
+  jobs: JobRecord[];
+  summary: ProgressFreshnessSummary;
+}
+
+function filterJobsByFreshness(
+  jobs: JobRecord[],
+  profile: UserProfile,
+  options: Pick<RunLocalBatchOptions, "freshnessDays" | "includeOlderPosts"> = {}
+): FreshnessFilterResult {
+  const windowDays = resolveFreshnessDays(profile, options.freshnessDays);
+  const includeOlderPosts = options.includeOlderPosts === true;
+  const includeUnknownPostDates = profile.searchSettings.includeUnknownPostDates !== false;
+  const oldestAllowed = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const kept: JobRecord[] = [];
+  const filtered: JobRecord[] = [];
+  let freshKnownPostDateJobs = 0;
+  let unknownPostDateJobs = 0;
+  let filteredOldJobs = 0;
+  let filteredUnknownPostDateJobs = 0;
+
+  for (const job of jobs) {
+    const postedAt = parseJobPostedAt(job);
+    const isManual = job.source.kind === "manual";
+    if (!postedAt) {
+      unknownPostDateJobs += 1;
+      if (includeUnknownPostDates || isManual) {
+        kept.push(job);
+      } else {
+        filteredUnknownPostDateJobs += 1;
+        filtered.push(job);
+      }
+      continue;
+    }
+
+    if (postedAt >= oldestAllowed) {
+      freshKnownPostDateJobs += 1;
+      kept.push(job);
+      continue;
+    }
+
+    if (includeOlderPosts || isManual) {
+      kept.push(job);
+    } else {
+      filteredOldJobs += 1;
+      filtered.push(job);
+    }
+  }
+
+  return {
+    jobs: sortJobsByFreshness(kept),
+    filtered,
+    summary: {
+      inputJobs: jobs.length,
+      keptJobs: kept.length,
+      filteredOldJobs,
+      filteredUnknownPostDateJobs,
+      freshKnownPostDateJobs,
+      unknownPostDateJobs,
+      windowDays,
+      includeOlderPosts,
+      includeUnknownPostDates,
+      oldestAllowedPostedAt: oldestAllowed.toISOString()
+    }
+  };
+}
+
+function resolveFreshnessDays(profile: UserProfile, override?: number): number {
+  const value = override ?? profile.searchSettings.freshnessDays;
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.max(1, Math.floor(value)) : 30;
+}
+
+function parseJobPostedAt(job: JobRecord): Date | undefined {
+  if (!job.postedAt) return undefined;
+  const timestamp = Date.parse(job.postedAt);
+  if (!Number.isFinite(timestamp)) return undefined;
+  return new Date(timestamp);
+}
+
+function sortJobsByFreshness(jobs: JobRecord[]): JobRecord[] {
+  return [...jobs].sort((left, right) => {
+    const leftPosted = jobPostedAtTime(left);
+    const rightPosted = jobPostedAtTime(right);
+    if (rightPosted !== leftPosted) return rightPosted - leftPosted;
+    const leftDiscovered = Date.parse(left.discoveredAt);
+    const rightDiscovered = Date.parse(right.discoveredAt);
+    if (Number.isFinite(rightDiscovered) && Number.isFinite(leftDiscovered) && rightDiscovered !== leftDiscovered) {
+      return rightDiscovered - leftDiscovered;
+    }
+    return left.id.localeCompare(right.id);
+  });
+}
+
+function jobPostedAtTime(job: JobRecord): number {
+  const timestamp = Date.parse(job.postedAt ?? "");
+  return Number.isFinite(timestamp) ? timestamp : Number.NEGATIVE_INFINITY;
+}
+
+function formatFreshnessNote(summary: ProgressFreshnessSummary): string {
+  const unknown = summary.unknownPostDateJobs > 0
+    ? ` ${summary.unknownPostDateJobs} unknown-date job(s) stayed eligible.`
+    : "";
+  if (summary.includeOlderPosts) {
+    return `Freshness kept ${summary.keptJobs} of ${summary.inputJobs} job(s); older known posts were included for this run.${unknown}`;
+  }
+  const filteredUnknown = summary.filteredUnknownPostDateJobs > 0
+    ? ` Filtered ${summary.filteredUnknownPostDateJobs} unknown-date job(s) because unknown post dates are disabled.`
+    : "";
+  return `Freshness kept ${summary.keptJobs} of ${summary.inputJobs} job(s) using a ${summary.windowDays}-day window; held back ${summary.filteredOldJobs} older known post(s).${unknown}${filteredUnknown}`;
+}
+
 export async function runBatch(options: RunBatchOptions): Promise<SampleBatchResult> {
   const workspaceRoot = options.workspaceRoot ?? process.cwd();
   const outputRoot = options.outputRoot ?? workspaceRoot;
@@ -603,6 +956,7 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
   const jobs = liveness?.jobs ?? options.jobs;
   const sourcePlan = options.sourcePlan ?? createSourcePlan(profile);
   const ranked = rankJobs(jobs, profile);
+  const safety = buildSafetySummary(ranked);
   const pendingQuestions = buildAmbiguityPrompts(ranked, profile, {
     createdAt: NOW,
     limit: 5
@@ -630,6 +984,18 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
   const cvVariants = cvResults.map((result) => result.variant);
   const cvQuality = buildCvQualitySummary(profile, cvMarkdowns);
   const reconciliationReports = cvResults.map((result) => result.reconciliationReport);
+  const atsDiagnosticReports = cvResults.map((result) => {
+    const job = jobs.find((item) => item.id === result.variant.jobId);
+    if (!job) throw new Error(`Missing job for ATS diagnostics ${result.variant.id}`);
+    return createAtsDiagnosticReport({
+      cvMarkdown: result.markdown,
+      job,
+      profile,
+      reconciliationReport: result.reconciliationReport,
+      variant: result.variant
+    });
+  });
+  const atsDiagnostics = summarizeAtsDiagnosticReports(atsDiagnosticReports);
   const drafts = cvVariants.map((variant) => {
     const job = jobs.find((item) => item.id === variant.jobId);
     if (!job) throw new Error(`Missing job for CV variant ${variant.id}`);
@@ -680,7 +1046,9 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
   });
   const baseFiles = buildGeneratedFileManifests(
     options.runId,
+    [],
     cvVariants,
+    [],
     reconciliationReports,
     applications,
     jobs,
@@ -697,9 +1065,26 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
       ...(cvPath ? { cvPath } : {})
     });
   });
+  const applyRoutes = applications.map((application) => {
+    const job = jobs.find((item) => item.id === application.jobId);
+    const draft = drafts.find((item) => item.jobId === application.jobId);
+    const browserPlan = browserPlans.find((item) => item.jobId === application.jobId);
+    if (!job) throw new Error(`Missing job for apply route ${application.jobId}`);
+    if (!draft) throw new Error(`Missing draft for apply route ${application.jobId}`);
+    if (!browserPlan) throw new Error(`Missing browser plan for apply route ${application.jobId}`);
+    return createApplyRoute({
+      application,
+      browserPlan,
+      draft,
+      job,
+      profile
+    });
+  });
   const files = buildGeneratedFileManifests(
     options.runId,
+    applyRoutes,
     cvVariants,
+    atsDiagnosticReports,
     reconciliationReports,
     applications,
     jobs,
@@ -708,6 +1093,7 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
   );
   const progressItems = buildProgressApplicationItems({
     applications,
+    applyRoutes,
     browserPlans,
     cvVariants,
     drafts,
@@ -724,17 +1110,22 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
     jobIds: jobs.map((job) => job.id),
     cvVariantIds: cvVariants.map((variant) => variant.id),
     applicationIds: applications.map((application) => application.id),
+    applyRouteIds: applyRoutes.map((route) => route.id),
     generatedFiles: files,
     sourceCodeWriteCount: 0,
     notes: [
       ...(options.notes ?? []),
       ...(liveness ? formatLivenessVerificationNotes(liveness) : []),
       ...(skippedReconciliations.length > 0
-        ? [`Skipped ${skippedReconciliations.length} candidate CV(s) because reconciliation did not pass.`]
+        ? [`Skipped ${skippedReconciliations.length} candidate CV(s) because reconciliation or CV completeness did not pass.`]
         : [])
     ],
+    ...(atsDiagnostics ? { atsDiagnostics } : {}),
     ...(cvQuality ? { cvQuality } : {}),
+    ...(options.freshness ? { freshness: options.freshness } : {}),
     ...(scanHistory ? { scanHistory } : {}),
+    ...(options.dedupe ? { dedupe: options.dedupe } : {}),
+    safety,
     ...(pendingQuestions.length > 0 ? { pendingQuestions } : {}),
     sourceScorecards,
     sourceOutcomes,
@@ -745,6 +1136,8 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
   if (writeFiles) {
     await writeRunOutputs(outputRoot, {
       applications,
+      applyRoutes,
+      atsDiagnosticReports,
       browserPlans,
       cvDocxs,
       cvHtmls,
@@ -757,6 +1150,9 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
       profile,
       progressItems,
       reconciliationReports,
+      ...(options.freshness ? { freshness: options.freshness } : {}),
+      ...(options.dedupe ? { dedupe: options.dedupe } : {}),
+      safety,
       sourceOutcomes,
       sourcePlan,
       sourceScorecards
@@ -768,6 +1164,8 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
 
   return {
     applications,
+    applyRoutes,
+    atsDiagnosticReports,
     browserPlans,
     cvDocxs,
     cvHtmls,
@@ -782,7 +1180,10 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
     profile,
     progressItems,
     reconciliationReports,
+    ...(options.freshness ? { freshness: options.freshness } : {}),
     ...(scanHistory ? { scanHistory } : {}),
+    ...(options.dedupe ? { dedupe: options.dedupe } : {}),
+    safety,
     sourceOutcomes,
     sourcePlan,
     sourceScorecards,
@@ -849,6 +1250,39 @@ function formatLivenessVerificationNotes(result: LivenessVerificationBatch): str
   ];
 }
 
+function buildSafetySummary(rankedJobs: RankedJob[]): ProgressSafetySummary {
+  const fraudJobs = jobsWithFailedGate(rankedJobs, "fraud-signal");
+  const blockedPortalJobs = jobsWithFailedGate(rankedJobs, "blocked-portal");
+  const portalPolicyJobs = jobsWithFailedGate(rankedJobs, "portal-policy");
+  const blockedJobIds = new Set([
+    ...fraudJobs.map((item) => item.job.id),
+    ...blockedPortalJobs.map((item) => item.job.id),
+    ...portalPolicyJobs.map((item) => item.job.id)
+  ]);
+
+  return {
+    checkedJobs: rankedJobs.length,
+    fraudSignalBlocks: fraudJobs.length,
+    blockedPortalBlocks: blockedPortalJobs.length,
+    portalPolicyBlocks: portalPolicyJobs.length,
+    totalSafetyBlocks: blockedJobIds.size,
+    examples: [...fraudJobs, ...blockedPortalJobs, ...portalPolicyJobs]
+      .slice(0, 5)
+      .map((item) => `${item.job.company} - ${item.job.title}: ${failedGateReason(item, ["fraud-signal", "blocked-portal", "portal-policy"])}`)
+  };
+}
+
+function jobsWithFailedGate(rankedJobs: RankedJob[], gateId: string): RankedJob[] {
+  return rankedJobs.filter((rankedJob) =>
+    rankedJob.gates.some((gate) => gate.id === gateId && !gate.passed)
+  );
+}
+
+function failedGateReason(rankedJob: RankedJob, gateIds: string[]): string {
+  const gate = rankedJob.gates.find((item) => gateIds.includes(item.id) && !item.passed);
+  return gate?.reason ?? "Blocked by safety policy.";
+}
+
 function buildFunnelHealthSummary(input: {
   applications: ApplicationRecord[];
   jobDecisions: ProgressJobDecisionItem[];
@@ -856,6 +1290,7 @@ function buildFunnelHealthSummary(input: {
   rankedJobs: RankedJob[];
   sourceQuality?: ProgressSourceQualitySummary;
   sourceScorecards?: ProgressSourceScorecardSummary;
+  hasApprovedInboxSource?: boolean;
 }): ProgressFunnelHealthSummary {
   const configuredDailyTarget = Math.max(1, Math.floor(input.profile.applySettings.applicationsPerDay || 1));
   const preparedApplications = input.applications.length;
@@ -875,7 +1310,8 @@ function buildFunnelHealthSummary(input: {
     keptForRanking,
     preparedApplications,
     profile: input.profile,
-    rankedJobs
+    rankedJobs,
+    hasApprovedInboxSource: input.hasApprovedInboxSource === true
   });
   const keptRate = discoveredJobs > 0 ? keptForRanking / discoveredJobs : 1;
   const tooNoisy = discoveredJobs >= Math.max(100, configuredDailyTarget * 30) && keptRate < 0.08;
@@ -888,7 +1324,7 @@ function buildFunnelHealthSummary(input: {
         ? "high_volume"
         : "healthy";
   const message = status === "low_volume"
-    ? `Prepared ${preparedApplications} of ${configuredDailyTarget}; review the dominant blockers before widening.`
+    ? `Clean run prepared ${preparedApplications} of ${configuredDailyTarget}; widen only if the user asks for more results.`
     : status === "noisy_sources"
       ? `Fetched ${discoveredJobs} jobs but only ${keptForRanking} survived source filters; source queries are broad or noisy.`
       : status === "high_volume"
@@ -919,7 +1355,7 @@ function buildFilterPressure(sourceQuality: ProgressSourceQualitySummary | undef
       id,
       label: `${humanizeIdentifier(id)} source filter`,
       count,
-      examples: []
+      examples: sourceQuality.examplesByReason?.[id]?.slice(0, 3) ?? []
     }));
 }
 
@@ -959,6 +1395,7 @@ function buildFunnelSuggestedActions(input: {
   preparedApplications: number;
   profile: UserProfile;
   rankedJobs: number;
+  hasApprovedInboxSource: boolean;
 }): string[] {
   const actions: string[] = [];
   const shortBy = input.configuredDailyTarget - input.preparedApplications;
@@ -969,19 +1406,27 @@ function buildFunnelSuggestedActions(input: {
   if (shortBy > 0) {
     if (topGate) actions.push(shortVolumeActionForGate(topGate.id, shortBy, input.profile));
     if (input.keptForRanking < input.profile.matchSettings.widenIfFewerThan) {
-      actions.push("Scan or approve more sources before lowering match quality; current kept count is below the saved widen-if-fewer-than setting.");
+      actions.push("More results option: search more public job boards and company career pages in the saved country/cities before changing the match rules.");
     }
     if (topFilter) {
-      actions.push(`Review the ${topFilter.label}; it removed ${topFilter.count} job(s) before ranking.`);
+      actions.push(`More results option: split or tighten the search words because ${topFilter.count} result(s) were removed before CV work.`);
     }
   }
 
   if (input.discoveredJobs >= Math.max(100, input.configuredDailyTarget * 30) && keptRate < 0.08 && topFilter) {
-    actions.push(`Tighten or split noisy source queries before adding more sources; ${topFilter.label} is doing most of the cleanup.`);
+    actions.push("Keep this run clean: many fetched jobs were weak matches, so tighten the role words before adding broader sources.");
   }
 
   if (input.keptForRanking >= Math.max(100, input.configuredDailyTarget * 25)) {
-    actions.push("Too many jobs reached ranking; add stricter title terms, no-go role terms, or location/work-mode rules before increasing automation.");
+    actions.push("Too many jobs reached review; narrow the role words, blocked titles, location, or work mode before increasing automation.");
+  }
+
+  if (
+    !input.hasApprovedInboxSource &&
+    input.profile.applySettings.allowedSourceKinds.includes("email_alert") &&
+    (input.discoveredJobs > 0 || input.preparedApplications > 0)
+  ) {
+    actions.push("After this first run, ask the user whether to add Gmail/Outlook job-alert emails as a source; prefer native agent connectors such as Codex, Claude, Hermes, or similar, and use browser control only with user permission.");
   }
 
   if (actions.length === 0) {
@@ -991,24 +1436,53 @@ function buildFunnelSuggestedActions(input: {
   return uniqueValues(actions).slice(0, 4);
 }
 
+function hasApprovedEmailLeadSource(sourceConfig: {
+  searches?: unknown[];
+  jobBoards?: unknown[];
+  communities?: unknown[];
+  newsletters?: unknown[];
+  loggedInBrowserSources?: unknown[];
+} | undefined): boolean {
+  if (!sourceConfig) return false;
+  return [
+    ...(sourceConfig.searches ?? []),
+    ...(sourceConfig.jobBoards ?? []),
+    ...(sourceConfig.communities ?? []),
+    ...(sourceConfig.newsletters ?? []),
+    ...(sourceConfig.loggedInBrowserSources ?? [])
+  ].some(isEmailLeadSource);
+}
+
+function isEmailLeadSource(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  const kind = normalizeComparable(String(record.kind ?? ""));
+  const provider = normalizeComparable(String(record.provider ?? ""));
+  const label = normalizeComparable(String(record.label ?? ""));
+  return kind === "email alert" ||
+    provider === "user email" ||
+    label.includes("inbox job leads") ||
+    label.includes("email job leads");
+}
+
 function shortVolumeActionForGate(gateId: string, shortBy: number, profile: UserProfile): string {
   switch (gateId) {
     case "seniority":
-      return `Daily target short by ${shortBy}; ask whether company-specific title levels should be saved, especially for large employers with flatter titles.`;
+      return `More results option: include one level lower titles at large companies, but save that as a reusable rule first.`;
     case "experience":
-      return `Daily target short by ${shortBy}; keep experience as a hard blocker unless the user changes the acceptable range.`;
+      return "More results option: widen the experience range only if the user changes the saved range.";
     case "work-authorization":
-      return `Daily target short by ${shortBy}; ask before adding countries or regions outside saved work authorization.`;
+      return "More results option: add another country or remote region only if the user confirms work authorization there.";
     case "work-mode":
-      return `Daily target short by ${shortBy}; ask before widening beyond ${profile.preferences.acceptableWorkModes.join(", ") || "the saved work modes"}.`;
+      return `More results option: include another work mode only if it is acceptable to the user. Saved modes: ${profile.preferences.acceptableWorkModes.join(", ") || "none"}.`;
     case "employment-type":
-      return `Daily target short by ${shortBy}; ask before adding employment types outside the saved preference set.`;
+      return "More results option: include contract, consulting, or fractional roles only after user approval.";
     case "company-stage":
-      return `Daily target short by ${shortBy}; ask before adding company stages outside the saved preference set.`;
+      return "More results option: include more company stages only after user approval.";
     case "role-family":
-      return `Daily target short by ${shortBy}; improve source title queries before relaxing role-family matching.`;
+      return "More results option: try adjacent role titles only after the user confirms they still match the target work.";
     default:
-      return `Daily target short by ${shortBy}; dominant blocker is ${humanizeGate(gateId)}.`;
+      return `More results option: review the ${humanizeGate(gateId)} before widening this search.`;
   }
 }
 
@@ -1049,11 +1523,38 @@ function generatePassedCvResults(
       });
       continue;
     }
+    const completenessIssue = cvCompletenessBlockReason(result.markdown, profile);
+    if (completenessIssue) {
+      skippedReconciliations.push({
+        issueMessages: [completenessIssue],
+        jobId: rankedJob.job.id,
+        status: "blocked"
+      });
+      continue;
+    }
     cvResults.push(result);
     if (cvResults.length >= batchLimit) break;
   }
 
   return { cvResults, skippedReconciliations };
+}
+
+function cvCompletenessBlockReason(markdown: string, profile: UserProfile): string | undefined {
+  const baseLength = profile.baseCvText?.trim().length ?? 0;
+  if (baseLength < 3000) return undefined;
+  const charCount = markdown.trim().length;
+  const minimumChars = minimumGeneratedCvChars(profile);
+  if (charCount >= minimumChars) return undefined;
+  return `Generated CV failed completeness: ${charCount} chars below minimum ${minimumChars}.`;
+}
+
+function minimumGeneratedCvChars(profile: UserProfile): number {
+  const baseLength = profile.baseCvText?.trim().length ?? 0;
+  if (baseLength >= 5000) return Math.min(Math.max(4200, Math.floor(baseLength * 0.55)), 6500);
+  if (baseLength >= 3000) return Math.min(Math.max(2200, Math.floor(baseLength * 0.45)), 4200);
+  if (baseLength >= 1200) return Math.max(900, Math.floor(baseLength * 0.35));
+  if (profile.pastEmployers.length > 0) return 900;
+  return 250;
 }
 
 function createSampleProfile(): UserProfile {
@@ -1221,7 +1722,9 @@ function createSampleJobs(): JobRecord[] {
 
 function buildGeneratedFileManifests(
   runId: string,
+  applyRoutes: ApplyRoute[],
   cvVariants: CvVariant[],
+  atsDiagnosticReports: AtsDiagnosticReport[],
   reports: ReconciliationReport[],
   applications: ApplicationRecord[],
   jobs: JobRecord[],
@@ -1248,6 +1751,13 @@ function buildGeneratedFileManifests(
     kind: "cv_html",
     path: `outputs/cvs/${variant.id}.html`,
     sourceIds: [variant.id, variant.jobId],
+    createdAt
+  }));
+  const atsDiagnosticFiles = atsDiagnosticReports.map((report): GeneratedFileManifest => ({
+    id: `${report.id}-json-file`,
+    kind: "ats_diagnostics_json",
+    path: `outputs/ats-diagnostics/${report.id}.json`,
+    sourceIds: [report.id, report.cvVariantId, report.jobId],
     createdAt
   }));
   const reportFiles = reports.map((report): GeneratedFileManifest => ({
@@ -1278,13 +1788,22 @@ function buildGeneratedFileManifests(
     sourceIds: [plan.id, plan.jobId, ...(plan.cvVariantId ? [plan.cvVariantId] : [])],
     createdAt
   }));
+  const applyRouteFiles = applyRoutes.map((route): GeneratedFileManifest => ({
+    id: `${route.id}-json-file`,
+    kind: "apply_route_json",
+    path: `outputs/apply-routes/${route.id}.json`,
+    sourceIds: [route.id, route.applicationId, route.jobId, ...(route.artifacts.browserPlanId ? [route.artifacts.browserPlanId] : [])],
+    createdAt
+  }));
   return [
     ...cvFiles,
     ...cvDocxFiles,
     ...cvHtmlFiles,
+    ...atsDiagnosticFiles,
     ...reportFiles,
     ...jdFiles,
     ...browserPlanFiles,
+    ...applyRouteFiles,
     {
       id: `${sourcePlan.id}-source-plan-file`,
       kind: "source_plan_json",
@@ -1304,6 +1823,13 @@ function buildGeneratedFileManifests(
       kind: "run_summary_markdown",
       path: "outputs/runs/latest-summary.md",
       sourceIds: applications.map((application) => application.id),
+      createdAt
+    },
+    {
+      id: `${runId}-job-decisions-file`,
+      kind: "job_decisions_json",
+      path: "outputs/runs/latest-job-decisions.json",
+      sourceIds: [runId, ...jobs.map((job) => job.id)],
       createdAt
     },
     {
@@ -1332,6 +1858,7 @@ function renderJobDescriptionMarkdown(job: JobRecord): string {
     ["seniority", job.seniority],
     ["employmentType", job.employmentType],
     ["liveState", job.liveState],
+    ["postedAt", job.postedAt],
     ["discoveredAt", job.discoveredAt]
   ]
     .filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].trim().length > 0)
@@ -1425,6 +1952,7 @@ function getMarkdownSectionLines(markdown: string, heading: string): string[] {
 
 function buildProgressApplicationItems(input: {
   applications: ApplicationRecord[];
+  applyRoutes: ApplyRoute[];
   browserPlans: BrowserApplyPlan[];
   cvVariants: CvVariant[];
   drafts: ApplicationDraft[];
@@ -1440,12 +1968,15 @@ function buildProgressApplicationItems(input: {
       ? input.reconciliationReports.find((item) => item.cvContentPlanId === `${variant.jobId}-content-plan-standard-ats-v1`)
       : undefined;
     const browserPlan = input.browserPlans.find((item) => item.jobId === application.jobId);
+    const applyRoute = input.applyRoutes.find((item) => item.applicationId === application.id || item.jobId === application.jobId);
     const cvPath = variant ? findGeneratedFilePath(input.files, "cv_markdown", variant.id) : undefined;
     const cvDocxPath = variant ? findGeneratedFilePath(input.files, "cv_docx", variant.id) : undefined;
     const cvHtmlPath = variant ? findGeneratedFilePath(input.files, "cv_html", variant.id) : undefined;
     const jdPath = job ? findGeneratedFilePath(input.files, "job_description_markdown", job.id) : undefined;
+    const atsDiagnosticsPath = variant ? findGeneratedFilePath(input.files, "ats_diagnostics_json", variant.id) : undefined;
     const reconciliationPath = report ? findGeneratedFilePath(input.files, "reconciliation_json", report.id) : undefined;
     const browserPlanPath = browserPlan ? findGeneratedFilePath(input.files, "browser_plan_json", browserPlan.id) : undefined;
+    const applyRoutePath = applyRoute ? findGeneratedFilePath(input.files, "apply_route_json", applyRoute.id) : undefined;
 
     return {
       applicationId: application.id,
@@ -1457,12 +1988,15 @@ function buildProgressApplicationItems(input: {
       submitRequiresApproval: draft?.submitRequiresApproval ?? true,
       pauseReasons: draft?.pauseReasons ?? ["unknown_portal"],
       nextStep: createProgressNextStep(draft),
+      ...(applyRoutePath ? { applyRoutePath } : {}),
+      ...(applyRoute ? { applyRouteStatus: applyRoute.status, applyRouteType: applyRoute.type } : {}),
       ...(browserPlanPath ? { browserPlanPath } : {}),
       ...(application.cvVariantId ? { cvVariantId: application.cvVariantId } : {}),
       ...(cvDocxPath ? { cvDocxPath } : {}),
       ...(cvHtmlPath ? { cvHtmlPath } : {}),
       ...(cvPath ? { cvPath } : {}),
       ...(jdPath ? { jdPath } : {}),
+      ...(atsDiagnosticsPath ? { atsDiagnosticsPath } : {}),
       ...(reconciliationPath ? { reconciliationPath } : {}),
       ...(report ? { reconciliationStatus: report.status } : {})
     };
@@ -1474,7 +2008,7 @@ function buildProgressJobDecisionItems(
   skippedReconciliations: SkippedReconciliation[] = []
 ): ProgressJobDecisionItem[] {
   const skippedByJobId = new Map(skippedReconciliations.map((item) => [item.jobId, item]));
-  return ranked.slice(0, 50).map((rankedJob) => {
+  return ranked.map((rankedJob) => {
     const skipped = skippedByJobId.get(rankedJob.job.id);
     const skippedReason = skipped ? skipped.issueMessages[0] ?? "CV reconciliation did not pass." : undefined;
     const failedGates = rankedJob.gates
@@ -1510,6 +2044,9 @@ function createJobDecisionNextStep(
   if (skipped?.status === "needs_user_confirmation") {
     return "Paused until the user confirms the CV positioning.";
   }
+  if (skipped?.issueMessages.some((message) => message.includes("Generated CV failed completeness"))) {
+    return "Skipped until the generated CV meets completeness checks.";
+  }
   if (skipped) return "Skipped until CV reconciliation passes.";
   if (rankedJob.decision === "apply") return "Ready for application under configured policy.";
   if (rankedJob.decision === "review") return "Review and prepare before submit.";
@@ -1540,6 +2077,8 @@ async function writeRunOutputs(
 ): Promise<void> {
   await Promise.all([
     mkdir(path.join(outputRoot, "data", "local"), { recursive: true }),
+    mkdir(path.join(outputRoot, "outputs", "apply-routes"), { recursive: true }),
+    mkdir(path.join(outputRoot, "outputs", "ats-diagnostics"), { recursive: true }),
     mkdir(path.join(outputRoot, "outputs", "browser-plans"), { recursive: true }),
     mkdir(path.join(outputRoot, "outputs", "cvs"), { recursive: true }),
     mkdir(path.join(outputRoot, "outputs", "dashboard"), { recursive: true }),
@@ -1590,6 +2129,15 @@ async function writeRunOutputs(
     )
   );
   await Promise.all(
+    result.atsDiagnosticReports.map((report) =>
+      writeFile(
+        path.join(outputRoot, "outputs", "ats-diagnostics", `${report.id}.json`),
+        `${JSON.stringify(report, null, 2)}\n`,
+        "utf8"
+      )
+    )
+  );
+  await Promise.all(
     result.reconciliationReports.map((report) =>
       writeFile(
         path.join(outputRoot, "outputs", "reconciliation", `${report.id}.json`),
@@ -1621,8 +2169,28 @@ async function writeRunOutputs(
       )
     )
   );
+  await Promise.all(
+    result.applyRoutes.map((route) =>
+      writeFile(
+        path.join(outputRoot, "outputs", "apply-routes", `${route.id}.json`),
+        `${JSON.stringify(route, null, 2)}\n`,
+        "utf8"
+      )
+    )
+  );
 
   await writeProgressDashboardAndSummary(outputRoot, result);
+  await writeFile(
+    path.join(outputRoot, "outputs", "runs", "latest-job-decisions.json"),
+    `${JSON.stringify({
+      runId: result.manifest.id,
+      profileId: result.profile.id,
+      generatedAt: result.manifest.completedAt,
+      queueCount: result.jobDecisions.length,
+      decisions: result.jobDecisions
+    }, null, 2)}\n`,
+    "utf8"
+  );
   await writeFile(
     path.join(outputRoot, "outputs", "runs", `${result.manifest.id}.json`),
     `${JSON.stringify(result.manifest, null, 2)}\n`,
@@ -1650,9 +2218,13 @@ export function buildBatchProgressSnapshot(
     outputRoot,
     profileId: result.profile.id,
     runId: result.manifest.id,
+    ...(result.manifest.atsDiagnostics ? { atsDiagnostics: result.manifest.atsDiagnostics } : {}),
     ...(result.manifest.cvQuality ? { cvQuality: result.manifest.cvQuality } : {}),
+    ...(result.manifest.freshness ? { freshness: result.manifest.freshness } : {}),
     ...(overlay.livePreflight ? { livePreflight: overlay.livePreflight } : {}),
     ...(result.manifest.scanHistory ? { scanHistory: result.manifest.scanHistory } : {}),
+    ...(result.manifest.dedupe ? { dedupe: result.manifest.dedupe } : {}),
+    ...(result.manifest.safety ? { safety: result.manifest.safety } : {}),
     ...(result.manifest.sourceScorecards ? { sourceScorecards: result.manifest.sourceScorecards } : {}),
     ...(result.manifest.sourceOutcomes ? { sourceOutcomes: result.manifest.sourceOutcomes } : {}),
     ...(result.manifest.sourceQuality ? { sourceQuality: result.manifest.sourceQuality } : {}),
@@ -1712,12 +2284,36 @@ function createOutcomeEventId(applicationId: string, type: OutcomeEvent["type"],
     "outcome",
     applicationId,
     type,
-    occurredAt.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+    slugPart(occurredAt)
   ].join("-");
 }
 
+function defaultTuningSignalStatus(options: RecordTuningSignalOptions): TuningSignalStatus {
+  if (options.origin === "user_feedback" && options.approvedByUser !== false) return "approved";
+  return "proposed";
+}
+
+function createTuningSignalId(
+  origin: TuningSignalOrigin,
+  target: TuningSignalTarget,
+  value: string,
+  createdAt: string
+): string {
+  return [
+    "tuning",
+    origin,
+    target,
+    slugPart(value),
+    slugPart(createdAt)
+  ].filter(Boolean).join("-");
+}
+
+function slugPart(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
 function createApplicationId(runId: string, jobId: string, fallbackIndex: number): string {
-  const stableJobPart = jobId.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const stableJobPart = slugPart(jobId.trim());
   return `${runId}-application-${stableJobPart || fallbackIndex + 1}`;
 }
 

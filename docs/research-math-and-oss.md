@@ -170,6 +170,42 @@ Use libraries where they remove boring plumbing:
 - Playwright/browser tools for application execution and testing
 - JSON Resume as schema inspiration
 
+## ATS Diagnostics Trial
+
+Date: 2026-07-08
+
+We checked whether ApplyCue should adopt an OSS ATS engine.
+
+Reviewed options:
+
+- Resume Matcher: useful product inspiration for resume/JD improvement workflows, but it is a full app rather than a small engine to import.
+- ATS Screener: useful idea for parseability checks and multi-ATS simulation, but also a full app and would become a second scoring owner.
+- OpenResume and Reactive Resume: useful resume-builder/template inspiration, not a matching engine for ApplyCue.
+- pyresparser: old and GPL-style dependency risk for this product path.
+
+Decision:
+
+```text
+do not import an OSS ATS engine as a core dependency in v1
+```
+
+What ApplyCue keeps instead:
+
+- an internal diagnostic sidecar that writes JSON under `outputs/ats-diagnostics/`
+- parseability checks such as contact visibility, sections, bullet count, and word count
+- safe JD-term visibility checks for requirements already supported by approved proof
+- warning summaries for the agent and backend dashboard
+
+What it must not do:
+
+- create a candidate-facing ATS score
+- rank people by a hidden number
+- bypass reconciliation
+- decide whether a claim is true
+- become a second CV engine
+
+This is a sidecar, not authority. If the report is noisy, remove or tune the sidecar. Do not expand it into a complex ATS simulation without UAT evidence that agents and reconciliation cannot catch the issue.
+
 Avoid libraries whose main purpose is ranking intelligence unless a later evidence-backed decision proves they are needed:
 
 - embedding rerankers

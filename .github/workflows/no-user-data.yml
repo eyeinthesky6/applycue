@@ -28,9 +28,13 @@ jobs:
               owner, repo, pull_number, per_page: 100,
             });
 
-            // USER_PATHS (update-system.mjs). voice-dna.md is omitted on purpose:
-            // it ships as a populated system default, so edits to it are legit.
+            // User/private paths. This extends legacy USER_PATHS from update-system.mjs
+            // with the ApplyCue local profile store paths used by the v0.1 launch.
+            // voice-dna.md is omitted on purpose: it ships as a populated system
+            // default, so edits to it are legit.
             const USER_PATHS = [
+              /^\.applycue\//,
+              /^assets\//,
               /^cv\.md$/,
               /^config\/profile\.yml$/,
               /^modes\/_profile\.md$/,

@@ -244,6 +244,50 @@ describe("browser apply plan", () => {
     expect(preflight.missingRequiredFields).toEqual([]);
   });
 
+  it("fills alias-only fields during local dry run", () => {
+    const draft = {
+      ...sampleDraft({
+        canAutoSubmit: false,
+        submitRequiresApproval: true
+      }),
+      answers: [
+        { field: "name", value: "Sample Candidate", needsApproval: false },
+        { field: "email", value: "sample@example.com", needsApproval: false },
+        {
+          field: "notice_period",
+          value: "30 days",
+          needsApproval: false,
+          aliases: ["When can you join?"]
+        },
+        { field: "final_submit", value: "Prepared only.", needsApproval: true }
+      ]
+    };
+    const plan = createBrowserApplyPlan({
+      draft,
+      job: sampleJob(),
+      cvPath: "outputs/cvs/job-1.docx"
+    });
+
+    const dryRun = executeBrowserPlanDryRun(plan, {
+      fields: ["name", "email", "When can you join?"],
+      formFields: [
+        { label: "Full name", name: "name", required: true, type: "text" },
+        { label: "Email", name: "email", required: true, type: "text" },
+        { label: "When can you join?", name: "joining_date", required: true, type: "text" },
+        { label: "Resume", name: "resume_or_cv", required: true, type: "file" }
+      ],
+      uploadTargets: ["resume_or_cv"],
+      pageText: "Example is hiring for Example Role. Apply now.",
+      title: "Example Role - Example",
+      visibleCompany: "Example",
+      visibleRole: "Example Role"
+    });
+
+    expect(dryRun.status).toBe("paused");
+    expect(dryRun.preflight.status).toBe("pass");
+    expect(dryRun.actionLog.some((entry) => entry.actionId.endsWith("fill-notice-period") && entry.note === "Filled When can you join?.")).toBe(true);
+  });
+
   it("passes required public profile link fields when the plan has profile-link aliases", () => {
     const draft = {
       ...sampleDraft({
@@ -501,6 +545,47 @@ describe("browser apply plan", () => {
     expect(result.actionLog.some((entry) => entry.actionType === "submit" && entry.status === "done")).toBe(false);
   });
 
+  it("tries approved aliases when the browser cannot fill the canonical field target", async () => {
+    const draft = {
+      ...sampleDraft({
+        canAutoSubmit: false,
+        submitRequiresApproval: true
+      }),
+      answers: [
+        { field: "name", value: "Sample Candidate", needsApproval: false },
+        { field: "email", value: "sample@example.com", needsApproval: false },
+        {
+          field: "notice_period",
+          value: "30 days",
+          needsApproval: false,
+          aliases: ["When can you join?"]
+        },
+        { field: "final_submit", value: "Prepared only.", needsApproval: true }
+      ]
+    };
+    const plan = createBrowserApplyPlan({
+      draft,
+      job: sampleJob(),
+      cvPath: "outputs/cvs/job-1.docx"
+    });
+    const controller = new AliasOnlyBrowserController({
+      ...passSnapshot(),
+      fields: [
+        { label: "Full name", name: "name", required: true, type: "text" },
+        { label: "Email", name: "email", required: true, type: "text" },
+        { label: "When can you join?", name: "joining_date", required: true, type: "text" },
+        { label: "Resume", name: "resume_or_cv", required: true, type: "file" }
+      ]
+    }, "notice_period", "When can you join?");
+
+    const result = await executeBrowserApplyPlan(plan, controller);
+
+    expect(result.status).toBe("paused");
+    expect(result.preflight.status).toBe("pass");
+    expect(controller.events).toContain("fill:When can you join?=30 days");
+    expect(result.actionLog.some((entry) => entry.actionId.endsWith("fill-notice-period") && entry.note === "Filled When can you join?.")).toBe(true);
+  });
+
   it("submits through a browser controller only when policy allows it", async () => {
     const draft = sampleDraft({
       canAutoSubmit: true,
@@ -674,6 +759,28 @@ class FakeBrowserController implements BrowserApplyController {
       confirmationText: "Application received by fake browser.",
       confirmationUrl: "https://example.com/confirmation"
     };
+  }
+}
+
+class AliasOnlyBrowserController extends FakeBrowserController {
+  constructor(
+    page: BrowserPageSnapshot,
+    private readonly blockedTarget: string,
+    private readonly acceptedAlias: string
+  ) {
+    super(page);
+  }
+
+  override async fillField(target: string, value: string): Promise<void> {
+    if (target === this.blockedTarget) {
+      this.events.push(`fill-failed:${target}`);
+      throw new Error(`No field matched ${target}`);
+    }
+    if (target === this.acceptedAlias || target === "name" || target === "email") {
+      this.events.push(`fill:${target}=${value}`);
+      return;
+    }
+    throw new Error(`Unexpected fill target ${target}`);
   }
 }
 

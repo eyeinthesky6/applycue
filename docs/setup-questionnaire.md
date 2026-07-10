@@ -51,7 +51,7 @@ Ask these first:
 
 13. How wide should the match be?
    - `tight`: close matches only.
-   - `normal`: close first, then widen if short.
+   - `normal`: close first; offer more-results options only if the user asks.
    - `wide`: more volume inside hard rules.
 
 These are enough to begin search and batch planning.
@@ -110,7 +110,7 @@ Source rules:
 - trusted portals: agent can search and apply under policy
 - ask-before portals: agent can search, but pauses before applying
 - blocked portals: agent skips
-- unknown portals: agent checks for fraud signals and may ask
+- unlisted company portals: agent can use them if they look like normal company/application pages and do not match fraud or blocked rules
 
 Fraud signals:
 
@@ -122,7 +122,7 @@ Fraud signals:
 - strange personal document request
 - no real company identity
 
-Default for unknown portals should be cautious: search is okay, applying may need review.
+Default for unlisted portals should be practical: search and prefill are okay for normal company/application pages; pause on fraud signals, sensitive fields, configured ask-before portals, or final submit policy.
 
 ## Session Start Reminder
 
@@ -162,4 +162,3 @@ I need your location/country and notice period before I can apply safely.
 - match range
 - trusted, ask-before, and blocked sources
 - pending questions
-

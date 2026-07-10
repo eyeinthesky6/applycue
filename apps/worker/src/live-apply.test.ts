@@ -1,11 +1,12 @@
 import type { BrowserPageSnapshot, PlaywrightLikeLocator, PlaywrightLikePage } from "@applycue/browser-agent";
-import type { BrowserApplyPlan } from "@applycue/core";
+import type { ApplicationDraft, BrowserApplyPlan } from "@applycue/core";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { SampleBatchResult } from "@applycue/engine";
 import { runLiveBrowserApply } from "./live-apply.js";
+import { writeMasterFormDataReport } from "./master-form-data.js";
 
 const tempDirs: string[] = [];
 
@@ -14,13 +15,39 @@ afterEach(async () => {
 });
 
 describe("live browser apply", () => {
-  it("blocks without launching the browser when current live preflight is missing", async () => {
+  it("blocks before launching the browser when master form data is not confirmed", async () => {
     const outputRoot = await tempOutputRoot();
     await writeFile(path.join(outputRoot, "outputs", "cvs", "cv.docx"), "PK fake docx", "utf8");
+    await writePreflightReport(outputRoot, {
+      selectedPlanId: "example-live-plan",
+      selectedJobId: "job-1",
+      status: "pass"
+    });
     const events: string[] = [];
     const report = await runLiveBrowserApply({
       batch: {
         browserPlans: [samplePlan()],
+        drafts: [sampleDraft()],
+        outputRoot
+      },
+      playwright: fakePlaywright(events, passSnapshot())
+    });
+
+    expect(report.status).toBe("fail");
+    expect(report.summary).toContain("confirm master form data");
+    expect(report.checks.some((check) => check.id === "master-form-data" && check.status === "fail")).toBe(true);
+    expect(events).toEqual([]);
+  });
+
+  it("blocks without launching the browser when current live preflight is missing", async () => {
+    const outputRoot = await tempOutputRoot();
+    await writeFile(path.join(outputRoot, "outputs", "cvs", "cv.docx"), "PK fake docx", "utf8");
+    await confirmMasterFormData(outputRoot);
+    const events: string[] = [];
+    const report = await runLiveBrowserApply({
+      batch: {
+        browserPlans: [samplePlan()],
+        drafts: [sampleDraft()],
         outputRoot
       },
       playwright: fakePlaywright(events, passSnapshot())
@@ -39,10 +66,12 @@ describe("live browser apply", () => {
       selectedJobId: "job-1",
       status: "pass"
     });
+    await confirmMasterFormData(outputRoot);
     const events: string[] = [];
     const report = await runLiveBrowserApply({
       batch: {
         browserPlans: [samplePlan()],
+        drafts: [sampleDraft()],
         outputRoot
       },
       playwright: fakePlaywright(events, passSnapshot())
@@ -68,10 +97,12 @@ describe("live browser apply", () => {
       selectedJobId: "old-job",
       status: "pass"
     });
+    await confirmMasterFormData(outputRoot);
     const events: string[] = [];
     const report = await runLiveBrowserApply({
       batch: {
         browserPlans: [samplePlan()],
+        drafts: [sampleDraft()],
         outputRoot
       },
       planId: "example-live-plan",
@@ -93,6 +124,7 @@ describe("live browser apply", () => {
       selectedJobId: "job-1",
       status: "pass"
     });
+    await confirmMasterFormData(outputRoot);
     const plan = sampleSubmitPlan();
     const events: string[] = [];
     const report = await runLiveBrowserApply({
@@ -158,6 +190,43 @@ async function writePreflightReport(
     }),
     "utf8"
   );
+}
+
+async function confirmMasterFormData(outputRoot: string): Promise<void> {
+  await writeMasterFormDataReport({ drafts: [sampleDraft()], outputRoot }, { confirm: true });
+}
+
+function sampleDraft(): ApplicationDraft {
+  return {
+    jobId: "job-1",
+    cvVariantId: "cv-1",
+    answers: [
+      {
+        field: "name",
+        value: "Sample Candidate",
+        needsApproval: false,
+        aliases: ["Full name"],
+        sourceRef: "profile.contact.name"
+      },
+      {
+        field: "email",
+        value: "sample@example.com",
+        needsApproval: false,
+        aliases: ["Email address"],
+        sourceRef: "profile.contact.email"
+      },
+      {
+        field: "final_submit",
+        value: "Pause before submit.",
+        needsApproval: true,
+        sourceRef: "applySettings"
+      }
+    ],
+    submitRequiresApproval: true,
+    canAutoSubmit: false,
+    applyMode: "review",
+    pauseReasons: ["missing_required_answer"]
+  };
 }
 
 function samplePlan(): BrowserApplyPlan {
@@ -247,12 +316,38 @@ function fullBatch(outputRoot: string, plan: BrowserApplyPlan): SampleBatchResul
       createdAt: "2026-07-06T00:00:00.000Z",
       updatedAt: "2026-07-06T00:00:00.000Z"
     }],
+    applyRoutes: [{
+      id: "application-1-apply-route",
+      applicationId: "application-1",
+      jobId: "job-1",
+      type: "browser",
+      status: "needs_preflight",
+      label: "Browser apply",
+      reason: "Test browser route.",
+      canSubmit: plan.canSubmit,
+      submitRequiresApproval: plan.submitRequiresApproval,
+      pauseReasons: plan.pauseReasons,
+      createdAt: "2026-07-06T00:00:00.000Z",
+      artifacts: {
+        browserPlanId: plan.id,
+        cvPath: "outputs/cvs/cv.docx"
+      },
+      execution: {
+        browser: {
+          planId: plan.id,
+          preflightCommand: `pnpm applycue:browser-live-preflight -- --plan-id ${plan.id}`,
+          applyCommand: `pnpm applycue:browser-live-apply -- --plan-id ${plan.id}`
+        }
+      },
+      notes: ["Test route."]
+    }],
+    atsDiagnosticReports: [],
     browserPlans: [plan],
     cvDocxs: [],
     cvHtmls: [],
     cvMarkdowns: [],
     cvVariants: [],
-    drafts: [],
+    drafts: [sampleDraft()],
     jobs: [{
       id: "job-1",
       source: {
@@ -377,7 +472,7 @@ function fullBatch(outputRoot: string, plan: BrowserApplyPlan): SampleBatchResul
       searchProfile: {
         titleFilter: { positive: [], negative: [], seniorityBoost: [] },
         locationFilter: { alwaysAllow: [], allow: [], askBefore: [], block: [] },
-        contentFilter: { required: [], positive: [], negative: [] },
+        contentFilter: { required: [], targetIndustries: [], positive: [], negative: [] },
         sourceHints: {
           preferredCompanies: [],
           blockedCompanies: [],

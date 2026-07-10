@@ -34,6 +34,7 @@ V1 contracts:
 - `CvVariant`
 - `ReconciliationReport`
 - `ApplicationDraft`
+- `ApplyRoute`
 - `ApplicationRecord`
 - `OutcomeEvent`
 - `RunManifest`
@@ -55,6 +56,7 @@ These should become tests.
 - Unsupported JD requirements are not written as experience.
 - Application answers use the same fact ledger as generated CVs.
 - Browser submit requires passed reconciliation, allowed apply policy, and trusted/allowed source.
+- Agents execute prepared apply routes. They do not invent a separate apply flow for one job.
 - Unknown or suspicious portals pause.
 - Backend ordering signals stay backend-only unless user asks to inspect them.
 - Every run writes a manifest.
@@ -94,6 +96,7 @@ These should become tests.
 
 ### Phase 4: Apply Assistant
 
+- Apply route planner: API, browser, email, DM, or manual review.
 - Safe form-fill.
 - Pause rules.
 - Browser action log.
@@ -120,6 +123,7 @@ ApplyCue produces:
 - `standard_ats_v1` CVs for serious jobs
 - reconciliation report per CV
 - application draft per job
+- apply route per job
 - local dashboard HTML
 - run manifest
 
@@ -235,14 +239,26 @@ The web app comes later when non-technical users need guided setup, billing, hos
 
 ## Distribution
 
-V1 developer/power-user distribution:
+Current v0.1 distribution:
 
 - GitHub repo
-- npm package or CLI
-- Codex skill
-- Claude skill
+- canonical ApplyCue skill
+- thin Codex/Claude/OpenCode/Qwen/Grok/Kimi/Antigravity bridge files
+- local setup run by the user's agent
+- user assets under `~/.applycue`
+
+Not current v0.1 distribution:
+
+- npm package
+- SaaS
+- desktop app
+- managed connector service
+
+V1 developer/power-user growth:
+
 - demo videos
-- LinkedIn build-in-public posts
+- LinkedIn/build-in-public posts
+- GitHub issues/discussions for early feedback
 
 First non-technical distribution:
 
@@ -383,7 +399,7 @@ Stage 1: proof
 
 Stage 2: power users
 
-- GitHub + npm
+- GitHub repo + agent skill
 - Codex/Claude skill install guide
 - founder/operator/dev job seekers
 - collect outcome feedback
@@ -410,6 +426,6 @@ Stage 5: broader app
 
 ## Current Decision
 
-Build now.
+Launch v0.1 from GitHub with the agent skill.
 
-Do not add more strategy docs before Phase 0 and Phase 1 are implemented.
+Use `docs/launch-readiness.md` as the source of truth for release gates and current distribution. Do not spend launch time on SaaS, desktop app, or npm packaging until early users prove the local agent workflow is repeatable.

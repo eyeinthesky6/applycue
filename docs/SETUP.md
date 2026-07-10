@@ -9,6 +9,8 @@
 
 ## Local Setup
 
+Current distribution is repo + agent skill. The user can give this repository link to an agent and ask it to set up ApplyCue locally. npm install as a product package is not the launch path yet.
+
 ```bash
 git clone https://github.com/eyeinthesky6/applycue.git
 cd applycue
@@ -61,6 +63,17 @@ The user should not edit code. The agent should:
 6. Generate truthful CV artifacts for approved roles.
 7. Prepare browser apply plans and pause before risky actions.
 8. Track outcomes.
+
+## Launch Readiness
+
+Before handing the repo to a new early user, run the launch gate from [Launch readiness](launch-readiness.md):
+
+```bash
+pnpm applycue:check
+pnpm applycue:uat -- --more-results --target-ranking-queue 200
+pnpm applycue:browser-uat -- --more-results --target-ranking-queue 200
+pnpm applycue:status
+```
 
 ## Browser Runtime
 

@@ -68,6 +68,7 @@ describe("readApplyCueStatus", () => {
           filteredJobs: 32,
           byReason: {
             title: 20,
+            industry: 0,
             location: 10,
             content: 2
           }
@@ -141,14 +142,14 @@ describe("readApplyCueStatus", () => {
     const formatted = formatApplyCueStatus(report);
 
     expect(report.status).toBe("ready");
-    expect(report.nextAction).toBe("Review the latest summary and dashboard, then apply only approved jobs under the user's policy.");
+    expect(report.nextAction).toBe("Review and confirm master form data, then run apply-route for a prepared application and follow its browser/email/DM/API/manual handoff under the user's policy.");
     expect(report.agentHandoff.headline).toBe("Ready for review: 2 application draft(s), 2 CV(s), UAT pass.");
-    expect(report.agentHandoff.commandCenter).toEqual(["pnpm browser-live-preflight", "pnpm status"]);
+    expect(report.agentHandoff.commandCenter).toEqual(["pnpm form-data", "pnpm apply-route", "pnpm browser-live-preflight", "pnpm status"]);
     expect(report.agentHandoff.readyQueue).toEqual([
       "2 prepared application(s); open the summary for role details."
     ]);
     expect(report.agentHandoff.nextSteps).toEqual([
-      "Review the latest summary and dashboard, then apply only approved jobs under the user's policy."
+      "Review and confirm master form data, then run apply-route for a prepared application and follow its browser/email/DM/API/manual handoff under the user's policy."
     ]);
     expect(report.agentHandoff.evidence).toContain(`Dashboard: ${dashboardPath}`);
     expect(report.config.hasBaseCv).toBe(true);
@@ -162,7 +163,7 @@ describe("readApplyCueStatus", () => {
     expect(formatted).toContain("- pnpm browser-live-preflight");
     expect(formatted).toContain("Ready: 2 prepared application(s); open the summary for role details.");
     expect(formatted).toContain("Source quality: 8 kept of 40 found.");
-    expect(formatted).toContain("Review the latest summary and dashboard");
+    expect(formatted).toContain("Review and confirm master form data");
   });
 
   it("extracts prepared queue, watch items, and next actions from the chat summary", async () => {
@@ -280,7 +281,7 @@ describe("readApplyCueStatus", () => {
       "Review generated CVs before enabling submit.",
       "Run browser preflight on approved applications."
     ]);
-    expect(report.agentHandoff.commandCenter).toEqual(["pnpm browser-live-preflight", "pnpm status"]);
+    expect(report.agentHandoff.commandCenter).toEqual(["pnpm form-data", "pnpm apply-route", "pnpm browser-live-preflight", "pnpm status"]);
     expect(formatted).toContain("Ready: Fintech Co - VP Product");
     expect(formatted).toContain("Needs attention: Legacy Co - Business Development Manager");
     expect(formatted).toContain("Next: Run browser preflight on approved applications.");
@@ -584,12 +585,13 @@ describe("readApplyCueStatus", () => {
 
     expect(report.latestLivePreflight?.isCurrent).toBe(true);
     expect(report.agentHandoff.commandCenter).toEqual([
+      "pnpm form-data",
       "pnpm browser-live-apply",
       "pnpm browser-live-preflight",
       "pnpm status"
     ]);
-    expect(report.agentHandoff.nextSteps[0]).toBe("Run controlled live apply to fill/upload in review mode, then pause before final submit.");
-    expect(report.nextAction).toBe("Run controlled live apply to fill/upload in review mode, then pause before final submit.");
+    expect(report.agentHandoff.nextSteps[0]).toBe("Confirm master form data if needed, then run controlled live apply to fill/upload in review mode and pause before final submit.");
+    expect(report.nextAction).toBe("Confirm master form data if needed, then run controlled live apply to fill/upload in review mode and pause before final submit.");
     expect(formatted).toContain("- pnpm browser-live-apply");
   });
 
@@ -734,10 +736,10 @@ describe("readApplyCueStatus", () => {
     const formatted = formatApplyCueStatus(report);
 
     expect(report.latestLivePreflight?.isCurrent).toBe(false);
-    expect(report.agentHandoff.commandCenter).toEqual(["pnpm browser-live-preflight", "pnpm status"]);
+    expect(report.agentHandoff.commandCenter).toEqual(["pnpm form-data", "pnpm apply-route", "pnpm browser-live-preflight", "pnpm status"]);
     expect(report.agentHandoff.nextSteps).toEqual(["Review generated CVs before enabling submit."]);
     expect(report.agentHandoff.needsAttention).toEqual([]);
-    expect(report.nextAction).toBe("Review the latest summary and dashboard, then apply only approved jobs under the user's policy.");
+    expect(report.nextAction).toBe("Review and confirm master form data, then run apply-route for a prepared application and follow its browser/email/DM/API/manual handoff under the user's policy.");
     expect(formatted).toContain("Live preflight: stale - previous PAUSE for Old Co - Old Role no longer matches the current prepared browser plans.");
     expect(formatted).not.toContain("Live answer prompts: 1 question");
     expect(formatted).not.toContain("Answer review page:");

@@ -8,6 +8,40 @@ export type ApplyDecision = "apply" | "review" | "watch" | "skip";
 
 export type ApplyMode = "review" | "daily" | "push";
 
+export type TuningSignalOrigin =
+  | "user_feedback"
+  | "agent_analysis"
+  | "outcome_learning"
+  | "system_diagnostic";
+
+export type TuningSignalTarget =
+  | "role_term"
+  | "title_variant"
+  | "industry"
+  | "location"
+  | "source"
+  | "seniority"
+  | "company"
+  | "keyword"
+  | "work_mode"
+  | "cv_fact"
+  | "apply_policy";
+
+export type TuningSignalAction =
+  | "promote"
+  | "demote"
+  | "block"
+  | "watch"
+  | "ask_user"
+  | "keep";
+
+export type TuningSignalStatus =
+  | "proposed"
+  | "approved"
+  | "rejected"
+  | "applied"
+  | "archived";
+
 export type Seniority =
   | "intern"
   | "junior"
@@ -76,6 +110,8 @@ export type EmploymentType =
 
 export type MatchRange = "tight" | "normal" | "wide";
 
+export type SeniorityGateMode = "off" | "review" | "hard";
+
 export type RelaxArea =
   | "title"
   | "industry"
@@ -88,6 +124,15 @@ export type RelaxArea =
 export type MessagePolicy = "draft_only" | "auto_send_simple" | "pause_for_all";
 
 export type PortalApplyPolicy = "allow" | "ask" | "block";
+
+export type ApplyRouteType = "api" | "browser" | "email" | "dm" | "manual_review";
+
+export type ApplyRouteStatus =
+  | "ready"
+  | "needs_preflight"
+  | "draft_only"
+  | "paused"
+  | "blocked";
 
 export type ProofKind =
   | "work"
@@ -199,6 +244,25 @@ export interface ApplicationAnswer {
   createdAt: string;
 }
 
+export interface TuningSignal {
+  id: ApplyCueId;
+  origin: TuningSignalOrigin;
+  target: TuningSignalTarget;
+  action: TuningSignalAction;
+  value: string;
+  reason: string;
+  status: TuningSignalStatus;
+  confidence?: "low" | "medium" | "high";
+  applicationId?: ApplyCueId;
+  jobId?: ApplyCueId;
+  sourceId?: ApplyCueId;
+  sourceName?: string;
+  evidenceRefs?: string[];
+  approvedByUser?: boolean;
+  createdAt: string;
+  appliedAt?: string;
+}
+
 export type UserAssetKind =
   | "base_cv"
   | "profile_image"
@@ -295,6 +359,8 @@ export interface SearchSettings {
   remoteRegions: string[];
   agentMayExpandSearchArea: boolean;
   informUserOnSearchAreaChange: boolean;
+  freshnessDays?: number;
+  includeUnknownPostDates?: boolean;
   standardHoursOnly: boolean;
   preferredShifts: string[];
   askBeforeShifts: string[];
@@ -337,6 +403,7 @@ export interface MatchSettings {
   minimumFitFloor: number;
   allowAdjacentTitles: boolean;
   allowAdjacentIndustries: boolean;
+  seniorityGateMode?: SeniorityGateMode;
 }
 
 export interface ApplySettings {
@@ -391,15 +458,29 @@ export interface ProgressSnapshot {
   pendingQuestions: number;
   nextActions: string[];
   notes: string[];
+  atsDiagnostics?: ProgressAtsDiagnosticsSummary;
   cvQuality?: ProgressCvQualitySummary;
   jobDecisions?: ProgressJobDecisionItem[];
   livePreflight?: ProgressLivePreflightSummary;
   pendingQuestionItems?: PendingQuestion[];
+  freshness?: ProgressFreshnessSummary;
   scanHistory?: ProgressScanHistorySummary;
+  dedupe?: ProgressDedupeSummary;
+  safety?: ProgressSafetySummary;
   sourceScorecards?: ProgressSourceScorecardSummary;
   sourceOutcomes?: ProgressSourceOutcomeSummary;
   sourceQuality?: ProgressSourceQualitySummary;
   funnelHealth?: ProgressFunnelHealthSummary;
+}
+
+export interface ProgressAtsDiagnosticsSummary {
+  reports: number;
+  passed: number;
+  warned: number;
+  warnings: number;
+  missingSupportedTerms: number;
+  unsupportedMentions: number;
+  topWarnings: string[];
 }
 
 export interface ProgressCvQualitySummary {
@@ -410,6 +491,19 @@ export interface ProgressCvQualitySummary {
   minimumBullets: number;
   employerHeadings: number;
   minimumEmployerBullets: number;
+}
+
+export interface ProgressFreshnessSummary {
+  inputJobs: number;
+  keptJobs: number;
+  filteredOldJobs: number;
+  filteredUnknownPostDateJobs: number;
+  freshKnownPostDateJobs: number;
+  unknownPostDateJobs: number;
+  windowDays: number;
+  includeOlderPosts: boolean;
+  includeUnknownPostDates: boolean;
+  oldestAllowedPostedAt?: string;
 }
 
 export interface ProgressScanHistorySummary {
@@ -443,9 +537,35 @@ export interface ProgressSourceQualitySummary {
   filteredJobs: number;
   byReason: {
     title: number;
+    industry: number;
     location: number;
     content: number;
   };
+  examplesByReason?: {
+    title: string[];
+    industry: string[];
+    location: string[];
+    content: string[];
+  };
+}
+
+export interface ProgressDedupeSummary {
+  inputJobs: number;
+  keptJobs: number;
+  blockedDuplicates: number;
+  sameUrl: number;
+  sameCompanySimilarRole: number;
+  alreadyHandledRepeats: number;
+  totalAvoided: number;
+}
+
+export interface ProgressSafetySummary {
+  checkedJobs: number;
+  fraudSignalBlocks: number;
+  blockedPortalBlocks: number;
+  portalPolicyBlocks: number;
+  totalSafetyBlocks: number;
+  examples: string[];
 }
 
 export type ProgressFunnelHealthStatus = "healthy" | "low_volume" | "high_volume" | "noisy_sources";
@@ -565,6 +685,10 @@ export interface ProgressApplicationItem {
   cvVariantId?: ApplyCueId;
   cvPath?: string;
   jdPath?: string;
+  applyRoutePath?: string;
+  applyRouteStatus?: ApplyRouteStatus;
+  applyRouteType?: ApplyRouteType;
+  atsDiagnosticsPath?: string;
   reconciliationPath?: string;
   reconciliationStatus?: ReconciliationReport["status"];
   canAutoSubmit: boolean;
@@ -650,6 +774,8 @@ export interface SourcePlanSearchProfile {
   };
   contentFilter: {
     required: string[];
+    targetIndustries: string[];
+    industryEvidenceMode?: "hard" | "soft";
     positive: string[];
     negative: string[];
   };
@@ -742,6 +868,7 @@ export interface JobRecord {
   employmentType?: EmploymentType;
   companyStage?: CompanyStage;
   compensation?: Compensation;
+  postedAt?: string;
   discoveredAt: string;
   liveState: JobLiveState;
 }
@@ -856,14 +983,42 @@ export interface CvVariant {
   createdAt: string;
 }
 
+export interface AtsDiagnosticReport {
+  id: ApplyCueId;
+  cvVariantId: ApplyCueId;
+  jobId: ApplyCueId;
+  status: "pass" | "warn";
+  checkedAt: string;
+  parseability: {
+    sectionHeadings: string[];
+    hasContact: boolean;
+    hasExperience: boolean;
+    hasSkills: boolean;
+    hasEducation: boolean;
+    bulletCount: number;
+    wordCount: number;
+  };
+  keywordCoverage: {
+    supportedRequired: number;
+    exactCovered: number;
+    missingSupportedTerms: string[];
+    unsupportedMentions: string[];
+  };
+  warnings: string[];
+  notes: string[];
+}
+
 export interface GeneratedFileManifest {
   id: ApplyCueId;
   kind:
+    | "ats_diagnostics_json"
+    | "apply_route_json"
     | "browser_plan_json"
     | "cv_docx"
     | "cv_markdown"
     | "cv_html"
     | "dashboard_html"
+    | "job_decisions_json"
     | "job_description_markdown"
     | "reconciliation_json"
     | "run_manifest"
@@ -927,6 +1082,52 @@ export interface BrowserApplyPlan {
   cvPath?: string;
 }
 
+export interface ApplyRoute {
+  id: ApplyCueId;
+  applicationId: ApplyCueId;
+  jobId: ApplyCueId;
+  type: ApplyRouteType;
+  status: ApplyRouteStatus;
+  label: string;
+  reason: string;
+  canSubmit: boolean;
+  submitRequiresApproval: boolean;
+  pauseReasons: Array<PauseReason | "user_approval_required">;
+  createdAt: string;
+  artifacts: {
+    browserPlanId?: ApplyCueId;
+    cvPath?: string;
+  };
+  execution: {
+    api?: {
+      adapterId: string;
+      endpoint?: string;
+      method: "POST";
+    };
+    browser?: {
+      planId: ApplyCueId;
+      preflightCommand: string;
+      applyCommand: string;
+    };
+    email?: {
+      to?: string[];
+      subject: string;
+      body: string;
+      attachmentPaths: string[];
+    };
+    dm?: {
+      platform: string;
+      targetUrl?: string;
+      message: string;
+      attachmentPaths: string[];
+    };
+    manualReview?: {
+      questions: string[];
+    };
+  };
+  notes: string[];
+}
+
 export interface BrowserActionLogEntry {
   id: ApplyCueId;
   planId: ApplyCueId;
@@ -954,6 +1155,7 @@ export interface OutcomeEvent {
   type: "submitted" | "confirmation" | "reply" | "interview" | "offer" | "rejection" | "withdrawn" | "user_feedback";
   note: string;
   occurredAt: string;
+  tuningSignals?: TuningSignal[];
 }
 
 export interface ApplicationRecord {
@@ -994,11 +1196,16 @@ export interface RunManifest {
   jobIds: ApplyCueId[];
   cvVariantIds: ApplyCueId[];
   applicationIds: ApplyCueId[];
+  applyRouteIds?: ApplyCueId[];
   generatedFiles: GeneratedFileManifest[];
   sourceCodeWriteCount: number;
   notes: string[];
+  atsDiagnostics?: ProgressAtsDiagnosticsSummary;
   cvQuality?: ProgressCvQualitySummary;
   scanHistory?: ProgressScanHistorySummary;
+  freshness?: ProgressFreshnessSummary;
+  dedupe?: ProgressDedupeSummary;
+  safety?: ProgressSafetySummary;
   pendingQuestions?: PendingQuestion[];
   sourceScorecards?: ProgressSourceScorecardSummary;
   sourceOutcomes?: ProgressSourceOutcomeSummary;

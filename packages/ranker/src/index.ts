@@ -8,6 +8,7 @@ import type {
   RankComponent,
   RelaxStep,
   Seniority,
+  SeniorityGateMode,
   UserProfile
 } from "@applycue/core";
 
@@ -189,11 +190,9 @@ export function evaluateHardGates(job: JobRecord, profile: UserProfile): GateRes
   const portalPolicyOk = profile.sourceSettings.defaultPortalApplyPolicy !== "block" || portalMatches(job, profile.sourceSettings.trustedPortals);
   const workModeOk = prefs.acceptableWorkModes.includes(job.workMode) || job.workMode === "unknown";
   const remoteOk = !prefs.remoteOnly || job.workMode === "remote" || job.workMode === "unknown";
-  const seniorityOk =
-    !effectiveSeniority.value ||
-    effectiveSeniority.value === "unknown" ||
-    prefs.acceptableSeniorities.length === 0 ||
-    prefs.acceptableSeniorities.includes(effectiveSeniority.value);
+  const seniorityMode = resolveSeniorityGateMode(profile);
+  const seniorityMatches = seniorityMatchesPreferences(effectiveSeniority, prefs.acceptableSeniorities);
+  const seniorityOk = seniorityMode === "hard" ? seniorityMatches : true;
   const experienceOk = experienceRangeOk(job.requiredExperienceYears, profile);
   const employmentTypeOk =
     !job.employmentType ||
@@ -205,11 +204,13 @@ export function evaluateHardGates(job: JobRecord, profile: UserProfile): GateRes
     job.companyStage === "unknown" ||
     prefs.companyStages.length === 0 ||
     prefs.companyStages.some((stage) => companyStageMatchesPreference(job.companyStage!, stage));
-  const workAuthOk =
+  const workAuthorizationConflict = workAuthorizationConflictReason(job, profile);
+  const workAuthLocationOk =
     prefs.workAuthorizationCountries.length === 0 ||
     !jobLocation ||
     prefs.workAuthorizationCountries.some((country) => locationMatchesCountry(jobLocation, country)) ||
-    (job.workMode === "remote" && remoteLocationCouldIncludeAuthorizedCountry(jobLocation, prefs.workAuthorizationCountries));
+    (job.workMode === "remote" && remoteLocationCouldIncludeAuthorizedRegion(jobLocation, profile));
+  const workAuthOk = !workAuthorizationConflict && workAuthLocationOk;
   const compensationOk = compensationGate(job, profile);
   const sponsorshipOk = visaSponsorshipGate(job, profile);
   const shiftOk = shiftGate(job, profile);
@@ -287,7 +288,13 @@ export function evaluateHardGates(job: JobRecord, profile: UserProfile): GateRes
     {
       id: "seniority",
       passed: seniorityOk,
-      reason: seniorityGateReason(seniorityOk, effectiveSeniority, prefs.acceptableSeniorities)
+      reason: seniorityGateReason(
+        seniorityOk,
+        effectiveSeniority,
+        prefs.acceptableSeniorities,
+        seniorityMode,
+        seniorityMatches
+      )
     },
     {
       id: "experience",
@@ -307,7 +314,8 @@ export function evaluateHardGates(job: JobRecord, profile: UserProfile): GateRes
     {
       id: "work-authorization",
       passed: workAuthOk,
-      reason: workAuthOk ? "Work authorization does not block this role." : "Location may conflict with work authorization."
+      reason: workAuthorizationConflict ??
+        (workAuthOk ? "Work authorization does not block this role." : "Location may conflict with work authorization.")
     },
     {
       id: "visa-sponsorship",
@@ -566,7 +574,7 @@ function componentScore(rankedJob: RankedJob, componentId: string): number {
 }
 
 function discoveredAtScore(job: JobRecord): number {
-  const timestamp = Date.parse(job.discoveredAt);
+  const timestamp = Date.parse(job.postedAt ?? job.discoveredAt);
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
@@ -578,8 +586,15 @@ function buildAmbiguityPromptForJob(
   const failedGateIds = new Set(rankedJob.gates.filter((gate) => !gate.passed).map((gate) => gate.id));
   const job = rankedJob.job;
   const baseReason = `${job.company} - ${job.title} matched the role family, but a reusable policy gate is ambiguous.`;
+  const seniorityMode = resolveSeniorityGateMode(profile);
+  const seniorityReviewMismatch =
+    seniorityMode === "review" &&
+    !seniorityMatchesPreferences(
+      resolveEffectiveSeniority(job, profile, componentScore(rankedJob, "role-objective-fit")),
+      profile.preferences.acceptableSeniorities
+    );
 
-  if (failedGateIds.has("seniority") && isPotentialCompanyGradeAmbiguity(job, profile)) {
+  if ((failedGateIds.has("seniority") || seniorityReviewMismatch) && isPotentialCompanyGradeAmbiguity(job, profile)) {
     return {
       id: ambiguityQuestionId("seniority", job),
       question: `Should ${job.title} at ${job.company} count as one of your target seniority levels for future decisions, or should similar titles stay blocked?`,
@@ -724,11 +739,14 @@ function roleScore(job: JobRecord, profile: UserProfile): number {
   const titleHasAnyAnchor = allAnchors.length === 0 || allAnchors.some((token) => titleTokens.has(token));
   const untargetedAdjacentTitle = hasUntargetedAdjacentTitle(title, profile);
   const seniorRoleVariantScore = seniorityRoleVariantScore(title, profile);
+  const nonTargetProductFunctionTitle = isNonTargetProductFunctionTitle(title, profile);
 
-  if (targetTitleScore >= 0.7 && !untargetedAdjacentTitle) return roundScore(Math.max(targetScore, adjacentScore));
+  if (targetTitleScore >= 0.7 && !untargetedAdjacentTitle && !nonTargetProductFunctionTitle) {
+    return roundScore(Math.max(targetScore, adjacentScore));
+  }
 
   const descriptionOnlyTargetScore = titleHasTargetAnchor ? targetScore : Math.min(targetScore, 0.49);
-  if (seniorRoleVariantScore >= 0.7 && !untargetedAdjacentTitle) {
+  if (seniorRoleVariantScore >= 0.7 && !untargetedAdjacentTitle && !nonTargetProductFunctionTitle) {
     return roundScore(Math.max(descriptionOnlyTargetScore, seniorRoleVariantScore));
   }
   if (adjacentTitleScore >= 0.7) {
@@ -743,6 +761,9 @@ function roleScore(job: JobRecord, profile: UserProfile): number {
     return roundScore(Math.min(titleAnchoredScore, 0.49));
   }
   if (isTechnicalProductTitleForProductLeadership(title, profile)) {
+    return roundScore(Math.min(titleAnchoredScore, 0.49));
+  }
+  if (nonTargetProductFunctionTitle) {
     return roundScore(Math.min(titleAnchoredScore, 0.49));
   }
   return roundScore(titleAnchoredScore);
@@ -837,6 +858,49 @@ function isTechnicalProductTitleForProductLeadership(title: string, profile: Use
   return !leadershipTokens.some((token) => tokens.has(token));
 }
 
+function isNonTargetProductFunctionTitle(title: string, profile: UserProfile): boolean {
+  const targetText = normalizeText([
+    ...profile.preferences.targetRoleTerms,
+    ...profile.preferences.adjacentRoleTerms
+  ].join(" "));
+  if (!targetText.includes("product")) return false;
+
+  const normalizedTitle = normalizeText(title);
+  const titleTokens = tokenSet(normalizedTitle);
+  if (!titleTokens.has("product")) return false;
+
+  const productManagementPhrases = [
+    "product manager",
+    "product management",
+    "product owner",
+    "head of product",
+    "director product",
+    "product director",
+    "vp product",
+    "vice president product",
+    "chief product",
+    "group product manager",
+    "lead product manager",
+    "senior product manager"
+  ];
+  if (productManagementPhrases.some((phrase) => normalizedTitle.includes(phrase))) return false;
+
+  const nonTargetFunctionTokens = [
+    "accounting",
+    "accountant",
+    "advertising",
+    "ads",
+    "creative",
+    "design",
+    "designer",
+    "editor",
+    "marketing",
+    "sales"
+  ];
+  const targetTokens = tokenSet(targetText);
+  return nonTargetFunctionTokens.some((token) => titleTokens.has(token) && !targetTokens.has(token));
+}
+
 function alternativeTermScore(text: string, terms: string[]): number {
   const cleanedTerms = terms.map((term) => term.trim()).filter(Boolean);
   if (cleanedTerms.length === 0) return 0.5;
@@ -899,8 +963,8 @@ function resolveEffectiveSeniority(job: JobRecord, profile: UserProfile, roleObj
   const base = job.seniority && job.seniority !== "unknown" ? job.seniority : undefined;
   if (!base) {
     return job.seniority === "unknown"
-      ? { value: "unknown", reason: "Seniority is unknown, so it is not used as a hard blocker." }
-      : { reason: "Seniority is unknown, so it is not used as a hard blocker." };
+      ? { value: "unknown", reason: "Seniority is unknown, so it is not used as a blocker." }
+      : { reason: "Seniority is unknown, so it is not used as a blocker." };
   }
 
   if (shouldUpgradeByCompanyGrade(job, base, roleObjectiveFit)) {
@@ -916,12 +980,48 @@ function resolveEffectiveSeniority(job: JobRecord, profile: UserProfile, roleObj
   };
 }
 
-function seniorityGateReason(passed: boolean, effective: EffectiveSeniority, acceptableSeniorities: Seniority[]): string {
+function resolveSeniorityGateMode(profile: UserProfile): SeniorityGateMode {
+  return profile.matchSettings.seniorityGateMode ?? "off";
+}
+
+function seniorityMatchesPreferences(effective: EffectiveSeniority, acceptableSeniorities: Seniority[]): boolean {
+  return (
+    !effective.value ||
+    effective.value === "unknown" ||
+    acceptableSeniorities.length === 0 ||
+    acceptableSeniorities.includes(effective.value)
+  );
+}
+
+function seniorityGateReason(
+  passed: boolean,
+  effective: EffectiveSeniority,
+  acceptableSeniorities: Seniority[],
+  mode: SeniorityGateMode,
+  matches: boolean
+): string {
+  if (mode === "off") {
+    return "Seniority filtering is off; title level is advisory and does not block this role.";
+  }
+
+  if (mode === "review") {
+    if (matches) return effective.reason ?? "Seniority is acceptable; review-only mode does not hard block.";
+    const accepted = formatAcceptedSeniorities(acceptableSeniorities);
+    const actual = effective.value ? formatSeniority(effective.value) : "unknown";
+    const evidence = effective.reason ? ` ${effective.reason}` : "";
+    return `Seniority ${actual} is outside configured levels (${accepted}), but seniority is review-only; use experience, role scope, and user feedback.${evidence}`;
+  }
+
   if (passed) return effective.reason ?? "Seniority is acceptable.";
-  const accepted = acceptableSeniorities.length > 0 ? acceptableSeniorities.map(formatSeniority).join(", ") : "any";
+  const accepted = formatAcceptedSeniorities(acceptableSeniorities);
   const actual = effective.value ? formatSeniority(effective.value) : "unknown";
   const evidence = effective.reason ? ` ${effective.reason}` : "";
   return `Seniority ${actual} conflicts with acceptable seniorities (${accepted}).${evidence}`;
+}
+
+function formatAcceptedSeniorities(acceptableSeniorities: Seniority[]): string {
+  const accepted = acceptableSeniorities.length > 0 ? acceptableSeniorities.map(formatSeniority).join(", ") : "any";
+  return accepted;
 }
 
 function formatSeniority(value: Seniority): string {
@@ -1061,6 +1161,68 @@ function visaSponsorshipGate(job: JobRecord, profile: UserProfile): PreferenceGa
   return { passed: true, reason: "No explicit no-sponsorship blocker was found." };
 }
 
+function workAuthorizationConflictReason(job: JobRecord, profile: UserProfile): string | undefined {
+  const authorizedCountries = profile.preferences.workAuthorizationCountries;
+  if (authorizedCountries.length === 0) return undefined;
+
+  const requiredCountries = detectRequiredWorkAuthorizationCountries(searchableJobText(job));
+  const unauthorizedCountries = requiredCountries.filter(
+    (required) => !authorizedCountries.some((authorized) => sameCountry(required, authorized))
+  );
+  if (unauthorizedCountries.length === 0) return undefined;
+
+  return `Job requires work authorization or residence in ${formatCountryList(unauthorizedCountries)}, outside configured authorization country/countries (${formatCountryList(authorizedCountries)}).`;
+}
+
+function detectRequiredWorkAuthorizationCountries(text: string): string[] {
+  const normalized = normalizeText(text);
+  const required = new Set<string>();
+  for (const country of Object.keys(COUNTRY_ALIASES)) {
+    if (workAuthorizationCountryMentioned(normalized, country)) required.add(country);
+  }
+  return [...required];
+}
+
+function workAuthorizationCountryMentioned(normalizedText: string, country: string): boolean {
+  return workAuthorizationAliases(country).some((alias) =>
+    [
+      `authorized to work in ${alias}`,
+      `authorized to work in the ${alias}`,
+      `authorised to work in ${alias}`,
+      `authorised to work in the ${alias}`,
+      `authorization to work in ${alias}`,
+      `authorization to work in the ${alias}`,
+      `authorisation to work in ${alias}`,
+      `authorisation to work in the ${alias}`,
+      `work authorization in ${alias}`,
+      `work authorization in the ${alias}`,
+      `work authorisation in ${alias}`,
+      `work authorisation in the ${alias}`,
+      `${alias} work authorization`,
+      `${alias} work authorisation`,
+      `right to work in ${alias}`,
+      `right to work in the ${alias}`,
+      `eligible to work in ${alias}`,
+      `eligible to work in the ${alias}`,
+      `must be located in ${alias}`,
+      `must be located in the ${alias}`,
+      `must be based in ${alias}`,
+      `must be based in the ${alias}`,
+      `must reside in ${alias}`,
+      `must reside in the ${alias}`,
+      `applicants must be located in ${alias}`,
+      `applicants must be located in the ${alias}`
+    ].some((phrase) => normalizedText.includes(phrase))
+  );
+}
+
+function workAuthorizationAliases(country: string): string[] {
+  return countryAliases(country).filter((alias) => {
+    const normalized = normalizeText(alias);
+    return normalized.length > 2 || ["us", "uk", "uae"].includes(normalized);
+  });
+}
+
 function shiftGate(job: JobRecord, profile: UserProfile): PreferenceGateResult {
   if (!profile.searchSettings.standardHoursOnly && profile.searchSettings.askBeforeShifts.length === 0) {
     return { passed: true, reason: "No shift preference is configured." };
@@ -1135,6 +1297,14 @@ function fraudTermMatches(text: string, term: string): boolean {
   }
   if (normalizedTerm === "payment required") {
     return /\b(payment|required|pay|fee)\b.{0,40}\b(payment|required|pay|fee)\b/.test(normalizedText);
+  }
+  if (normalizedTerm === "profile database") {
+    return /\b(profile|resume|cv|candidate)\b.{0,80}\b(database|data bank|db|registration|register|pool)\b/.test(normalizedText) ||
+      /\b(database|data bank|db|registration|register|pool)\b.{0,80}\b(profile|resume|cv|candidate)\b/.test(normalizedText);
+  }
+  if (normalizedTerm === "document before interview") {
+    return /\b(aadhaar|aadhar|pan|passport|bank statement|salary slip|uan|pf)\b.{0,100}\b(before|prior|pre interview|shortlist|shortlisted|call|discussion|interview)\b/.test(normalizedText) ||
+      /\b(before|prior|pre interview|shortlist|shortlisted|call|discussion|interview)\b.{0,100}\b(aadhaar|aadhar|pan|passport|bank statement|salary slip|uan|pf)\b/.test(normalizedText);
   }
   return normalizedText.includes(normalizedTerm);
 }
@@ -1283,30 +1453,76 @@ function locationMatchesCountry(location: string, country: string): boolean {
   return aliases.some((alias) => textContainsAlias(location, alias));
 }
 
-function remoteLocationCouldIncludeAuthorizedCountry(location: string, countries: string[]): boolean {
+function remoteLocationCouldIncludeAuthorizedRegion(location: string, profile: UserProfile): boolean {
   const normalized = normalizeText(location);
   if (!normalized) return true;
-  if (["anywhere", "global", "worldwide"].some((term) => normalized.includes(term))) return true;
-  return countries.some((country) => countryRegions(country).some((region) => normalized.includes(region)));
+  if (["anywhere", "global", "worldwide"].some((term) => normalized.includes(term))) {
+    return profileAllowsGlobalRemote(profile);
+  }
+  const explicitRegions = explicitRemoteRegionAliases(profile);
+  return explicitRegions.some((region) => normalized.includes(region));
 }
 
-function countryRegions(country: string): string[] {
-  const normalized = normalizeText(country);
-  const regionsByCountry: Record<string, string[]> = {
-    india: ["asia", "apac", "asia pacific"],
-    singapore: ["asia", "apac", "asia pacific"],
-    australia: ["apac", "asia pacific", "oceania"],
-    germany: ["europe"],
-    "united kingdom": ["europe"],
-    "united states": ["north america", "americas"],
-    "united arab emirates": ["middle east", "emea"]
-  };
-  return regionsByCountry[normalized] ?? [];
+function profileAllowsGlobalRemote(profile: UserProfile): boolean {
+  return remotePreferenceTerms(profile).some((term) => {
+    const normalized = normalizeText(term);
+    return normalized.includes("anywhere") || normalized.includes("global") || normalized.includes("worldwide");
+  });
+}
+
+function explicitRemoteRegionAliases(profile: UserProfile): string[] {
+  const regions: string[] = [];
+  for (const term of remotePreferenceTerms(profile)) {
+    const normalized = normalizeText(term);
+    if (normalized.includes("apac") || normalized.includes("asia pacific")) regions.push("apac", "asia pacific", "asia");
+    if (normalized === "asia" || normalized.includes("remote asia")) regions.push("asia");
+    if (normalized.includes("europe")) regions.push("europe");
+    if (normalized.includes("emea")) regions.push("emea", "europe", "middle east", "africa");
+    if (normalized.includes("americas")) regions.push("americas", "north america", "south america");
+    if (normalized.includes("north america")) regions.push("north america");
+    if (normalized.includes("oceania")) regions.push("oceania");
+    if (normalized.includes("middle east")) regions.push("middle east");
+  }
+  return [...new Set(regions)];
+}
+
+function remotePreferenceTerms(profile: UserProfile): string[] {
+  return [
+    ...profile.preferences.preferredLocations,
+    ...profile.preferences.extraLocations,
+    ...profile.preferences.askBeforeLocations,
+    ...profile.searchSettings.searchAreas,
+    ...profile.searchSettings.searchCountries,
+    ...profile.searchSettings.remoteRegions
+  ];
 }
 
 function locationMatchesPreference(location: string, preference: string): boolean {
   if (textContainsAlias(location, preference)) return true;
   return locationMatchesCountry(location, preference);
+}
+
+function sameCountry(left: string, right: string): boolean {
+  const leftAliases = new Set(countryAliases(left).map(normalizeText));
+  return countryAliases(right).map(normalizeText).some((alias) => leftAliases.has(alias));
+}
+
+function formatCountryList(countries: string[]): string {
+  return [...new Set(countries.map((country) => displayCountry(country)).filter(Boolean))].join(", ");
+}
+
+function displayCountry(country: string): string {
+  const normalized = normalizeText(country);
+  const labels: Record<string, string> = {
+    india: "India",
+    "united states": "United States",
+    "united kingdom": "United Kingdom",
+    singapore: "Singapore",
+    germany: "Germany",
+    australia: "Australia",
+    "united arab emirates": "United Arab Emirates"
+  };
+  return labels[normalized] ?? normalizeWhitespace(country);
 }
 
 function countryAliases(country: string): string[] {

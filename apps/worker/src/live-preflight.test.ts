@@ -147,6 +147,33 @@ describe("live browser preflight", () => {
     ]);
     expect(template.oneOffAnswers.map((answer) => answer.field)).toEqual(["unlabeled_field"]);
   });
+
+  it("canonicalizes common reusable form questions for future reuse", async () => {
+    const outputRoot = await tempOutputRoot();
+    const report = await runLiveBrowserPreflight({
+      batch: {
+        browserPlans: [samplePlan()],
+        outputRoot
+      },
+      playwright: fakePlaywright([], {
+        ...passSnapshot(),
+        fields: [
+          { label: "Full name", name: "name", required: true, type: "text" },
+          { label: "Are you legally authorized to work in India?", name: "work_rights", required: true, type: "select" },
+          { label: "Total years of experience", name: "experience", required: true, type: "number" },
+          { label: "Are you willing to relocate?", name: "relocation", required: true, type: "select" },
+          { label: "Resume", name: "resume_or_cv", required: true, type: "file" }
+        ]
+      })
+    });
+
+    expect(report.status).toBe("pause");
+    expect(report.answerPrompts?.map((prompt) => prompt.field)).toEqual([
+      "relocation_availability",
+      "work_authorization",
+      "total_experience_years"
+    ]);
+  });
 });
 
 async function tempOutputRoot(): Promise<string> {

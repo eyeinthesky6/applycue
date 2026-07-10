@@ -497,11 +497,15 @@ export function buildProgressSnapshot(input: {
   profileId?: string;
   runId?: string;
   generatedAt?: string;
+  atsDiagnostics?: ProgressSnapshot["atsDiagnostics"];
   cvQuality?: ProgressSnapshot["cvQuality"];
   jobDecisions?: ProgressJobDecisionItem[];
   livePreflight?: ProgressSnapshot["livePreflight"];
   pendingQuestionItems?: PendingQuestion[];
+  freshness?: ProgressSnapshot["freshness"];
   scanHistory?: ProgressSnapshot["scanHistory"];
+  dedupe?: ProgressSnapshot["dedupe"];
+  safety?: ProgressSnapshot["safety"];
   sourceScorecards?: ProgressSnapshot["sourceScorecards"];
   sourceOutcomes?: ProgressSnapshot["sourceOutcomes"];
   sourceQuality?: ProgressSnapshot["sourceQuality"];
@@ -521,11 +525,15 @@ export function buildProgressSnapshot(input: {
     pendingQuestions: input.pendingQuestions ?? pendingQuestionItems.length,
     nextActions: input.nextActions ?? [],
     notes: input.notes ?? [],
+    ...(input.atsDiagnostics ? { atsDiagnostics: input.atsDiagnostics } : {}),
     ...(input.cvQuality ? { cvQuality: input.cvQuality } : {}),
     jobDecisions: input.jobDecisions ?? [],
     ...(input.livePreflight ? { livePreflight: input.livePreflight } : {}),
     ...(pendingQuestionItems.length > 0 ? { pendingQuestionItems } : {}),
+    ...(input.freshness ? { freshness: input.freshness } : {}),
     ...(input.scanHistory ? { scanHistory: input.scanHistory } : {}),
+    ...(input.dedupe ? { dedupe: input.dedupe } : {}),
+    ...(input.safety ? { safety: input.safety } : {}),
     ...(input.sourceScorecards ? { sourceScorecards: input.sourceScorecards } : {}),
     ...(input.sourceOutcomes ? { sourceOutcomes: input.sourceOutcomes } : {}),
     ...(input.sourceQuality ? { sourceQuality: input.sourceQuality } : {}),
@@ -642,9 +650,137 @@ function renderSourceQuality(snapshot: ProgressSnapshot): string {
           <h3>Filtered By</h3>
           <div class="chip-row">
             <span class="chip ${sourceQuality.byReason.title > 0 ? "chip-warn" : "chip-ok"}">${sourceQuality.byReason.title} title</span>
+            <span class="chip ${sourceQuality.byReason.industry > 0 ? "chip-warn" : "chip-ok"}">${sourceQuality.byReason.industry} industry</span>
             <span class="chip ${sourceQuality.byReason.location > 0 ? "chip-warn" : "chip-ok"}">${sourceQuality.byReason.location} location</span>
             <span class="chip ${sourceQuality.byReason.content > 0 ? "chip-warn" : "chip-ok"}">${sourceQuality.byReason.content} content</span>
           </div>
+        </div>
+      </div>
+  </section>`;
+}
+
+function renderFreshness(snapshot: ProgressSnapshot): string {
+  if (!snapshot.freshness) return "";
+  const freshness = snapshot.freshness;
+  const cards = [
+    {
+      label: "Checked",
+      value: freshness.inputJobs,
+      tone: "neutral",
+      helper: "After source quality"
+    },
+    {
+      label: "Kept",
+      value: freshness.keptJobs,
+      tone: "ready",
+      helper: freshness.includeOlderPosts ? "Older known posts included" : `${freshness.windowDays}-day window`
+    },
+    {
+      label: "Older Held",
+      value: freshness.filteredOldJobs,
+      tone: freshness.filteredOldJobs > 0 ? "watch" : "neutral",
+      helper: "Known older posts"
+    },
+    {
+      label: "Unknown Date",
+      value: freshness.unknownPostDateJobs,
+      tone: freshness.unknownPostDateJobs > 0 ? "watch" : "neutral",
+      helper: freshness.includeUnknownPostDates ? "Eligible, ranked lower" : "Not eligible"
+    }
+  ];
+  return `<section>
+      <div class="section-head">
+        <h2>Freshness</h2>
+        <p>Latest known posts first. Unknown post dates are not treated as old.</p>
+      </div>
+      <div class="stat-grid">${cards.map(renderStatCard).join("")}</div>
+  </section>`;
+}
+
+function renderDedupe(snapshot: ProgressSnapshot): string {
+  if (!snapshot.dedupe) return "";
+  const dedupe = snapshot.dedupe;
+  const cards = [
+    {
+      label: "Checked",
+      value: dedupe.inputJobs,
+      tone: "neutral",
+      helper: "After source filters"
+    },
+    {
+      label: "Duplicates blocked",
+      value: dedupe.blockedDuplicates,
+      tone: dedupe.blockedDuplicates > 0 ? "watch" : "neutral",
+      helper: "Same job, cross-post, or repost"
+    },
+    {
+      label: "Repeats avoided",
+      value: dedupe.alreadyHandledRepeats,
+      tone: dedupe.alreadyHandledRepeats > 0 ? "watch" : "neutral",
+      helper: "Already prepared earlier"
+    }
+  ];
+  return `<section>
+      <div class="section-head">
+        <h2>Duplicates Blocked</h2>
+        <p>Cross-posts and already handled roles kept out of the application queue.</p>
+      </div>
+      <div class="source-quality-layout">
+        ${cards.map(renderStatCard).join("")}
+        <div class="reason-panel">
+          <h3>Blocked By</h3>
+          <div class="chip-row">
+            <span class="chip ${dedupe.sameUrl > 0 ? "chip-warn" : "chip-ok"}">${dedupe.sameUrl} same URL</span>
+            <span class="chip ${dedupe.sameCompanySimilarRole > 0 ? "chip-warn" : "chip-ok"}">${dedupe.sameCompanySimilarRole} company + role</span>
+            <span class="chip ${dedupe.alreadyHandledRepeats > 0 ? "chip-warn" : "chip-ok"}">${dedupe.alreadyHandledRepeats} already handled</span>
+            <span class="chip chip-ok">${dedupe.keptJobs} kept</span>
+          </div>
+        </div>
+      </div>
+  </section>`;
+}
+
+function renderSafety(snapshot: ProgressSnapshot): string {
+  if (!snapshot.safety) return "";
+  const safety = snapshot.safety;
+  const cards = [
+    {
+      label: "Checked",
+      value: safety.checkedJobs,
+      tone: "neutral",
+      helper: "Ranked jobs"
+    },
+    {
+      label: "Safety blocks",
+      value: safety.totalSafetyBlocks,
+      tone: safety.totalSafetyBlocks > 0 ? "watch" : "neutral",
+      helper: "Fraud or blocked portal"
+    },
+    {
+      label: "Fraud signals",
+      value: safety.fraudSignalBlocks,
+      tone: safety.fraudSignalBlocks > 0 ? "watch" : "neutral",
+      helper: "Scam-like terms"
+    }
+  ];
+  const examples = safety.examples.length > 0
+    ? `<div class="signal-list">${safety.examples.slice(0, 5).map((example) => `<div>${escapeHtml(example)}</div>`).join("")}</div>`
+    : `<p class="empty-state">No scam or blocked-portal jobs reached ranking.</p>`;
+  return `<section>
+      <div class="section-head">
+        <h2>Safety Blocks</h2>
+        <p>Risky jobs stopped before CV or application work.</p>
+      </div>
+      <div class="source-quality-layout">
+        ${cards.map(renderStatCard).join("")}
+        <div class="reason-panel">
+          <h3>Blocked By</h3>
+          <div class="chip-row">
+            <span class="chip ${safety.fraudSignalBlocks > 0 ? "chip-warn" : "chip-ok"}">${safety.fraudSignalBlocks} fraud signal</span>
+            <span class="chip ${safety.blockedPortalBlocks > 0 ? "chip-warn" : "chip-ok"}">${safety.blockedPortalBlocks} blocked portal</span>
+            <span class="chip ${safety.portalPolicyBlocks > 0 ? "chip-warn" : "chip-ok"}">${safety.portalPolicyBlocks} portal policy</span>
+          </div>
+          ${examples}
         </div>
       </div>
   </section>`;
@@ -674,7 +810,11 @@ function renderFunnelHealth(snapshot: ProgressSnapshot): string {
     }
   ];
   const filterItems = health.dominantFilters.length > 0
-    ? health.dominantFilters.map((item) => `<li>${escapeHtml(item.label)}: ${item.count}</li>`).join("")
+    ? health.dominantFilters
+        .map((item) =>
+          `<li>${escapeHtml(item.label)}: ${item.count}${item.examples[0] ? ` <small>${escapeHtml(item.examples[0])}</small>` : ""}</li>`
+        )
+        .join("")
     : "<li>No dominant source filter.</li>";
   const gateItems = health.dominantGateBlocks.length > 0
     ? health.dominantGateBlocks
@@ -701,7 +841,7 @@ function renderFunnelHealth(snapshot: ProgressSnapshot): string {
           <ul>${gateItems}</ul>
         </div>
         <div class="reason-panel">
-          <h3>Suggested Path</h3>
+          <h3>If You Want More Results</h3>
           <ul>${actionItems}</ul>
         </div>
       </div>
@@ -815,6 +955,52 @@ function renderCvQuality(snapshot: ProgressSnapshot): string {
     </div>
     <div class="source-quality-layout">
       ${cards.map(renderStatCard).join("")}
+    </div>
+  </section>`;
+}
+
+function renderAtsDiagnostics(snapshot: ProgressSnapshot): string {
+  if (!snapshot.atsDiagnostics) return "";
+  const diagnostics = snapshot.atsDiagnostics;
+  const cards = [
+    {
+      label: "Reports",
+      value: diagnostics.reports,
+      tone: diagnostics.reports > 0 ? "ready" : "neutral",
+      helper: "CV/JD diagnostic files"
+    },
+    {
+      label: "Clean",
+      value: diagnostics.passed,
+      tone: diagnostics.warned === 0 ? "ready" : "neutral",
+      helper: "No diagnostic warnings"
+    },
+    {
+      label: "Warnings",
+      value: diagnostics.warnings,
+      tone: diagnostics.warnings > 0 ? "watch" : "ready",
+      helper: "Agent review only"
+    },
+    {
+      label: "Missing Terms",
+      value: diagnostics.missingSupportedTerms,
+      tone: diagnostics.missingSupportedTerms > 0 ? "watch" : "ready",
+      helper: "Supported JD terms absent from CV text"
+    }
+  ];
+  const warningList = diagnostics.topWarnings.length > 0
+    ? `<div class="reason-panel"><h3>Top Warnings</h3><ul>${diagnostics.topWarnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul></div>`
+    : `<div class="reason-panel"><h3>Top Warnings</h3><p class="empty-state">No ATS diagnostic warnings.</p></div>`;
+  return `<section>
+    <div class="section-head">
+      <div>
+        <h2>ATS Diagnostics</h2>
+        <p>Parseability and safe JD-term coverage only. Not a candidate score.</p>
+      </div>
+    </div>
+    <div class="source-quality-layout">
+      ${cards.map(renderStatCard).join("")}
+      ${warningList}
     </div>
   </section>`;
 }
@@ -1038,11 +1224,15 @@ function renderApplicationItem(item: ProgressApplicationItem): string {
   const cvHtmlPath = renderArtifactLink(item.cvHtmlPath, "View CV", "../cvs");
   const cvPath = renderArtifactLink(item.cvPath, "Markdown", "../cvs");
   const jdPath = renderArtifactLink(item.jdPath, "JD", "../jds");
+  const atsDiagnosticsPath = renderArtifactLink(item.atsDiagnosticsPath, "ATS diagnostics", "../ats-diagnostics");
   const reconciliationPath = renderArtifactLink(item.reconciliationPath, "Reconciliation", "../reconciliation");
+  const applyRoutePath = renderArtifactLink(item.applyRoutePath, "Apply route", "../apply-routes");
   const browserPlanPath = renderArtifactLink(item.browserPlanPath, "Browser plan", "../browser-plans");
   const browserReceiptPath = renderArtifactLink(item.browserReceiptPath, "Receipt", "../browser-receipts");
   const reconciliationStatus = item.reconciliationStatus ?? "unknown";
   const browserReceiptStatus = item.browserReceiptStatus ?? "unknown";
+  const applyRouteType = item.applyRouteType ? humanizeIdentifier(item.applyRouteType) : "Unknown";
+  const applyRouteStatus = item.applyRouteStatus ? humanizeIdentifier(item.applyRouteStatus) : "Unknown";
 
   return `<article class="application-card">
     <header>
@@ -1053,8 +1243,9 @@ function renderApplicationItem(item: ProgressApplicationItem): string {
       <span class="badge ${statusBadgeClass(reconciliationStatus)}">${escapeHtml(humanizeIdentifier(reconciliationStatus))}</span>
     </header>
     <p class="next-step">${escapeHtml(item.nextStep)}</p>
-    <div class="artifact-row">${jdPath}${cvDocxPath}${cvHtmlPath}${cvPath}${reconciliationPath}${browserPlanPath}${browserReceiptPath}</div>
+    <div class="artifact-row">${jdPath}${cvDocxPath}${cvHtmlPath}${cvPath}${atsDiagnosticsPath}${reconciliationPath}${applyRoutePath}${browserPlanPath}${browserReceiptPath}</div>
     <dl class="compact-grid">
+      <div><dt>Route</dt><dd>${escapeHtml(applyRouteType)} / ${escapeHtml(applyRouteStatus)}</dd></div>
       <div><dt>Auto-submit</dt><dd>${item.canAutoSubmit ? "Allowed" : "Not allowed"}</dd></div>
       <div><dt>Approval</dt><dd>${item.submitRequiresApproval ? "Required" : "Not required"}</dd></div>
       <div><dt>Receipt</dt><dd><span class="badge ${receiptBadgeClass(browserReceiptStatus)}">${escapeHtml(humanizeIdentifier(browserReceiptStatus))}</span></dd></div>
@@ -1192,8 +1383,12 @@ export function renderProgressDashboardHtml(snapshot: ProgressSnapshot): string 
   const sourceOutcomes = renderSourceOutcomes(snapshot);
   const sourceScorecards = renderSourceScorecards(snapshot);
   const sourceQuality = renderSourceQuality(snapshot);
+  const freshness = renderFreshness(snapshot);
+  const dedupe = renderDedupe(snapshot);
+  const safety = renderSafety(snapshot);
   const funnelHealth = renderFunnelHealth(snapshot);
   const cvQuality = renderCvQuality(snapshot);
+  const atsDiagnostics = renderAtsDiagnostics(snapshot);
   const livePreflight = renderLivePreflight(snapshot);
   const pendingQuestions = renderPendingQuestions(snapshot);
   const decisionSummary = renderDecisionSummary(snapshot.jobDecisions ?? []);
@@ -1234,7 +1429,7 @@ export function renderProgressDashboardHtml(snapshot: ProgressSnapshot): string 
           detail: "Check the CV, reconciliation, browser plan, and receipt for each role."
         };
   const runWindow = `${escapeHtml(snapshot.periodStart)} to ${escapeHtml(snapshot.periodEnd)}`;
-  const diagnosticBlocks = [livePreflight, pendingQuestions, funnelHealth, sourceQuality, sourceScorecards, cvQuality, scanHistory, sourceOutcomes].filter(Boolean).join("");
+  const diagnosticBlocks = [livePreflight, pendingQuestions, funnelHealth, sourceQuality, freshness, dedupe, safety, sourceScorecards, cvQuality, atsDiagnostics, scanHistory, sourceOutcomes].filter(Boolean).join("");
   const statusLine = [
     `${preparedCount} prepared`,
     `${cvCount} CVs`,
@@ -1665,12 +1860,12 @@ export function renderProgressChatSummaryMarkdown(snapshot: ProgressSnapshot): s
         `- Daily target: ${snapshot.funnelHealth.preparedApplications}/${snapshot.funnelHealth.configuredDailyTarget}`,
         `- Jobs: ${snapshot.funnelHealth.discoveredJobs} discovered, ${snapshot.funnelHealth.keptForRanking} kept for ranking, ${snapshot.funnelHealth.watchOrSkippedJobs} watched/skipped`,
         ...snapshot.funnelHealth.dominantFilters.slice(0, 3).map((item) =>
-          `- Filter: ${escapeMarkdownLine(item.label)} (${item.count})`
+          `- Filter: ${escapeMarkdownLine(item.label)} (${item.count})${item.examples[0] ? ` - ${escapeMarkdownLine(item.examples[0])}` : ""}`
         ),
         ...snapshot.funnelHealth.dominantGateBlocks.slice(0, 3).map((item) =>
           `- Gate: ${escapeMarkdownLine(item.label)} (${item.count})${item.examples[0] ? ` - ${escapeMarkdownLine(item.examples[0])}` : ""}`
         ),
-        ...snapshot.funnelHealth.suggestedActions.slice(0, 4).map((action) => `- Suggested: ${escapeMarkdownLine(action)}`),
+        ...snapshot.funnelHealth.suggestedActions.slice(0, 4).map((action) => `- ${escapeMarkdownLine(action)}`),
         ""
       ].join("\n")
     : "";
@@ -1681,7 +1876,48 @@ export function renderProgressChatSummaryMarkdown(snapshot: ProgressSnapshot): s
         `- Found before filtering: ${snapshot.sourceQuality.inputJobs}`,
         `- Kept for ranking: ${snapshot.sourceQuality.keptJobs}`,
         `- Skipped before CV work: ${snapshot.sourceQuality.filteredJobs}`,
-        `- Skip reasons: ${snapshot.sourceQuality.byReason.title} title, ${snapshot.sourceQuality.byReason.location} location, ${snapshot.sourceQuality.byReason.content} content`,
+        `- Skip reasons: ${snapshot.sourceQuality.byReason.title} title, ${snapshot.sourceQuality.byReason.industry} industry, ${snapshot.sourceQuality.byReason.location} location, ${snapshot.sourceQuality.byReason.content} content`,
+        ...sourceQualityExampleLines(snapshot.sourceQuality.examplesByReason),
+        ""
+      ].join("\n")
+    : "";
+  const freshness = snapshot.freshness
+    ? [
+        "## Freshness",
+        "",
+        `- Window: ${snapshot.freshness.windowDays} day(s)`,
+        `- Kept after freshness: ${snapshot.freshness.keptJobs}/${snapshot.freshness.inputJobs}`,
+        `- Fresh known post dates: ${snapshot.freshness.freshKnownPostDateJobs}`,
+        `- Unknown post dates kept eligible: ${snapshot.freshness.unknownPostDateJobs}`,
+        `- Older known posts held back: ${snapshot.freshness.filteredOldJobs}`,
+        ...(snapshot.freshness.includeOlderPosts ? ["- Older known posts were included for this run."] : []),
+        ...(snapshot.freshness.filteredUnknownPostDateJobs > 0 ? [`- Unknown-date jobs filtered: ${snapshot.freshness.filteredUnknownPostDateJobs}`] : []),
+        ""
+      ].join("\n")
+    : "";
+  const dedupe = snapshot.dedupe
+    ? [
+        "## Duplicates Blocked",
+        "",
+        `- Jobs checked after source filters: ${snapshot.dedupe.inputJobs}`,
+        `- Duplicates blocked this run: ${snapshot.dedupe.blockedDuplicates}`,
+        `- Same URL: ${snapshot.dedupe.sameUrl}`,
+        `- Same company + similar role: ${snapshot.dedupe.sameCompanySimilarRole}`,
+        `- Already handled earlier: ${snapshot.dedupe.alreadyHandledRepeats}`,
+        `- Total duplicate/repeat noise avoided: ${snapshot.dedupe.totalAvoided}`,
+        ""
+      ].join("\n")
+    : "";
+  const safety = snapshot.safety
+    ? [
+        "## Safety Blocks",
+        "",
+        `- Jobs checked: ${snapshot.safety.checkedJobs}`,
+        `- Total safety blocks: ${snapshot.safety.totalSafetyBlocks}`,
+        `- Fraud signals: ${snapshot.safety.fraudSignalBlocks}`,
+        `- Blocked portals: ${snapshot.safety.blockedPortalBlocks}`,
+        `- Portal policy blocks: ${snapshot.safety.portalPolicyBlocks}`,
+        ...snapshot.safety.examples.slice(0, 5).map((example) => `- Blocked: ${escapeMarkdownLine(example)}`),
         ""
       ].join("\n")
     : "";
@@ -1707,6 +1943,20 @@ export function renderProgressChatSummaryMarkdown(snapshot: ProgressSnapshot): s
         `- Minimum bullets: ${snapshot.cvQuality.minimumBullets}`,
         `- Employer sections: ${snapshot.cvQuality.employerHeadings}`,
         `- Thinnest employer section: ${snapshot.cvQuality.minimumEmployerBullets} bullet(s)`,
+        ""
+      ].join("\n")
+    : "";
+  const atsDiagnostics = snapshot.atsDiagnostics
+    ? [
+        "## ATS Diagnostics",
+        "",
+        `- Reports: ${snapshot.atsDiagnostics.reports}`,
+        `- Clean reports: ${snapshot.atsDiagnostics.passed}`,
+        `- Reports with warnings: ${snapshot.atsDiagnostics.warned}`,
+        `- Warnings: ${snapshot.atsDiagnostics.warnings}`,
+        `- Missing supported JD terms: ${snapshot.atsDiagnostics.missingSupportedTerms}`,
+        `- Unsupported mentions: ${snapshot.atsDiagnostics.unsupportedMentions}`,
+        ...snapshot.atsDiagnostics.topWarnings.slice(0, 5).map((warning) => `- Warning: ${escapeMarkdownLine(warning)}`),
         ""
       ].join("\n")
     : "";
@@ -1769,7 +2019,7 @@ Period: ${escapeMarkdownLine(snapshot.periodStart)} to ${escapeMarkdownLine(snap
 - Submitted or confirmed: ${submittedCount}
 - Pending questions: ${pendingQuestionCount}
 
-${livePreflight}${pendingQuestionSection}${funnelHealth}${sourceQuality}${sourceScorecards}${cvQuality}${scanHistory}${sourceOutcomes}## Prepared Queue
+${livePreflight}${pendingQuestionSection}${funnelHealth}${sourceQuality}${freshness}${dedupe}${safety}${sourceScorecards}${cvQuality}${atsDiagnostics}${scanHistory}${sourceOutcomes}## Prepared Queue
 
 ${preparedQueue}
 ## Skipped Or Watch
@@ -1805,6 +2055,8 @@ function renderPreparedSummaryItem(item: ProgressApplicationItem, index: number)
     `   - Status: ${escapeMarkdownLine(humanizeIdentifier(item.status))}`,
     `   - Next: ${escapeMarkdownLine(item.nextStep)}`,
     `   - CV: ${item.cvDocxPath ? escapeMarkdownLine(item.cvDocxPath) : "missing"}`,
+    `   - ATS diagnostics: ${item.atsDiagnosticsPath ? escapeMarkdownLine(item.atsDiagnosticsPath) : "missing"}`,
+    `   - Apply route: ${item.applyRoutePath ? `${escapeMarkdownLine(item.applyRoutePath)} (${escapeMarkdownLine(humanizeIdentifier(item.applyRouteType ?? "unknown"))} / ${escapeMarkdownLine(humanizeIdentifier(item.applyRouteStatus ?? "unknown"))})` : "missing"}`,
     `   - Browser plan: ${item.browserPlanPath ? escapeMarkdownLine(item.browserPlanPath) : "missing"}`,
     `   - Receipt: ${item.browserReceiptPath ? `${escapeMarkdownLine(item.browserReceiptPath)} (${escapeMarkdownLine(humanizeIdentifier(item.browserReceiptStatus ?? "unknown"))})` : "not run"}`
   ];
@@ -1824,6 +2076,23 @@ function renderDecisionSummaryItem(item: ProgressJobDecisionItem): string {
   const skipped = item.skippedReason ? `Skipped reason: ${item.skippedReason}` : "";
   const why = [blockers, skipped, reasons].filter(Boolean).join(" ");
   return `- ${escapeMarkdownLine(item.company)} - ${escapeMarkdownLine(item.title)}: ${escapeMarkdownLine(humanizeIdentifier(item.decision))}. ${escapeMarkdownLine(why)} Next: ${escapeMarkdownLine(item.nextStep)}`;
+}
+
+function sourceQualityExampleLines(
+  examplesByReason: NonNullable<ProgressSnapshot["sourceQuality"]>["examplesByReason"] | undefined
+): string[] {
+  if (!examplesByReason) return [];
+  const lines: string[] = [];
+  for (const reason of ["title", "industry", "location", "content"] as const) {
+    const examples = examplesByReason[reason] ?? [];
+    if (examples.length === 0) continue;
+    lines.push(`- ${capitalize(reason)} examples: ${examples.slice(0, 3).map(escapeMarkdownLine).join(" | ")}`);
+  }
+  return lines;
+}
+
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function escapeMarkdownLine(value: string): string {

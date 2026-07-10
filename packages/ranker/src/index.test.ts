@@ -74,7 +74,11 @@ describe("rankJobs", () => {
   });
 
   it("creates reusable ambiguity prompts for company-grade seniority edge cases", () => {
-    const profile = productProfileForOrdering();
+    const profile = productProfileForOrdering({
+      matchSettings: {
+        seniorityGateMode: "review"
+      }
+    });
     profile.preferences.targetRoleTerms = ["product manager"];
     profile.preferences.targetSeniorities = ["vp"];
     profile.preferences.acceptableSeniorities = ["vp"];
@@ -136,6 +140,7 @@ describe("rankJobs", () => {
 
 function productProfileForOrdering(input: {
   applySettings?: Partial<UserProfile["applySettings"]>;
+  matchSettings?: Partial<UserProfile["matchSettings"]>;
 } = {}): UserProfile {
   return {
     id: "ordering-user",
@@ -197,7 +202,9 @@ function productProfileForOrdering(input: {
       relaxOrder: ["source", "title", "industry", "location", "recency", "minimum_fit"],
       minimumFitFloor: 0.5,
       allowAdjacentTitles: true,
-      allowAdjacentIndustries: true
+      allowAdjacentIndustries: true,
+      seniorityGateMode: "off",
+      ...input.matchSettings
     },
     proofBank: [
       {
@@ -585,7 +592,7 @@ describe("rankJob", () => {
     expect(ranked.priority).toBeGreaterThan(0);
   });
 
-  it("does not hard-block broad remote regions that include the user's authorized region", () => {
+  it("hard-blocks broad remote regions unless the region is explicitly configured", () => {
     const profile: UserProfile = {
       id: "user-remote-region",
       pastEmployers: [],
@@ -654,6 +661,87 @@ describe("rankJob", () => {
       url: "https://example.com/jobs/senior-product-manager",
       description: "Own product roadmap for a fintech SaaS product.",
       location: "Americas, Europe, Asia, Oceania",
+      workMode: "remote",
+      discoveredAt: "2026-07-05T00:00:00.000Z",
+      liveState: "live"
+    };
+
+    const ranked = rankJob(job, profile);
+    const workAuthorizationGate = ranked.gates.find((gate) => gate.id === "work-authorization");
+
+    expect(workAuthorizationGate?.passed).toBe(false);
+    expect(ranked.decision).toBe("skip");
+  });
+
+  it("allows explicitly configured broad remote regions", () => {
+    const profile: UserProfile = {
+      id: "user-remote-region-explicit",
+      pastEmployers: [],
+      preferences: {
+        ...basePreferences,
+        targetRoleTerms: ["senior product manager", "head of product"],
+        preferredLocations: ["remote", "india"],
+        workAuthorizationCountries: ["india"],
+        niceToHaveKeywords: ["roadmap", "fintech"]
+      },
+      searchSettings: {
+        searchCountries: ["india"],
+        searchAreas: ["india", "Remote APAC"],
+        remoteRegions: ["APAC"],
+        agentMayExpandSearchArea: true,
+        informUserOnSearchAreaChange: true,
+        standardHoursOnly: true,
+        preferredShifts: ["standard"],
+        askBeforeShifts: ["night", "rotational", "weekend"]
+      },
+      sourceSettings: {
+        allowLoggedInBrowserAccess: false,
+        defaultPortalApplyPolicy: "ask",
+        trustedPortals: [],
+        askBeforePortals: [],
+        blockedPortals: [],
+        fraudSignalTerms: ["payment required"]
+      },
+      applySettings: {
+        mode: "daily",
+        applicationsPerDay: 5,
+        minimumFitToApply: 0.72,
+        allowedSourceKinds: ["company_site", "ats", "job_board", "manual"],
+        messagePolicy: "draft_only",
+        pauseReasons: ["missing_required_answer"],
+        trackEmailReplies: false,
+        allowRecruiterDmDrafts: true
+      },
+      matchSettings: {
+        range: "normal",
+        widenIfFewerThan: 20,
+        relaxOrder: ["source", "title", "industry", "location", "recency", "minimum_fit"],
+        minimumFitFloor: 0.55,
+        allowAdjacentTitles: true,
+        allowAdjacentIndustries: true
+      },
+      proofBank: [
+        {
+          id: "proof-product",
+          claim: "Led product roadmap and fintech product work.",
+          evidence: "Base CV product role.",
+          tags: ["product roadmap", "fintech"]
+        }
+      ]
+    };
+
+    const job: JobRecord = {
+      id: "job-explicit-apac",
+      source: {
+        id: "remotive",
+        kind: "job_board",
+        name: "Remotive"
+      },
+      company: "Remote Product Co",
+      title: "Senior Product Manager",
+      url: "https://example.com/jobs/senior-product-manager",
+      description: "Own product roadmap for a fintech SaaS product.",
+      location: "Asia Pacific",
       workMode: "remote",
       discoveredAt: "2026-07-05T00:00:00.000Z",
       liveState: "live"
@@ -1164,6 +1252,7 @@ describe("rankJob", () => {
 
   function productLeadershipProfile(overrides: {
     applySettings?: Partial<UserProfile["applySettings"]>;
+    matchSettings?: Partial<UserProfile["matchSettings"]>;
     preferences?: Partial<UserPreferences>;
     searchSettings?: Partial<UserProfile["searchSettings"]>;
     sourceSettings?: Partial<UserProfile["sourceSettings"]>;
@@ -1223,7 +1312,9 @@ describe("rankJob", () => {
         relaxOrder: ["source", "title", "industry", "location", "recency", "minimum_fit"],
         minimumFitFloor: overrides.minimumFitFloor ?? 0.55,
         allowAdjacentTitles: true,
-        allowAdjacentIndustries: true
+        allowAdjacentIndustries: true,
+        seniorityGateMode: "off",
+        ...overrides.matchSettings
       },
       proofBank: [
         {
@@ -1256,7 +1347,7 @@ describe("rankJob", () => {
     };
   }
 
-  it("hard-blocks explicit junior seniority for senior product targets", () => {
+  it("does not hard-block title seniority by default when experience carries the real blocker", () => {
     const ranked = rankJob(
       rankableJob({
         id: "job-junior-product",
@@ -1268,7 +1359,9 @@ describe("rankJob", () => {
     );
 
     expect(ranked.decision).toBe("skip");
-    expect(ranked.gates.find((gate) => gate.id === "seniority")?.passed).toBe(false);
+    expect(ranked.gates.find((gate) => gate.id === "seniority")?.passed).toBe(true);
+    expect(ranked.gates.find((gate) => gate.id === "seniority")?.reason).toContain("advisory");
+    expect(ranked.gates.find((gate) => gate.id === "experience")?.passed).toBe(false);
   });
 
   it("lets high-grade company product manager titles reach review instead of failing title level alone", () => {
@@ -1320,7 +1413,46 @@ describe("rankJob", () => {
     expect(seniorSales.decision).toBe("skip");
   });
 
-  it("hard-blocks lower-title product roles when company grade does not lift them", () => {
+  it("does not treat product-adjacent sales or design function titles as product leadership", () => {
+    const profile = productLeadershipProfile();
+    const productSales = rankJob(
+      rankableJob({
+        id: "job-product-sales",
+        title: "Sales Executive - SaaS Product Sales",
+        description: "Sell SaaS products to enterprise customers."
+      }),
+      profile
+    );
+    const productDesign = rankJob(
+      rankableJob({
+        id: "job-product-design-vp",
+        title: "Product Design - Vice President",
+        description: "Lead product design systems and UX craft."
+      }),
+      profile
+    );
+
+    expect(productSales.gates.find((gate) => gate.id === "role-family")?.passed).toBe(false);
+    expect(productSales.decision).toBe("skip");
+    expect(productDesign.gates.find((gate) => gate.id === "role-family")?.passed).toBe(false);
+    expect(productDesign.decision).toBe("skip");
+  });
+
+  it("keeps genuine product manager roles even when the product owns a sales platform", () => {
+    const ranked = rankJob(
+      rankableJob({
+        id: "job-product-manager-sales-platform",
+        title: "Product Manager - Sales Platform",
+        description: "Own product roadmap and platform outcomes for sales tooling."
+      }),
+      productLeadershipProfile()
+    );
+
+    expect(ranked.gates.find((gate) => gate.id === "role-family")?.passed).toBe(true);
+    expect(ranked.decision).not.toBe("skip");
+  });
+
+  it("keeps lower-title product roles reviewable by default when only title level is uncertain", () => {
     const ranked = rankJob(
       rankableJob({
         id: "job-small-company-pm",
@@ -1330,6 +1462,27 @@ describe("rankJob", () => {
         companyMarketGrade: "startup"
       }),
       productLeadershipProfile()
+    );
+
+    expect(ranked.decision).not.toBe("skip");
+    expect(ranked.gates.find((gate) => gate.id === "seniority")?.passed).toBe(true);
+    expect(ranked.gates.find((gate) => gate.id === "seniority")?.reason).toContain("advisory");
+  });
+
+  it("can hard-block lower-title product roles when strict seniority mode is configured", () => {
+    const ranked = rankJob(
+      rankableJob({
+        id: "job-small-company-pm-strict",
+        company: "Small Startup",
+        title: "Product Manager",
+        seniority: "manager",
+        companyMarketGrade: "startup"
+      }),
+      productLeadershipProfile({
+        matchSettings: {
+          seniorityGateMode: "hard"
+        }
+      })
     );
 
     expect(ranked.decision).toBe("skip");
@@ -1346,6 +1499,9 @@ describe("rankJob", () => {
         companyMarketGrade: "startup"
       }),
       productLeadershipProfile({
+        matchSettings: {
+          seniorityGateMode: "hard"
+        },
         preferences: {
           companySeniorityOverrides: [
             {
@@ -1448,6 +1604,33 @@ describe("rankJob", () => {
     expect(ranked.gates.find((gate) => gate.id === "fraud-signal")?.passed).toBe(true);
   });
 
+  it("hard-blocks recruiter data-harvest and document-before-interview fraud signals", () => {
+    const profile = productLeadershipProfile({
+      sourceSettings: {
+        fraudSignalTerms: ["profile database", "document before interview"]
+      }
+    });
+    const databaseHarvest = rankJob(
+      rankableJob({
+        id: "job-database-harvest",
+        description: "You are shortlisted. Register your profile for our candidate data bank before we share the role."
+      }),
+      profile
+    );
+    const documentHarvest = rankJob(
+      rankableJob({
+        id: "job-document-harvest",
+        description: "Please share Aadhaar and PAN before the interview discussion."
+      }),
+      profile
+    );
+
+    expect(databaseHarvest.gates.find((gate) => gate.id === "fraud-signal")?.passed).toBe(false);
+    expect(documentHarvest.gates.find((gate) => gate.id === "fraud-signal")?.passed).toBe(false);
+    expect(databaseHarvest.decision).toBe("skip");
+    expect(documentHarvest.decision).toBe("skip");
+  });
+
   it("hard-blocks known compensation below the user's configured floor", () => {
     const ranked = rankJob(
       rankableJob({
@@ -1486,6 +1669,33 @@ describe("rankJob", () => {
 
     expect(ranked.decision).toBe("skip");
     expect(ranked.gates.find((gate) => gate.id === "visa-sponsorship")?.passed).toBe(false);
+  });
+
+  it("hard-blocks country-specific work authorization requirements outside the user's countries", () => {
+    const ranked = rankJob(
+      rankableJob({
+        id: "job-us-auth-required",
+        location: "Remote",
+        workMode: "remote",
+        description: "Lead product roadmap. Applicants must be authorized to work in the United States."
+      }),
+      productLeadershipProfile({
+        preferences: {
+          workAuthorizationCountries: ["india"]
+        },
+        searchSettings: {
+          searchCountries: ["india"],
+          searchAreas: ["India", "Remote India"],
+          remoteRegions: ["India"]
+        }
+      })
+    );
+
+    const gate = ranked.gates.find((item) => item.id === "work-authorization");
+
+    expect(ranked.decision).toBe("skip");
+    expect(gate?.passed).toBe(false);
+    expect(gate?.reason).toContain("United States");
   });
 
   it("hard-blocks explicit shift, travel, and timezone conflicts", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { JobRecord, UserProfile } from "@applycue/core";
-import { generateJobSpecificCv, renderStandardAtsDocx } from "./index.js";
+import { createAtsDiagnosticReport, generateJobSpecificCv, renderStandardAtsDocx } from "./index.js";
 
 describe("generateJobSpecificCv", () => {
   it("passes supported requirements", () => {
@@ -11,6 +11,43 @@ describe("generateJobSpecificCv", () => {
     expect(result.variant.formatMode).toBe("standard_ats_v1");
     expect(result.variant.requirementMatches.some((match) => match.requirement === "ai" && match.status === "supported")).toBe(true);
     expect(result.markdown).not.toContain("Requirement Reconciliation");
+  });
+
+  it("reports ATS diagnostics without making a candidate score", () => {
+    const profile = profileWithProof();
+    const job = jobWithDescription("Lead AI transformation for fintech teams.");
+    const result = generateJobSpecificCv(job, profile);
+    const report = createAtsDiagnosticReport({
+      checkedAt: "2026-07-08T00:00:00.000Z",
+      cvMarkdown: result.markdown,
+      job,
+      profile,
+      reconciliationReport: result.reconciliationReport,
+      variant: result.variant
+    });
+
+    expect(report.keywordCoverage.supportedRequired).toBeGreaterThan(0);
+    expect(report.keywordCoverage.missingSupportedTerms).toEqual([]);
+    expect(report.warnings).not.toContain("Supported JD term is not visible in the generated CV: ai.");
+    expect(report.notes.join(" ")).toContain("must not become a candidate score");
+  });
+
+  it("warns when a supported JD term is absent from the rendered CV", () => {
+    const profile = profileWithProof();
+    const job = jobWithDescription("Lead AI transformation for fintech teams.");
+    const result = generateJobSpecificCv(job, profile);
+    const report = createAtsDiagnosticReport({
+      checkedAt: "2026-07-08T00:00:00.000Z",
+      cvMarkdown: result.markdown.replaceAll("AI", "intelligent systems").replaceAll("ai", "intelligent systems"),
+      job,
+      profile,
+      reconciliationReport: result.reconciliationReport,
+      variant: result.variant
+    });
+
+    expect(report.status).toBe("warn");
+    expect(report.keywordCoverage.missingSupportedTerms).toContain("ai");
+    expect(report.warnings).toContain("Supported JD term is not visible in the generated CV: ai.");
   });
 
   it("blocks unsupported required requirements", () => {
@@ -28,6 +65,31 @@ describe("generateJobSpecificCv", () => {
 
     expect(result.reconciliationReport.status).toBe("passed");
     expect(result.variant.requirementMatches.some((match) => match.requirement === "product manager" && match.status === "supported")).toBe(true);
+  });
+
+  it("does not turn target title search terms into hard CV claims", () => {
+    const profile = profileWithProof();
+    profile.preferences.targetRoleTerms = ["director product", "head of product"];
+    const job: JobRecord = {
+      ...jobWithDescription("Own product management roadmap execution."),
+      title: "Director - Product Management"
+    };
+
+    const result = generateJobSpecificCv(job, profile);
+
+    expect(result.reconciliationReport.status).toBe("passed");
+    expect(result.variant.requirementMatches.some((match) => match.requirement === "director product")).toBe(false);
+    expect(result.variant.requirementMatches.some((match) => match.requirement === "head of product")).toBe(false);
+  });
+
+  it("keeps nice-to-have keywords from becoming hard truth blockers", () => {
+    const profile = profileWithProof();
+    profile.preferences.niceToHaveKeywords = ["partner ecosystem"];
+
+    const result = generateJobSpecificCv(jobWithDescription("Exposure to partner ecosystem work is a plus."), profile);
+
+    expect(result.reconciliationReport.status).toBe("passed");
+    expect(result.variant.unsupportedRequirements).not.toContain("partner ecosystem");
   });
 
   it("maps regulated industry requirements to approved banking and lending evidence", () => {

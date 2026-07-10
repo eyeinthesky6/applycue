@@ -73,7 +73,7 @@ Use these first for a single local user:
 
 | Provider | Credential | Fit |
 | --- | --- | --- |
-| JobSpy | none for local library use | Best first broad board bridge. The ApplyCue setup flow installs `python-jobspy` in the user's local ApplyCue venv. |
+| JobSpy | none for local library use | Best first broad board bridge. The ApplyCue setup flow installs `python-jobspy` in the user's local ApplyCue venv. JobSpy lookback should be at least the active ApplyCue freshness window. Generated source packs can create separate searches for each approved market. |
 | Greenhouse | none for public boards | Good company/ATS source. |
 | Lever | none for public postings | Good company/ATS source. |
 | Ashby | none for public posting API | Good company/ATS source, often includes compensation. |
@@ -91,8 +91,17 @@ Use these first for a single local user:
 | The Muse | none for public jobs API | Good supplemental no-key job-board source. Keep capped and filtered before shortlist preparation because it is broad. |
 | Adzuna | user-owned app id/key | Good later broad API. Official default limits are enough for a single user if scheduled carefully. |
 | USAJOBS | user-owned API key | Only useful for US federal/public-sector targets. |
+| User mailbox | native agent connector first; browser fallback with permission | Good source for job alerts, recruiter messages, and apply links. Codex, Claude, Hermes, or similar connected email tools should search/draft when available. ApplyCue should import extracted leads as local jobs; it must not store mailbox credentials or send email itself. |
 
 Do not start with paid scraping APIs. Add them later only when the user explicitly approves account setup, cost, and data sharing.
+
+Connector options:
+
+- Activepieces is useful later for self-hosted or cloud workflow automation; it has Gmail triggers/actions and an open-source self-host path.
+- Composio and Pipedream are useful later for managed agent/integration connectors.
+- For v1 personal use, prefer native Codex, Claude, Hermes, or similar Gmail/Outlook connectors before adding a third-party OAuth platform, because mailbox access is broad and sensitive. Browser control is fallback only with user permission.
+
+Company career pages are handled separately from broad job-board search. Use `sources.companyPages` only after a concrete public careers or ATS URL is known. Broad ATS `site:` queries from generated plans are research leads for the agent, not executable company-page sources by themselves.
 
 ## JobSpy
 
@@ -116,7 +125,18 @@ Use JobSpy for:
 - LinkedIn discovery, cautiously
 - Glassdoor, ZipRecruiter, Bayt, and BDJobs where relevant
 
-JobSpy is intentionally broad. Its output must pass through ApplyCue normalization, dedupe, generated `searchProfile` filtering, and hard gates before shortlist preparation. In the current local UAT, approved and transiently widened sources produced 1135 fetched jobs, the source-quality layer kept 18 reviewable jobs, and the engine prepared 3 applications because the remaining roles were blocked by saved seniority/location policy.
+JobSpy is intentionally broad. Its output must pass through ApplyCue normalization, dedupe, generated `searchProfile` filtering, and hard gates before shortlist preparation. Local UAT should report fetched, kept, and prepared counts after each run so the agent can decide whether to tighten search words or ask the user before running a wider pass. Generic `remote` does not widen geography when the user's profile has explicit countries, search areas, or remote regions.
+
+For multi-country users, generate separate JobSpy searches per approved search area/country instead of one global query. Market-specific boards must stay in their market: for example, Naukri belongs in India searches, not UK, US, or Australia searches. If a provider exposes a country option, derive it from the active search location or use the user-configured country only when it matches that location.
+
+India public/source templates:
+
+- Naukri through JobSpy and optional browser/search template
+- IIMJobs for senior management and business/product roles
+- Instahyre, Cutshort, Foundit, and Hirist as browser/search templates when India is an approved market
+- LinkedIn jobs/posts as browser/connector work only after user approval
+
+These templates are leads, not hardcoded global defaults. They should live in user/setup config and be approved through source approval so India sources are not forced on users searching only US/UK/Australia or global remote.
 
 Use `funnelHealth` after every broad provider run. If discovered volume is huge but kept volume is tiny, tighten source/title filters before adding more feeds. If kept volume is low because seniority, location, work authorization, employment type, or experience gates dominate, ask the user for a reusable preference change instead of weakening gates in code.
 
@@ -125,12 +145,12 @@ After source-quality filtering, daily and push runs also pass through scan histo
 Query budget rule:
 
 - `tight`: keep a small source set.
-- `normal`: include distinct target role names first, then role-plus-industry variants.
+- `normal`: start with saved sources, and when the user asks for more results prefer role-plus-industry variants before broad/global feeds.
 - `wide`: allow more no-login job-board variants before asking the user to loosen harder preferences.
 
 Do not fill the daily batch by lowering CV truth checks or inventing claims. Widen source supply first.
 
-For short batches, ApplyCue may transiently rerun approved public JobSpy/remote-board queries with wider `resultsWanted`, `hoursOld`, or `limit` values. This is a runtime scan expansion only; it must not rewrite user source config or generated source-plan files.
+For short batches, ApplyCue should not widen automatically on the first run. Freshness starts at the last 30 days for providers that expose post dates or support an age filter. If the user asks for more results, the agent can rerun with `--more-results` to transiently rerun generated public sources with wider `resultsWanted`, `hoursOld`, or `limit` values, and may explicitly include older known posts. For explicit-country profiles, expansion should favor geography-aware JobSpy searches and avoid broad global/no-location feeds unless the profile is `wide` or the user approves that source class. This is a runtime scan expansion only; it must not rewrite user source config or generated source-plan files.
 
 Start conservative:
 
@@ -384,7 +404,7 @@ Current UAT layer:
 - These local receipts prove the plan contract and policy gate, not real portal compatibility.
 - `pnpm applycue:browser-uat` can also run the latest generated plan through a safe local HTML form and Playwright-style adapter. It proves the adapter can open, inspect, fill, upload the DOCX, and pause before submit when the browser tool is installed. If the browser tool is missing, it writes a skipped report instead of blocking normal UAT. `pnpm applycue:setup` should verify or install that optional tool for the agent.
 - `pnpm applycue:browser-live-preflight` is the next gate. It opens a real application URL, snapshots visible fields and page text, runs ApplyCue preflight, and writes a report without filling, uploading, or submitting.
-- Real portal execution should come later through Playwright, Stagehand, Browser Use, or connector/browser control behind the same ApplyCue policy gates.
+- Real portal execution should come later through Playwright, Stagehand, Browser Use, or native agent connectors behind the same ApplyCue policy gates. Browser control remains a fallback path that needs user permission.
 - Browser/page tools should feed posting text and visible apply controls into the ApplyCue liveness verifier before CV work. They should not scrape and apply through side paths that bypass `JobRecord.liveState`.
 
 ## CV And Document Libraries

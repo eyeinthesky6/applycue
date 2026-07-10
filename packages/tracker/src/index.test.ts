@@ -36,6 +36,7 @@ describe("progress dashboard", () => {
           cvHtmlPath: "outputs/cvs/example.html",
           cvPath: "outputs/cvs/example.md",
           jdPath: "outputs/jds/job-1.md",
+          atsDiagnosticsPath: "outputs/ats-diagnostics/example.json",
           reconciliationPath: "outputs/reconciliation/example.json",
           reconciliationStatus: "passed",
           canAutoSubmit: false,
@@ -102,6 +103,15 @@ describe("progress dashboard", () => {
         employerHeadings: 7,
         minimumEmployerBullets: 3
       },
+      atsDiagnostics: {
+        reports: 2,
+        passed: 1,
+        warned: 1,
+        warnings: 2,
+        missingSupportedTerms: 1,
+        unsupportedMentions: 0,
+        topWarnings: ["Supported JD term is not visible in the generated CV: payments."]
+      },
       scanHistory: {
         historyPath: "data/local/scan-history.jsonl",
         inputJobs: 4,
@@ -124,6 +134,26 @@ describe("progress dashboard", () => {
             daysSpan: 5,
             urls: ["https://example.com/jobs/1", "https://example.com/jobs/2"]
           }
+        ]
+      },
+      dedupe: {
+        inputJobs: 12,
+        keptJobs: 3,
+        blockedDuplicates: 2,
+        sameUrl: 1,
+        sameCompanySimilarRole: 1,
+        alreadyHandledRepeats: 1,
+        totalAvoided: 3
+      },
+      safety: {
+        checkedJobs: 4,
+        fraudSignalBlocks: 1,
+        blockedPortalBlocks: 1,
+        portalPolicyBlocks: 0,
+        totalSafetyBlocks: 2,
+        examples: [
+          "Scam Co - Product Lead: Job/source matched fraud signal: registration fee.",
+          "Blocked Portal Co - Head of Product: Portal is blocked by user policy."
         ]
       },
       sourceOutcomes: {
@@ -192,6 +222,7 @@ describe("progress dashboard", () => {
         filteredJobs: 8,
         byReason: {
           title: 6,
+          industry: 0,
           location: 1,
           content: 1
         }
@@ -216,8 +247,19 @@ describe("progress dashboard", () => {
     expect(html).toContain("4");
     expect(html).toContain("8");
     expect(html).toContain("6 title");
+    expect(html).toContain("0 industry");
     expect(html).toContain("1 location");
     expect(html).toContain("1 content");
+    expect(html).toContain("Duplicates Blocked");
+    expect(html).toContain("2");
+    expect(html).toContain("1 same URL");
+    expect(html).toContain("1 company + role");
+    expect(html).toContain("1 already handled");
+    expect(html).toContain("Safety Blocks");
+    expect(html).toContain("Risky jobs stopped before CV or application work.");
+    expect(html).toContain("1 fraud signal");
+    expect(html).toContain("1 blocked portal");
+    expect(html).toContain("Scam Co - Product Lead");
     expect(html).toContain("Source Scorecards");
     expect(html).toContain("4/12 kept");
     expect(html).toContain("33% kept rate");
@@ -226,6 +268,9 @@ describe("progress dashboard", () => {
     expect(html).toContain("Generated CVs");
     expect(html).toContain("65% of base CV");
     expect(html).toContain("3 min bullets per section");
+    expect(html).toContain("ATS Diagnostics");
+    expect(html).toContain("Parseability and safe JD-term coverage only");
+    expect(html).toContain("Supported JD term is not visible");
     expect(html).toContain("Scan History");
     expect(html).toContain("Repeat skips");
     expect(html).toContain("1 prepared");
@@ -248,6 +293,7 @@ describe("progress dashboard", () => {
     expect(html).toContain("outputs/cvs/example.docx");
     expect(html).toContain("outputs/cvs/example.html");
     expect(html).toContain("outputs/cvs/example.md");
+    expect(html).toContain("../ats-diagnostics/example.json");
     expect(html).toContain("../jds/job-1.md");
     expect(html).toContain("outputs/browser-plans/example-plan.json");
     expect(html).toContain("outputs/browser-receipts/example-receipt.json");
@@ -256,6 +302,7 @@ describe("progress dashboard", () => {
     expect(html).toContain("Upload DOCX");
     expect(html).toContain("View CV");
     expect(html).toContain("Markdown");
+    expect(html).toContain("ATS diagnostics");
     expect(html).toContain("Browser plan");
     expect(html).toContain("Receipt");
     expect(html).toContain("Review one compensation question");
@@ -271,11 +318,22 @@ describe("progress dashboard", () => {
     expect(summary).toContain("Pending Questions");
     expect(summary).toContain("Should Product Manager at Global Enterprise Co count as target seniority?");
     expect(summary).toContain("Source Quality");
+    expect(summary).toContain("Duplicates Blocked");
+    expect(summary).toContain("Duplicates blocked this run: 2");
+    expect(summary).toContain("Same company + similar role: 1");
+    expect(summary).toContain("Already handled earlier: 1");
+    expect(summary).toContain("Safety Blocks");
+    expect(summary).toContain("Total safety blocks: 2");
+    expect(summary).toContain("Fraud signals: 1");
+    expect(summary).toContain("Blocked: Scam Co - Product Lead");
     expect(summary).toContain("Source Scorecards");
     expect(summary).toContain("JobSpy product search: 4/12 kept, 2 prepared, 33% kept rate, 1 positive");
     expect(summary).toContain("CV Quality");
     expect(summary).toContain("Minimum generated CV size: 4700 chars (65% of base CV)");
     expect(summary).toContain("Thinnest employer section: 3 bullet(s)");
+    expect(summary).toContain("ATS Diagnostics");
+    expect(summary).toContain("Missing supported JD terms: 1");
+    expect(summary).toContain("Warning: Supported JD term is not visible");
     expect(summary).toContain("Scan History");
     expect(summary).toContain("Repeats skipped: 1");
     expect(summary).toContain("Repost signals: 1 cluster(s), 2 posting(s)");
@@ -285,6 +343,7 @@ describe("progress dashboard", () => {
     expect(summary).toContain("Positive outcomes: 1");
     expect(summary).toContain("JobSpy product search: 2 prepared, 1 replies, 1 interviews, 0 offers");
     expect(summary).toContain("Example Fintech - Head of Product");
+    expect(summary).toContain("ATS diagnostics: outputs/ats-diagnostics/example.json");
     expect(summary).toContain("outputs/browser-receipts/example-receipt.json (Paused)");
     expect(summary).toContain("Skipped reason:");
     expect(summary).toContain("Review one compensation question");

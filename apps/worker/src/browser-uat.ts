@@ -65,7 +65,11 @@ export async function runBrowserApplyUat(options: BrowserApplyUatOptions = {}): 
   const batch = options.batch ?? await runLocalOrSampleBatch({
     workspaceRoot,
     ...(options.applyCueHome ? { applyCueHome: options.applyCueHome } : {}),
+    ...(typeof options.freshnessDays === "number" ? { freshnessDays: options.freshnessDays } : {}),
+    ...(typeof options.generatedSourceExpansion === "boolean" ? { generatedSourceExpansion: options.generatedSourceExpansion } : {}),
+    ...(typeof options.includeOlderPosts === "boolean" ? { includeOlderPosts: options.includeOlderPosts } : {}),
     ...(options.profileKey ? { profileKey: options.profileKey } : {}),
+    ...(typeof options.targetRankingQueue === "number" ? { targetRankingQueue: options.targetRankingQueue } : {}),
     writeFiles: true
   });
   const outputDir = path.join(batch.outputRoot, "outputs", "browser-uat");

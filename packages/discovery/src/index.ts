@@ -199,6 +199,7 @@ function parseMetadataBlock(block: string): LocalRawJob {
   if (companyStage) output.companyStage = companyStage;
   const companyMarketGrade = parseCompanyMarketGrade(raw.companyMarketGrade);
   if (companyMarketGrade) output.companyMarketGrade = companyMarketGrade;
+  if (raw.postedAt) output.postedAt = raw.postedAt;
   const liveState = parseLiveState(raw.liveState);
   if (liveState) output.liveState = liveState;
   return output;
@@ -239,6 +240,12 @@ function fieldNameFromKey(key: string): keyof Omit<RawJobInput, "source"> | unde
     stage: "companyStage",
     companymarketgrade: "companyMarketGrade",
     marketgrade: "companyMarketGrade",
+    posted: "postedAt",
+    postedat: "postedAt",
+    postedon: "postedAt",
+    dateposted: "postedAt",
+    publicationdate: "postedAt",
+    publisheddate: "postedAt",
     livestate: "liveState",
     live: "liveState",
     jobstatus: "liveState",
@@ -264,6 +271,7 @@ function toRawJobInput(row: LocalRawJob, filePath: string, fallbackSource: JobSo
     ...(row.requiredExperienceYears ? { requiredExperienceYears: row.requiredExperienceYears } : {}),
     ...(row.employmentType ? { employmentType: row.employmentType } : {}),
     ...(row.companyStage ? { companyStage: row.companyStage } : {}),
+    ...(row.postedAt ? { postedAt: row.postedAt } : {}),
     ...(liveState ? { liveState } : {})
   };
 }

@@ -1,4 +1,4 @@
-import type { BrowserApplyPlan, JobRecord, OutcomeEvent, RankedJob, UserProfile } from "@applycue/core";
+import type { ApplyRouteType, BrowserApplyPlan, JobRecord, OutcomeEvent, RankedJob, UserProfile } from "@applycue/core";
 import {
   formatBrowserApplyPreflight,
   preflightBrowserApplyPlanFromSnapshot,
@@ -7,11 +7,15 @@ import {
 import {
   approveApplicationAnswers,
   approveSourceSuggestions,
+  applyTuningSignals,
   recordOutcomeEvent,
+  recordTuningSignal,
   type ApplicationAnswerInput,
+  type ApplyTuningSignalsOptions,
   type ApproveApplicationAnswersOptions,
   type ApproveSourceSuggestionsOptions,
   type RecordOutcomeEventOptions,
+  type RecordTuningSignalOptions,
   runLocalOrSampleBatch
 } from "@applycue/engine";
 import { getApplyCueProfileDir } from "@applycue/profile";
@@ -19,19 +23,23 @@ import { rankJobs } from "@applycue/ranker";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { runApplyRouteExecution, type ApplyRouteExecutionOptions } from "./apply-route.js";
 import { runBrowserApplyUat } from "./browser-uat.js";
 import { runLiveBrowserApply, type LiveBrowserApplyOptions } from "./live-apply.js";
 import { runLiveBrowserPreflight, type LiveBrowserPreflightOptions } from "./live-preflight.js";
+import { runMasterFormData, type MasterFormDataOptions } from "./master-form-data.js";
 import { setupApplyCue, type SetupApplyCueOptions } from "./setup.js";
 import { formatApplyCueStatus, readApplyCueStatus, type ApplyCueStatusOptions } from "./status.js";
 import { runApplyCueUat } from "./uat.js";
+import { extractEmailLeads, type ExtractEmailLeadsOptions } from "./email-lead-extractor.js";
+import { importEmailLeads, type ImportEmailLeadsOptions } from "./email-leads.js";
 
 export function rankDiscoveredJobs(jobs: JobRecord[], profile: UserProfile): RankedJob[] {
   return rankJobs(jobs, profile);
 }
 
-export async function runFirstBuild(): Promise<void> {
-  const result = await runLocalOrSampleBatch({ workspaceRoot: process.cwd(), writeFiles: true });
+export async function runFirstBuild(args: string[] = process.argv.slice(3)): Promise<void> {
+  const result = await runLocalOrSampleBatch(parseRunBatchArgs(args));
   const prepared = result.applications.length;
   const cvCount = result.cvVariants.length;
   console.log(`ApplyCue first-build complete: ${prepared} application draft(s), ${cvCount} CV(s).`);
@@ -131,10 +139,62 @@ export async function runBrowserLiveApply(args: string[] = process.argv.slice(3)
   }
 }
 
+export async function runApplyRoute(args: string[] = process.argv.slice(3)): Promise<void> {
+  const report = await runApplyRouteExecution(parseApplyRouteArgs(args));
+  console.log(`ApplyCue apply route ${report.status.toUpperCase()}.`);
+  console.log(report.summary);
+  console.log(`Report: ${report.paths.markdownReport}`);
+  if (report.paths.emailDraft) console.log(`Email draft: ${report.paths.emailDraft}`);
+  if (report.paths.dmDraft) console.log(`DM draft: ${report.paths.dmDraft}`);
+  for (const command of report.nextCommands) {
+    console.log(`- Next: ${command}`);
+  }
+  for (const check of report.checks) {
+    console.log(`- ${check.status.toUpperCase()}: ${check.label} - ${check.detail}`);
+  }
+}
+
+export async function runFormData(args: string[] = process.argv.slice(3)): Promise<void> {
+  const report = await runMasterFormData(parseMasterFormDataArgs(args));
+  console.log(`ApplyCue master form data ${report.status.toUpperCase()}.`);
+  console.log(report.summary);
+  console.log(`Preview: ${report.paths.markdownPreview}`);
+  console.log(`Master data: ${report.paths.canonicalJson}`);
+  if (report.status !== "confirmed") console.log(`Confirm command: ${report.confirmationCommand}`);
+}
+
 export async function runStatus(args: string[] = process.argv.slice(3)): Promise<void> {
   const { json, options } = parseStatusArgs(args);
   const report = await readApplyCueStatus(options);
   console.log(json ? JSON.stringify(report, null, 2) : formatApplyCueStatus(report));
+}
+
+export async function runImportEmailLeads(args: string[] = process.argv.slice(3)): Promise<void> {
+  const report = await importEmailLeads(parseImportEmailLeadsArgs(args));
+  console.log(`ApplyCue email lead import complete: ${report.importedCount} imported, ${report.skippedCount} skipped.`);
+  console.log(`Input jobs: ${report.outputPath}`);
+  console.log(`Config: ${report.configPath}`);
+  if (report.activatedLocalJobsPath) console.log("Activated local job imports for the profile.");
+  for (const skipped of report.skipped.slice(0, 10)) {
+    console.log(`- SKIPPED ${skipped.index}: ${skipped.reason}${skipped.subject ? ` (${skipped.subject})` : ""}`);
+  }
+}
+
+export async function runScanEmailLeads(args: string[] = process.argv.slice(3)): Promise<void> {
+  const report = await extractEmailLeads(parseScanEmailLeadsArgs(args));
+  console.log(`ApplyCue email lead scan complete: ${report.extractedCount} extracted from ${report.inputMessageCount} message(s).`);
+  console.log(`Extracted leads: ${report.outputPath}`);
+  console.log(`Config: ${report.configPath}`);
+  if (report.importReport) {
+    console.log(
+      `Imported jobs: ${report.importReport.importedCount} imported, ${report.importReport.skippedCount} skipped.`
+    );
+    console.log(`Input jobs: ${report.importReport.outputPath}`);
+    if (report.importReport.activatedLocalJobsPath) console.log("Activated local job imports for the profile.");
+  }
+  for (const skipped of report.skipped.slice(0, 10)) {
+    console.log(`- SKIPPED: ${skipped.reason}${skipped.subject ? ` (${skipped.subject})` : ""}${skipped.detail ? ` - ${skipped.detail}` : ""}`);
+  }
 }
 
 export async function runBrowserPreflight(args: string[] = process.argv.slice(3)): Promise<void> {
@@ -160,6 +220,28 @@ export async function runRecordOutcome(args: string[] = process.argv.slice(3)): 
   console.log(`Config: ${result.configPath}`);
 }
 
+export async function runRecordTuning(args: string[] = process.argv.slice(3)): Promise<void> {
+  const result = await recordTuningSignal(parseRecordTuningArgs(args));
+  console.log(`ApplyCue tuning signal recorded: ${result.signal.origin} ${result.signal.action} ${result.signal.target}.`);
+  console.log(`Value: ${result.signal.value}`);
+  console.log(`Status: ${result.signal.status}`);
+  console.log(`Tuning signals: ${result.tuningSignalsPath}`);
+  console.log(`Config: ${result.configPath}`);
+}
+
+export async function runApplyTuning(args: string[] = process.argv.slice(3)): Promise<void> {
+  const result = await applyTuningSignals(parseApplyTuningArgs(args));
+  const mode = result.dryRun ? "dry run" : "complete";
+  console.log(`ApplyCue tuning apply ${mode}: ${result.appliedCount} applied, ${result.skippedCount} skipped.`);
+  console.log(`Config: ${result.configPath}`);
+  console.log(`Tuning signals: ${result.tuningSignalsPath}`);
+  for (const update of result.updates) {
+    const route = update.configPath ? ` -> ${update.configPath}` : "";
+    const value = update.value ? ` ${update.value}` : "";
+    console.log(`- ${update.status.toUpperCase()}: ${update.signalId}${route}.${value} ${update.reason}`);
+  }
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const command = process.argv[2] ?? "first-build";
   if (command === "first-build") {
@@ -178,12 +260,24 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     await runBrowserLivePreflight();
   } else if (command === "browser-live-apply" || command === "live-apply") {
     await runBrowserLiveApply();
+  } else if (command === "apply-route" || command === "execute-route") {
+    await runApplyRoute();
+  } else if (command === "form-data" || command === "master-form-data") {
+    await runFormData();
   } else if (command === "status") {
     await runStatus();
+  } else if (command === "scan-email-leads" || command === "extract-email-leads" || command === "email-scan") {
+    await runScanEmailLeads();
+  } else if (command === "import-email-leads" || command === "email-import") {
+    await runImportEmailLeads();
   } else if (command === "browser-preflight") {
     await runBrowserPreflight();
   } else if (command === "record-outcome") {
     await runRecordOutcome();
+  } else if (command === "record-tuning" || command === "record-tuning-signal") {
+    await runRecordTuning();
+  } else if (command === "apply-tuning" || command === "apply-tuning-signals") {
+    await runApplyTuning();
   } else if (command === "--help" || command === "help") {
     printUsage();
   } else {
@@ -281,6 +375,119 @@ function parseStatusArgs(args: string[]): { json: boolean; options: ApplyCueStat
   return { json, options };
 }
 
+function parseImportEmailLeadsArgs(args: string[]): ImportEmailLeadsOptions {
+  const options: Partial<ImportEmailLeadsOptions> = { workspaceRoot: process.cwd(), activateLocalJobsPath: true };
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (!arg || arg === "--") continue;
+    if (arg === "--dry-run") {
+      options.dryRun = true;
+    } else if (arg === "--no-activate") {
+      options.activateLocalJobsPath = false;
+    } else if (arg === "--input" || arg === "--file") {
+      const value = args[index + 1];
+      if (!value) throw new Error(`${arg} needs a JSON/JSONL path from the agent email connector.`);
+      options.inputPath = value;
+      index += 1;
+    } else if (arg.startsWith("--input=")) {
+      options.inputPath = arg.slice("--input=".length);
+    } else if (arg.startsWith("--file=")) {
+      options.inputPath = arg.slice("--file=".length);
+    } else if (arg === "--out" || arg === "--output") {
+      const value = args[index + 1];
+      if (!value) throw new Error(`${arg} needs an output JSONL path.`);
+      options.outputPath = value;
+      index += 1;
+    } else if (arg.startsWith("--out=")) {
+      options.outputPath = arg.slice("--out=".length);
+    } else if (arg.startsWith("--output=")) {
+      options.outputPath = arg.slice("--output=".length);
+    } else if (arg === "--config") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--config needs a path.");
+      options.configPath = value;
+      index += 1;
+    } else if (arg.startsWith("--config=")) {
+      options.configPath = arg.slice("--config=".length);
+    } else if (arg === "--profile") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--profile needs a profile key.");
+      options.profileKey = value;
+      index += 1;
+    } else if (arg.startsWith("--profile=")) {
+      options.profileKey = arg.slice("--profile=".length);
+    } else if (arg === "--applycue-home") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--applycue-home needs a path.");
+      options.applyCueHome = value;
+      index += 1;
+    } else if (arg.startsWith("--applycue-home=")) {
+      options.applyCueHome = arg.slice("--applycue-home=".length);
+    } else {
+      throw new Error(`Unknown import-email-leads option: ${arg}`);
+    }
+  }
+  if (!options.inputPath) throw new Error("import-email-leads needs --input <connector-export.json|jsonl>.");
+  return options as ImportEmailLeadsOptions;
+}
+
+function parseScanEmailLeadsArgs(args: string[]): ExtractEmailLeadsOptions {
+  const options: Partial<ExtractEmailLeadsOptions> = { workspaceRoot: process.cwd() };
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (!arg || arg === "--") continue;
+    if (arg === "--import") {
+      options.importLeads = true;
+    } else if (arg === "--import-dry-run") {
+      options.importLeads = true;
+      options.importDryRun = true;
+    } else if (arg === "--input" || arg === "--file") {
+      const value = args[index + 1];
+      if (!value) throw new Error(`${arg} needs a raw email connector export JSON/JSONL path.`);
+      options.inputPath = value;
+      index += 1;
+    } else if (arg.startsWith("--input=")) {
+      options.inputPath = arg.slice("--input=".length);
+    } else if (arg.startsWith("--file=")) {
+      options.inputPath = arg.slice("--file=".length);
+    } else if (arg === "--out" || arg === "--output") {
+      const value = args[index + 1];
+      if (!value) throw new Error(`${arg} needs an extracted leads JSONL path.`);
+      options.outputPath = value;
+      index += 1;
+    } else if (arg.startsWith("--out=")) {
+      options.outputPath = arg.slice("--out=".length);
+    } else if (arg.startsWith("--output=")) {
+      options.outputPath = arg.slice("--output=".length);
+    } else if (arg === "--config") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--config needs a path.");
+      options.configPath = value;
+      index += 1;
+    } else if (arg.startsWith("--config=")) {
+      options.configPath = arg.slice("--config=".length);
+    } else if (arg === "--profile") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--profile needs a profile key.");
+      options.profileKey = value;
+      index += 1;
+    } else if (arg.startsWith("--profile=")) {
+      options.profileKey = arg.slice("--profile=".length);
+    } else if (arg === "--applycue-home") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--applycue-home needs a path.");
+      options.applyCueHome = value;
+      index += 1;
+    } else if (arg.startsWith("--applycue-home=")) {
+      options.applyCueHome = arg.slice("--applycue-home=".length);
+    } else {
+      throw new Error(`Unknown scan-email-leads option: ${arg}`);
+    }
+  }
+  if (!options.inputPath) throw new Error("scan-email-leads needs --input <raw-email-connector-export.json|jsonl>.");
+  return options as ExtractEmailLeadsOptions;
+}
+
 function parseLivePreflightArgs(args: string[]): LiveBrowserPreflightOptions {
   const options: LiveBrowserPreflightOptions = { workspaceRoot: process.cwd() };
   for (let index = 0; index < args.length; index += 1) {
@@ -358,6 +565,118 @@ function parseLiveApplyArgs(args: string[]): LiveBrowserApplyOptions {
       options.jobId = arg.slice("--job-id=".length);
     } else {
       throw new Error(`Unknown browser-live-apply option: ${arg}`);
+    }
+  }
+  return options;
+}
+
+function parseApplyRouteArgs(args: string[]): ApplyRouteExecutionOptions {
+  const options: ApplyRouteExecutionOptions = { workspaceRoot: process.cwd() };
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (!arg || arg === "--") continue;
+    if (arg === "--profile") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--profile needs a profile key.");
+      options.profileKey = value;
+      index += 1;
+    } else if (arg.startsWith("--profile=")) {
+      options.profileKey = arg.slice("--profile=".length);
+    } else if (arg === "--applycue-home") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--applycue-home needs a path.");
+      options.applyCueHome = value;
+      index += 1;
+    } else if (arg.startsWith("--applycue-home=")) {
+      options.applyCueHome = arg.slice("--applycue-home=".length);
+    } else if (arg === "--route-id") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--route-id needs an apply route id.");
+      options.routeId = value;
+      index += 1;
+    } else if (arg.startsWith("--route-id=")) {
+      options.routeId = arg.slice("--route-id=".length);
+    } else if (arg === "--application-id" || arg === "--application") {
+      const value = args[index + 1];
+      if (!value) throw new Error(`${arg} needs an application id.`);
+      options.applicationId = value;
+      index += 1;
+    } else if (arg.startsWith("--application-id=")) {
+      options.applicationId = arg.slice("--application-id=".length);
+    } else if (arg.startsWith("--application=")) {
+      options.applicationId = arg.slice("--application=".length);
+    } else if (arg === "--job-id" || arg === "--job") {
+      const value = args[index + 1];
+      if (!value) throw new Error(`${arg} needs a job id.`);
+      options.jobId = value;
+      index += 1;
+    } else if (arg.startsWith("--job-id=")) {
+      options.jobId = arg.slice("--job-id=".length);
+    } else if (arg.startsWith("--job=")) {
+      options.jobId = arg.slice("--job=".length);
+    } else if (arg === "--type" || arg === "--route-type") {
+      const value = args[index + 1];
+      if (!value) throw new Error(`${arg} needs an apply route type.`);
+      options.routeType = parseApplyRouteType(value);
+      index += 1;
+    } else if (arg.startsWith("--type=")) {
+      options.routeType = parseApplyRouteType(arg.slice("--type=".length));
+    } else if (arg.startsWith("--route-type=")) {
+      options.routeType = parseApplyRouteType(arg.slice("--route-type=".length));
+    } else {
+      throw new Error(`Unknown apply-route option: ${arg}`);
+    }
+  }
+  return options;
+}
+
+function parseApplyRouteType(value: string): ApplyRouteType {
+  const normalized = value.trim();
+  if (["api", "browser", "email", "dm", "manual_review"].includes(normalized)) return normalized as ApplyRouteType;
+  throw new Error(`Unknown apply route type: ${value}`);
+}
+
+function parseMasterFormDataArgs(args: string[]): MasterFormDataOptions {
+  const options: MasterFormDataOptions = { workspaceRoot: process.cwd() };
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (!arg || arg === "--") continue;
+    if (arg === "--confirm") {
+      options.confirm = true;
+    } else if (arg === "--more-results" || arg === "--expand-sources") {
+      options.generatedSourceExpansion = true;
+    } else if (arg === "--include-older-posts" || arg === "--include-older") {
+      options.includeOlderPosts = true;
+    } else if (arg === "--freshness-days") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--freshness-days needs a positive day count.");
+      options.freshnessDays = parsePositiveInteger(value, "--freshness-days");
+      index += 1;
+    } else if (arg.startsWith("--freshness-days=")) {
+      options.freshnessDays = parsePositiveInteger(arg.slice("--freshness-days=".length), "--freshness-days");
+    } else if (arg === "--target-ranking-queue") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--target-ranking-queue needs a positive job count.");
+      options.targetRankingQueue = parsePositiveInteger(value, "--target-ranking-queue");
+      index += 1;
+    } else if (arg.startsWith("--target-ranking-queue=")) {
+      options.targetRankingQueue = parsePositiveInteger(arg.slice("--target-ranking-queue=".length), "--target-ranking-queue");
+    } else if (arg === "--profile") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--profile needs a profile key.");
+      options.profileKey = value;
+      index += 1;
+    } else if (arg.startsWith("--profile=")) {
+      options.profileKey = arg.slice("--profile=".length);
+    } else if (arg === "--applycue-home") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--applycue-home needs a path.");
+      options.applyCueHome = value;
+      index += 1;
+    } else if (arg.startsWith("--applycue-home=")) {
+      options.applyCueHome = arg.slice("--applycue-home=".length);
+    } else {
+      throw new Error(`Unknown form-data option: ${arg}`);
     }
   }
   return options;
@@ -453,6 +772,251 @@ function parseOutcomeType(value: string): OutcomeEvent["type"] {
   ];
   if (allowed.includes(normalized as OutcomeEvent["type"])) return normalized as OutcomeEvent["type"];
   throw new Error(`Unknown outcome type: ${value}`);
+}
+
+function parseRecordTuningArgs(args: string[]): RecordTuningSignalOptions {
+  const options: Partial<RecordTuningSignalOptions> = { workspaceRoot: process.cwd(), evidenceRefs: [] };
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (!arg || arg === "--") continue;
+    if (arg === "--origin") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--origin needs a value.");
+      options.origin = parseTuningOrigin(value);
+      index += 1;
+    } else if (arg.startsWith("--origin=")) {
+      options.origin = parseTuningOrigin(arg.slice("--origin=".length));
+    } else if (arg === "--target") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--target needs a value.");
+      options.target = parseTuningTarget(value);
+      index += 1;
+    } else if (arg.startsWith("--target=")) {
+      options.target = parseTuningTarget(arg.slice("--target=".length));
+    } else if (arg === "--action") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--action needs a value.");
+      options.action = parseTuningAction(value);
+      index += 1;
+    } else if (arg.startsWith("--action=")) {
+      options.action = parseTuningAction(arg.slice("--action=".length));
+    } else if (arg === "--value") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--value needs text.");
+      options.value = value;
+      index += 1;
+    } else if (arg.startsWith("--value=")) {
+      options.value = arg.slice("--value=".length);
+    } else if (arg === "--reason") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--reason needs text.");
+      options.reason = value;
+      index += 1;
+    } else if (arg.startsWith("--reason=")) {
+      options.reason = arg.slice("--reason=".length);
+    } else if (arg === "--status") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--status needs a value.");
+      options.status = parseTuningStatus(value);
+      index += 1;
+    } else if (arg.startsWith("--status=")) {
+      options.status = parseTuningStatus(arg.slice("--status=".length));
+    } else if (arg === "--confidence") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--confidence needs low, medium, or high.");
+      options.confidence = parseTuningConfidence(value);
+      index += 1;
+    } else if (arg.startsWith("--confidence=")) {
+      options.confidence = parseTuningConfidence(arg.slice("--confidence=".length));
+    } else if (arg === "--application" || arg === "--application-id") {
+      const value = args[index + 1];
+      if (!value) throw new Error(`${arg} needs an application id.`);
+      options.applicationId = value;
+      index += 1;
+    } else if (arg.startsWith("--application=")) {
+      options.applicationId = arg.slice("--application=".length);
+    } else if (arg.startsWith("--application-id=")) {
+      options.applicationId = arg.slice("--application-id=".length);
+    } else if (arg === "--job" || arg === "--job-id") {
+      const value = args[index + 1];
+      if (!value) throw new Error(`${arg} needs a job id.`);
+      options.jobId = value;
+      index += 1;
+    } else if (arg.startsWith("--job=")) {
+      options.jobId = arg.slice("--job=".length);
+    } else if (arg.startsWith("--job-id=")) {
+      options.jobId = arg.slice("--job-id=".length);
+    } else if (arg === "--source-id") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--source-id needs a source id.");
+      options.sourceId = value;
+      index += 1;
+    } else if (arg.startsWith("--source-id=")) {
+      options.sourceId = arg.slice("--source-id=".length);
+    } else if (arg === "--source-name") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--source-name needs text.");
+      options.sourceName = value;
+      index += 1;
+    } else if (arg.startsWith("--source-name=")) {
+      options.sourceName = arg.slice("--source-name=".length);
+    } else if (arg === "--evidence" || arg === "--evidence-ref") {
+      const value = args[index + 1];
+      if (!value) throw new Error(`${arg} needs text.`);
+      options.evidenceRefs = [...(options.evidenceRefs ?? []), value];
+      index += 1;
+    } else if (arg.startsWith("--evidence=")) {
+      options.evidenceRefs = [...(options.evidenceRefs ?? []), arg.slice("--evidence=".length)];
+    } else if (arg.startsWith("--evidence-ref=")) {
+      options.evidenceRefs = [...(options.evidenceRefs ?? []), arg.slice("--evidence-ref=".length)];
+    } else if (arg === "--approved-by-user") {
+      options.approvedByUser = true;
+    } else if (arg === "--not-approved-by-user") {
+      options.approvedByUser = false;
+    } else if (arg === "--created-at") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--created-at needs an ISO date/time.");
+      options.createdAt = value;
+      index += 1;
+    } else if (arg.startsWith("--created-at=")) {
+      options.createdAt = arg.slice("--created-at=".length);
+    } else if (arg === "--id") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--id needs a signal id.");
+      options.id = value;
+      index += 1;
+    } else if (arg.startsWith("--id=")) {
+      options.id = arg.slice("--id=".length);
+    } else if (arg === "--config") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--config needs a path.");
+      options.configPath = value;
+      index += 1;
+    } else if (arg.startsWith("--config=")) {
+      options.configPath = arg.slice("--config=".length);
+    } else if (arg === "--profile") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--profile needs a profile key.");
+      options.profileKey = value;
+      index += 1;
+    } else if (arg.startsWith("--profile=")) {
+      options.profileKey = arg.slice("--profile=".length);
+    } else if (arg === "--applycue-home") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--applycue-home needs a path.");
+      options.applyCueHome = value;
+      index += 1;
+    } else if (arg.startsWith("--applycue-home=")) {
+      options.applyCueHome = arg.slice("--applycue-home=".length);
+    } else {
+      throw new Error(`Unknown record-tuning option: ${arg}`);
+    }
+  }
+  if (!options.origin) throw new Error("record-tuning needs --origin <user_feedback|agent_analysis|outcome_learning|system_diagnostic>.");
+  if (!options.target) throw new Error("record-tuning needs --target <role_term|title_variant|industry|location|source|seniority|company|keyword|work_mode|cv_fact|apply_policy>.");
+  if (!options.action) throw new Error("record-tuning needs --action <promote|demote|block|watch|ask_user|keep>.");
+  if (!options.value) throw new Error("record-tuning needs --value <text>.");
+  if (!options.reason) throw new Error("record-tuning needs --reason <text>.");
+  return options as RecordTuningSignalOptions;
+}
+
+function parseApplyTuningArgs(args: string[]): ApplyTuningSignalsOptions {
+  const options: ApplyTuningSignalsOptions = { workspaceRoot: process.cwd() };
+  const signalIds: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (!arg) continue;
+    if (arg === "--") {
+      continue;
+    } else if (arg === "--dry-run") {
+      options.dryRun = true;
+    } else if (arg === "--all") {
+      options.applyAll = true;
+    } else if (arg === "--ids" || arg === "--id") {
+      const value = args[index + 1];
+      if (!value) throw new Error(`${arg} needs a comma-separated tuning signal id list.`);
+      signalIds.push(...splitIds(value));
+      index += 1;
+    } else if (arg.startsWith("--ids=")) {
+      signalIds.push(...splitIds(arg.slice("--ids=".length)));
+    } else if (arg.startsWith("--id=")) {
+      signalIds.push(...splitIds(arg.slice("--id=".length)));
+    } else if (arg === "--signals" || arg === "--tuning-signals" || arg === "--tuning-signals-path") {
+      const value = args[index + 1];
+      if (!value) throw new Error(`${arg} needs a tuning-signals.jsonl path.`);
+      options.tuningSignalsPath = value;
+      index += 1;
+    } else if (arg.startsWith("--signals=")) {
+      options.tuningSignalsPath = arg.slice("--signals=".length);
+    } else if (arg.startsWith("--tuning-signals=")) {
+      options.tuningSignalsPath = arg.slice("--tuning-signals=".length);
+    } else if (arg.startsWith("--tuning-signals-path=")) {
+      options.tuningSignalsPath = arg.slice("--tuning-signals-path=".length);
+    } else if (arg === "--config") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--config needs a path.");
+      options.configPath = value;
+      index += 1;
+    } else if (arg.startsWith("--config=")) {
+      options.configPath = arg.slice("--config=".length);
+    } else if (arg === "--profile") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--profile needs a profile key.");
+      options.profileKey = value;
+      index += 1;
+    } else if (arg.startsWith("--profile=")) {
+      options.profileKey = arg.slice("--profile=".length);
+    } else if (arg === "--applycue-home") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--applycue-home needs a path.");
+      options.applyCueHome = value;
+      index += 1;
+    } else if (arg.startsWith("--applycue-home=")) {
+      options.applyCueHome = arg.slice("--applycue-home=".length);
+    } else {
+      throw new Error(`Unknown apply-tuning option: ${arg}`);
+    }
+  }
+  if (signalIds.length > 0) options.signalIds = [...new Set(signalIds)];
+  return options;
+}
+
+function parseTuningOrigin(value: string): RecordTuningSignalOptions["origin"] {
+  return parseAllowedValue(value, ["user_feedback", "agent_analysis", "outcome_learning", "system_diagnostic"] as const, "tuning origin");
+}
+
+function parseTuningTarget(value: string): RecordTuningSignalOptions["target"] {
+  return parseAllowedValue(value, [
+    "role_term",
+    "title_variant",
+    "industry",
+    "location",
+    "source",
+    "seniority",
+    "company",
+    "keyword",
+    "work_mode",
+    "cv_fact",
+    "apply_policy"
+  ] as const, "tuning target");
+}
+
+function parseTuningAction(value: string): RecordTuningSignalOptions["action"] {
+  return parseAllowedValue(value, ["promote", "demote", "block", "watch", "ask_user", "keep"] as const, "tuning action");
+}
+
+function parseTuningStatus(value: string): NonNullable<RecordTuningSignalOptions["status"]> {
+  return parseAllowedValue(value, ["proposed", "approved", "rejected", "applied", "archived"] as const, "tuning status");
+}
+
+function parseTuningConfidence(value: string): NonNullable<RecordTuningSignalOptions["confidence"]> {
+  return parseAllowedValue(value, ["low", "medium", "high"] as const, "tuning confidence");
+}
+
+function parseAllowedValue<TValue extends string>(value: string, allowed: readonly TValue[], label: string): TValue {
+  const normalized = value.trim();
+  if (allowed.includes(normalized as TValue)) return normalized as TValue;
+  throw new Error(`Unknown ${label}: ${value}`);
 }
 
 async function parseApproveAnswersArgs(args: string[]): Promise<ApproveApplicationAnswersOptions> {
@@ -725,6 +1289,28 @@ function parseSetupArgs(args: string[]): SetupApplyCueOptions {
     if (!arg || arg === "--") continue;
     if (arg === "--skip-tools") {
       options.installTools = false;
+    } else if (arg === "--skip-source-approval") {
+      options.autoApproveSources = false;
+    } else if (arg === "--more-results" || arg === "--expand-sources") {
+      options.generatedSourceExpansion = true;
+    } else if (arg === "--include-older-posts" || arg === "--include-older") {
+      options.includeOlderPosts = true;
+    } else if (arg === "--freshness-days") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--freshness-days needs a positive day count.");
+      options.freshnessDays = parsePositiveInteger(value, "--freshness-days");
+      index += 1;
+    } else if (arg.startsWith("--freshness-days=")) {
+      options.freshnessDays = parsePositiveInteger(arg.slice("--freshness-days=".length), "--freshness-days");
+    } else if (arg === "--target-ranking-queue") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--target-ranking-queue needs a positive job count.");
+      options.targetRankingQueue = parsePositiveInteger(value, "--target-ranking-queue");
+      index += 1;
+    } else if (arg.startsWith("--target-ranking-queue=")) {
+      options.targetRankingQueue = parsePositiveInteger(arg.slice("--target-ranking-queue=".length), "--target-ranking-queue");
+    } else if (arg === "--auto-approve-sources") {
+      options.autoApproveSources = true;
     } else if (arg === "--profile") {
       const value = args[index + 1];
       if (!value) throw new Error("--profile needs a profile key.");
@@ -741,6 +1327,53 @@ function parseSetupArgs(args: string[]): SetupApplyCueOptions {
       options.applyCueHome = arg.slice("--applycue-home=".length);
     } else {
       throw new Error(`Unknown setup option: ${arg}`);
+    }
+  }
+  return options;
+}
+
+function parseRunBatchArgs(args: string[]): Parameters<typeof runLocalOrSampleBatch>[0] {
+  const options: Parameters<typeof runLocalOrSampleBatch>[0] = {
+    workspaceRoot: process.cwd(),
+    writeFiles: true
+  };
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (!arg || arg === "--") continue;
+    if (arg === "--more-results" || arg === "--expand-sources") {
+      options.generatedSourceExpansion = true;
+    } else if (arg === "--include-older-posts" || arg === "--include-older") {
+      options.includeOlderPosts = true;
+    } else if (arg === "--freshness-days") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--freshness-days needs a positive day count.");
+      options.freshnessDays = parsePositiveInteger(value, "--freshness-days");
+      index += 1;
+    } else if (arg.startsWith("--freshness-days=")) {
+      options.freshnessDays = parsePositiveInteger(arg.slice("--freshness-days=".length), "--freshness-days");
+    } else if (arg === "--target-ranking-queue") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--target-ranking-queue needs a positive job count.");
+      options.targetRankingQueue = parsePositiveInteger(value, "--target-ranking-queue");
+      index += 1;
+    } else if (arg.startsWith("--target-ranking-queue=")) {
+      options.targetRankingQueue = parsePositiveInteger(arg.slice("--target-ranking-queue=".length), "--target-ranking-queue");
+    } else if (arg === "--profile") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--profile needs a profile key.");
+      options.profileKey = value;
+      index += 1;
+    } else if (arg.startsWith("--profile=")) {
+      options.profileKey = arg.slice("--profile=".length);
+    } else if (arg === "--applycue-home") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--applycue-home needs a path.");
+      options.applyCueHome = value;
+      index += 1;
+    } else if (arg.startsWith("--applycue-home=")) {
+      options.applyCueHome = arg.slice("--applycue-home=".length);
+    } else {
+      throw new Error(`Unknown first-build option: ${arg}`);
     }
   }
   return options;
@@ -807,26 +1440,40 @@ function splitIds(value: string): string[] {
   return value.split(",").map((id) => id.trim()).filter(Boolean);
 }
 
+function parsePositiveInteger(value: string, label: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) throw new Error(`${label} needs a positive whole number.`);
+  return parsed;
+}
+
 function printUsage(): void {
   console.log(`ApplyCue worker commands:
-  first-build
+  first-build [--more-results] [--target-ranking-queue <count>] [--freshness-days <days>] [--include-older-posts]
   status [--json]
   approve-answers --field <field-or-question> --value <approved-answer> [--alias <label>] [--dry-run]
   approve-answers --from-file <live-answer-approval-template.json> [--dry-run]
   approve-answers --from-live --set field=value [--set field=value] [--dry-run]
   browser-preflight --plan <browser-plan.json> --snapshot <page-snapshot.json> [--out <report.json>]
-  browser-uat [--skip-tools]
+  browser-uat [--skip-tools] [--more-results] [--target-ranking-queue <count>] [--freshness-days <days>] [--include-older-posts]
   browser-live-preflight [--plan-id <id> | --job-id <id>]
   browser-live-apply [--plan-id <id> | --job-id <id>] [--allow-submit]
-  setup [--skip-tools]
-  uat [--skip-tools]
+  apply-route [--route-id <id> | --application-id <id> | --job-id <id> | --type <api|browser|email|dm|manual_review>]
+  form-data [--confirm] [--more-results] [--target-ranking-queue <count>] [--freshness-days <days>] [--include-older-posts]
+  scan-email-leads --input <raw-email-connector-export.json|jsonl> [--import] [--import-dry-run]
+  import-email-leads --input <connector-export.json|jsonl> [--dry-run]
+  setup [--skip-tools] [--skip-source-approval] [--auto-approve-sources] [--more-results] [--target-ranking-queue <count>] [--freshness-days <days>] [--include-older-posts]
+  uat [--skip-tools] [--skip-source-approval] [--auto-approve-sources] [--more-results] [--target-ranking-queue <count>] [--freshness-days <days>] [--include-older-posts]
   record-outcome --application <application-id> --type <type> [--note <text>]
+  record-tuning --origin <origin> --target <target> --action <action> --value <text> --reason <text>
+  apply-tuning --ids <signal-id[,signal-id]> [--dry-run]
+  apply-tuning --all [--dry-run]
   approve-sources --ids <suggestion-id[,suggestion-id]> [--dry-run]
   approve-sources --all [--dry-run]
 
 Options:
   --config <path>          Use a specific editable applycue.json.
   --plan <path>            Use a specific source-plan.generated.json.
+  --signals <path>         Use a specific tuning-signals.jsonl file.
   --profile <key>          Use an ApplyCue profile key.
   --applycue-home <path>   Use a specific ApplyCue home directory.
 `);

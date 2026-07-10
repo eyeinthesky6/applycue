@@ -76,6 +76,10 @@ unsupported
 
 Use these counts to audit false positives and false negatives. A high `needs confirmation` count means the JD is close to the profile but not yet proven. A high `unsupported` count means the job should not get a tailored CV unless the user adds truthful approved facts.
 
+Search preferences are not automatically CV claims. `targetRoleTerms` guide discovery and ranking; they should not become hard job requirements just because the job title contains the same phrase. User `requiredKeywords` can become hard requirements. User `niceToHaveKeywords` and proof-bank tags may help the CV emphasize supported evidence, but they should not block a CV when unsupported.
+
+If a generated CV passes truth reconciliation but fails completeness checks for a real base-CV profile, the batch should skip that candidate and continue to the next ranked job. Do not pad the CV with weak claims just to hit a daily application count.
+
 ## Format Strategy
 
 V1 uses one format only:

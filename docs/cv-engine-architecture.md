@@ -39,6 +39,7 @@ The engine produces:
 - requirement map
 - CV content plan
 - reconciliation report
+- ATS diagnostics report for parseability and supported JD-term visibility
 - rendered CV in `standard_ats_v1`
 - upload-ready DOCX artifact
 - application answer draft
@@ -173,6 +174,7 @@ UAT should include:
 - generated CV uses only `standard_ats_v1`
 - rendered CV completeness: identity, configured contact fields, summary, skills, experience, enough content, employer structure, no near-duplicate bullets, awards, and education when those facts exist
 - no source-code edits during an application run
+- ATS diagnostics JSON exists for prepared CVs and is treated as warning evidence only
 
 ## OSS Tooling Candidates
 
@@ -217,7 +219,10 @@ Current artifacts:
 - Markdown: audit/debug source.
 - HTML: local preview and print-friendly review.
 - DOCX: browser application upload file.
+- ATS diagnostics JSON: backend/agent warning file for parseability and supported JD-term visibility.
 
 Browser apply plans should upload DOCX when it exists. They should not upload Markdown.
 
 UAT now checks the rendered Markdown directly before handoff. A run should fail if generated CVs become thin extracts, drop configured contact fields, lose named employer structure, repeat near-duplicate bullets, omit awards or education from the base CV, contain empty employer headings, or leave employer sections with too little substance.
+
+ATS diagnostics should warn the agent about CV rendering misses, but it must not override reconciliation or become a candidate-facing score.
