@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import mammoth from "mammoth";
+import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import type {
   ApplicationAnswer,
   ApprovedSourceConfigEntry,
@@ -334,7 +336,7 @@ export async function createProfileFromConfig(config: ApplyCueConfig, configDir 
   const activeBaseCv = selectActiveBaseCv(config.baseCvs ?? [], profileConfig.activeBaseCvId);
   const baseCvPath = nonEmptyString(activeBaseCv?.path) ?? nonEmptyString(profileConfig.baseCvPath);
   const baseCvText = baseCvPath
-    ? await readFile(resolveFromConfigDir(configDir, baseCvPath), "utf8")
+    ? await readBaseCvText(resolveFromConfigDir(configDir, baseCvPath))
     : undefined;
   const facts = mergeApprovedProfileFacts(config.facts ?? [], profileConfig);
   const contact = buildContact(profileConfig);
@@ -378,6 +380,106 @@ export async function createProfileFromConfig(config: ApplyCueConfig, configDir 
   if (config.targetBaseCvs) profileInput.targetBaseCvs = config.targetBaseCvs;
 
   return createProfile(profileInput);
+}
+
+/**
+ * Read a user-supplied base CV without asking an agent to recreate its text.
+ * The original file remains the authoritative asset; this function only
+ * extracts the text used by ApplyCue's truth and tailoring pipeline.
+ */
+export async function readBaseCvText(filePath: string): Promise<string> {
+  const absolutePath = path.resolve(filePath);
+  const extension = path.extname(absolutePath).toLowerCase();
+
+  if ([".md", ".markdown", ".txt"].includes(extension)) {
+    return requireExtractedCvText(await readFile(absolutePath, "utf8"), absolutePath);
+  }
+
+  if (extension === ".docx") {
+    try {
+      const result = await mammoth.extractRawText({ path: absolutePath });
+      return requireExtractedCvText(result.value, absolutePath);
+    } catch (error) {
+      throw new Error(`Could not extract text from DOCX base CV ${absolutePath}: ${errorMessage(error)}`, {
+        cause: error
+      });
+    }
+  }
+
+  if (extension === ".pdf") {
+    try {
+      return requireExtractedCvText(await extractPdfText(absolutePath), absolutePath, true);
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("No extractable text was found")) throw error;
+      throw new Error(`Could not extract text from PDF base CV ${absolutePath}: ${errorMessage(error)}`, {
+        cause: error
+      });
+    }
+  }
+
+  throw new Error(
+    `Unsupported base CV format ${extension || "(no extension)"}. Use DOCX, PDF, Markdown, or plain text.`
+  );
+}
+
+async function extractPdfText(filePath: string): Promise<string> {
+  const source = new Uint8Array(await readFile(filePath));
+  const loadingTask = getDocument({
+    data: source,
+    useSystemFonts: true
+  });
+  const document = await loadingTask.promise;
+  const pages: string[] = [];
+
+  try {
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+      const page = await document.getPage(pageNumber);
+      const content = await page.getTextContent();
+      const lines: string[] = [];
+      let line = "";
+
+      for (const item of content.items) {
+        if (!("str" in item)) continue;
+        const value = item.str.replace(/\s+/g, " ").trim();
+        if (value) line = appendPdfText(line, value);
+        if (item.hasEOL && line) {
+          lines.push(line.trim());
+          line = "";
+        }
+      }
+
+      if (line) lines.push(line.trim());
+      if (lines.length > 0) pages.push(lines.join("\n"));
+    }
+  } finally {
+    await loadingTask.destroy();
+  }
+
+  return pages.join("\n\n");
+}
+
+function appendPdfText(current: string, next: string): string {
+  if (!current) return next;
+  if (/[-/(@]$/.test(current) || /^[,.;:!?%)]/.test(next)) return `${current}${next}`;
+  return `${current} ${next}`;
+}
+
+function requireExtractedCvText(text: string, filePath: string, mayNeedOcr = false): string {
+  const normalized = text
+    .replace(/\r\n?/g, "\n")
+    .replace(/\u00a0/g, " ")
+    .replace(/[\u200b\u200c\u200d\u2060\ufeff]/g, "")
+    .replace(/[ \t]+$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (normalized) return normalized;
+  const ocrHint = mayNeedOcr ? " The PDF may be image-only and need OCR." : "";
+  throw new Error(`No extractable text was found in base CV ${filePath}.${ocrHint}`);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function filterApprovedApplicationAnswers(answers: ApplicationAnswer[]): ApplicationAnswer[] {

@@ -10,14 +10,24 @@ Use this order:
 
 1. `AGENTS.md` tells the agent where to look.
 2. `skills/applycue/SKILL.md` is the canonical user-facing ApplyCue workflow.
-3. `docs/agent-development-guide.md` is the canonical guide for code changes.
-4. `docs/launch-readiness.md` is the release and distribution gate for launch claims.
-5. `docs/live-usage-runbook.md` is the operating guide for real multi-candidate sessions.
-6. `docs/pivot-history.md` explains the independent branch, the career-ops fork branch, and why the current launch path changed.
-7. Contract docs such as `docs/data-contracts.md`, `docs/configuration.md`, `docs/cv-tailoring-policy.md`, and `docs/agent-first-installation-and-usage.md` explain specific behavior.
-8. CLI-specific files and skill bridges must stay thin and point back here or to the canonical skill.
+3. `docs/PRODUCT_DECISION.md` owns product identity, settled product decisions, and the evidence boundary.
+4. `docs/ARCHITECTURE.md` owns technical architecture, module boundaries, and OSS/provider design.
+5. `docs/product-roadmap.md` owns MVP/0.1, V1, and V2 scope and exit criteria.
+6. `docs/ai-judgment-trial-plan.md` owns evaluated AI models/tools and optional future trial gates.
+7. `docs/agent-development-guide.md` is the canonical guide for code changes.
+8. `docs/launch-readiness.md` is the release and distribution gate for launch claims.
+9. `docs/live-usage-runbook.md` is the operating guide for real multi-candidate sessions.
+10. `docs/pivot-history.md` explains the independent branch, the career-ops fork branch, and why the current launch path changed.
+11. Contract docs such as `docs/data-contracts.md`, `docs/configuration.md`, `docs/connector-capability-policy.md`, `docs/cv-tailoring-policy.md`, and `docs/agent-first-installation-and-usage.md` explain specific behavior.
+12. CLI-specific files and skill bridges must stay thin and point back here or to the canonical skill.
 
 Do not duplicate product rules across `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, `OPENCODE.md`, or bridge skills. Duplication causes drift.
+
+## Current Product And Upgrade Decisions
+
+The canonical one-line product decision is in `docs/PRODUCT_DECISION.md`. For upgrades, keep ApplyCue's typed engine and adopt only measured permissive OSS or historically evaluated deltas behind ApplyCue-owned contracts. The career-ops runtime is absent from this branch; never restore it as a second engine or fallback.
+
+Whenever product or architecture upgrades resume, begin by discussing the named user/product gap, current runtime evidence, expected outcome, canonical owner, licence, acceptance test, and rollback. `docs/2026-07-10_career-ops-discovery-delta_architectural_review.md` is historical evidence, not a live code catalogue. Revisit an evaluated idea only when source scorecards, live canaries, user evidence, or a new product requirement justify it. Do not start from provider count, repository popularity, or a desire to rewrite working code.
 
 ## Start Here
 
@@ -36,6 +46,10 @@ pnpm applycue:status
 For repo development, read:
 
 ```text
+docs/README.md
+docs/PRODUCT_DECISION.md
+docs/ARCHITECTURE.md
+docs/product-roadmap.md
 docs/agent-development-guide.md
 ```
 
@@ -91,9 +105,10 @@ Do not put real user CVs, contact data, generated user outputs, browser receipts
 - For multiple real candidates, use one profile key per person. Keep `default` for the current operator unless the user explicitly changes it.
 - Generated CVs must come from the base CV, approved profile facts, proof bank, approved application answers, and the JD. Reframe and emphasize, but do not invent facts.
 - Application execution starts from generated apply routes. Browser routes require master form data confirmation, live preflight, then controlled fill/upload/submit under policy.
-- Email and DM search/drafting/sending are agent-managed through native Codex, Claude, Hermes, or similar connected tools first. Browser control is a fallback only when native connector access is unavailable and the user approves it. ApplyCue may create drafts and attachment lists, but the app does not send them, and final send always needs explicit user confirmation.
+- Email and DM search/drafting/sending are agent-managed through tools the current Codex, Claude, Hermes, or similar host has actually discovered and the user has approved. Browser control is a fallback only when native connector access is unavailable and the user approves it. ApplyCue may create drafts and attachment lists, but the app does not send them, and final send always needs explicit user confirmation.
 - If a live form asks a reusable question, ask the user once, save the approved answer with `approve-answers`, regenerate/refresh, and reuse it through aliases.
 - If search or shortlist quality is noisy, record tuning or update user config through product commands. Do not patch core code for one user's one-off preference.
+- Codex, Claude, or another user-chosen external agent owns ambiguous judgement, clear-decision corrections, and user-authorized tool use. Do not add an embedded model provider or model API key to the canonical ApplyCue runtime without a separate approved architecture decision.
 
 ## Scope Guard
 
@@ -126,7 +141,7 @@ Bad reasons to split:
 - making a separate skill just because a workflow has a new mode
 - putting user-specific preferences into global skill files
 
-CLI bridges under `.agents`, `.claude`, `.opencode`, `.qwen`, `.antigravitycli`, `.grok`, and `.kimi` should only point to `skills/applycue/SKILL.md`.
+Product-operation bridges named `applycue` under `.agents`, `.claude`, `.opencode`, `.qwen`, `.antigravitycli`, `.grok`, and `.kimi` should only point to `skills/applycue/SKILL.md`. An approved separate heavy workflow must keep its own canonical file under `skills/<skill>/SKILL.md`; any CLI-specific copy stays a thin pointer to that file.
 
 Root `CLAUDE.md`, `CODEX.md`, `OPENCODE.md`, and similar files should only import `AGENTS.md` or point to the canonical skill. Do not add separate product rules there.
 
@@ -137,7 +152,9 @@ Agent-facing commands include:
 ```powershell
 pnpm applycue:status
 pnpm applycue:setup
+pnpm applycue:source-canary
 pnpm applycue:first-build
+pnpm applycue:record-decisions
 pnpm applycue:form-data
 pnpm applycue:apply-route
 pnpm applycue:browser-live-preflight

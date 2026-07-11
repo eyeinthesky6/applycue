@@ -2,6 +2,8 @@
 
 Date: 2026-07-05
 
+Status: current contract reference. `packages/core/src/index.ts` is the implemented type authority.
+
 The TypeScript source of truth starts in `packages/core/src/index.ts`.
 
 ## Profile
@@ -118,6 +120,7 @@ It summarizes:
 - prepared applications
 - discovered jobs
 - jobs kept for shortlist preparation
+- recorded and awaiting external-agent/user decisions
 - jobs filtered by freshness
 - watched or skipped jobs
 - dominant source filters
@@ -125,7 +128,7 @@ It summarizes:
 - dominant preference gate blockers
 - suggested next actions
 
-This is not a user-worth score. It tells the agent why the pipeline is too narrow, too broad, or healthy. Low volume should trigger source expansion or explicit user questions. High/noisy volume should trigger tighter source and title filters. Do not hide uncertain matches just to make the dashboard look precise.
+This is not a user-worth score. It tells the agent why the pipeline is too narrow, too broad, awaiting judgement, or healthy. `awaiting_decisions` means usable ranked supply already exists and must not trigger source expansion. Genuine low volume may trigger a source proposal or explicit user question. High/noisy volume should trigger tighter source and title filters. Do not hide uncertain matches just to make the dashboard look precise.
 
 ## Job Decision Queue
 
@@ -135,7 +138,9 @@ Every batch writes the full ranked decision queue for agent review:
 ~/.applycue/profiles/<profile>/outputs/runs/latest-job-decisions.json
 ```
 
-The artifact contains the run id, profile id, queue count, and every ranked decision item. It is the source for checking whether the pipeline is missing relevant roles or admitting noise. The dashboard and chat summary may show only a compact preview.
+The artifact contains the run id, profile id, queue count, and every ranked decision item. Each generated item includes the job/source URL, bounded description excerpt, full normalized JD path, location/work mode/seniority/employment/compensation when available, post/discovery dates, live state, backend priority/components, reasons, and failed hard gates. Hard-gated, watch, and clear-apply rows remain in the audit queue but are not counted as awaiting fuzzy judgement. The agent judges unresolved `review` rows and may audit a clear decision when its evidence looks wrong. The dashboard and chat summary may show only a compact preview.
+
+The full normalized JD is generated for every ranked job under `outputs/jds/`, not only for jobs already approved for CV preparation. This lets the external agent make the decision before application artifacts exist.
 
 ## Application Record
 
@@ -240,6 +245,34 @@ pnpm applycue:record-outcome -- --application <application-id> --type reply --no
 ```
 
 Do not store outcome events in the source repo. Do not edit source code to record one user's reply, rejection, interview, or offer.
+
+## Recorded Job Decisions
+
+External-agent and user job decisions are local operational receipts. They live under:
+
+```text
+~/.applycue/profiles/<profile>/data/local/job-decisions.jsonl
+```
+
+Each record contains the job id, final `apply|review|watch|skip` decision, reasons, evidence references, actor kind/name, timestamp, backend suggestion, and the backend failed-gate list. The latest generated ranked queue is always included as evidence. An `apply` record is rejected when that queue reports a failed hard gate.
+
+Agents record decisions through:
+
+```powershell
+pnpm applycue:record-decision -- --job <job-id> --decision apply --actor codex --reason "Supported by the candidate's approved evidence." --evidence <review-reference>
+```
+
+For a reviewed batch, agents should use:
+
+```powershell
+pnpm applycue:record-decisions -- --input <reviewed-decisions.json> --prepare
+```
+
+The input has one batch actor and a non-empty `decisions` array containing `jobId`, `decision`, `reasons`, and optional `evidenceRefs`, `decidedAt`, and `id`. The whole batch is validated before one append: duplicate job IDs or any `apply` that violates a current hard gate reject the entire write. An unchanged retry is skipped. `--prepare` then refreshes the normal run and generates approved CV/application artifacts, but does not submit, send, confirm user data, or widen scope.
+
+This contract records who decided what and why. Normal batch selection consumes the latest record per job and prepares the best `apply` decisions up to `applicationsPerDay`; current hard gates are recalculated and remain authoritative. Progress items retain both the backend suggestion and the recorded external decision so dashboards never present an overridden backend `watch`/`skip` as the final result.
+
+Run manifests expose `decisionAuthority`: `system_clear` means all prepared jobs were clear rule-based matches; `hybrid_system_external` combines clear matches with recorded ambiguity decisions; `recorded_external` means all prepared jobs came from recorded decisions; `awaiting_external` means unresolved ambiguity still blocks a useful shortlist; `backend_suggestion_test` is reserved for UAT/development mechanics.
 
 ## Tuning Signals
 

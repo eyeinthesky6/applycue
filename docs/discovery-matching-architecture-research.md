@@ -2,9 +2,11 @@
 
 Date: 2026-07-09
 
+Status: supporting research, not a second architecture owner.
+
 ## Decision
 
-ApplyCue should not depend on the user knowing every correct job title. The user gives seed roles, CVs, goals, constraints, and feedback. ApplyCue expands the search space, fetches jobs broadly, filters only hard blockers deterministically, and uses agent/LLM judgement for fuzzy relevance before CV generation and application.
+ApplyCue should not depend on the user knowing every correct job title. The user gives seed roles, CVs, goals, constraints, and feedback. ApplyCue expands the search space, fetches jobs broadly, filters only hard blockers deterministically, and uses Codex, Claude, or another external agent for fuzzy relevance before CV generation and application. No embedded model integration is required for this judgement layer.
 
 The architecture should be a hybrid system:
 
@@ -16,7 +18,7 @@ user CV + goals + seed roles
   -> broad discovery
   -> normalization and dedupe
   -> hard blockers
-  -> semantic/agent fit review
+  -> external-agent fit review
   -> truthful CV generation
   -> browser/apply workflow
   -> outcome learning
@@ -98,22 +100,22 @@ broad retrieval -> compact candidate set -> rerank/review -> action
 
 Useful sources:
 
-- Sentence Transformers supports embeddings, semantic search, and cross-encoder rerankers.
-  Source: https://sbert.net/
-- Sentence Transformers documents retrieve-and-rerank as a good pattern for complex search tasks.
-  Source: https://sbert.net/examples/sentence_transformer/applications/retrieve_rerank/README.html
+- SQLite FTS5 provides local full-text retrieval and a built-in BM25 ordering function.
+  Source: https://www.sqlite.org/fts5.html
 - RapidFuzz is useful for fast title/company/location dedupe and fuzzy string matching.
   Source: https://rapidfuzz.github.io/RapidFuzz/
 - Fuse.js is useful on the TypeScript side for local fuzzy search, weighted fields, and review UI filtering.
   Source: https://www.fusejs.io/
+- Sentence Transformers remains a possible future embedding/cross-encoder reference, but using it would add a model runtime and another Python sidecar.
+  Source: https://sbert.net/
 
 ApplyCue implication:
 
 - Use lexical and deterministic filters for cheap blocking.
-- Use RapidFuzz/Fuse for dedupe, title similarity, company similarity, and local UI search.
-- Trial Sentence Transformers as an optional local Python sidecar for semantic retrieval/rerank over fetched jobs.
-- Keep semantic scores as backend diagnostics, not user-facing truth.
-- Agent/LLM review should inspect borderline jobs and write reusable tuning signals.
+- Trial SQLite FTS5/BM25 for compact local retrieval after the profile store exists.
+- Use the existing explainable token similarity first; trial RapidFuzz or Fuse only when measured dedupe/search errors justify another dependency.
+- Defer Sentence Transformers, embeddings, and cross-encoders while Codex/Claude can review the compact queue and labelled outcomes are absent.
+- The external agent should inspect borderline jobs and write reusable tuning signals.
 
 ## Tuning Loop
 
@@ -180,8 +182,9 @@ Stored signal examples:
 7. Trial RapidFuzz/Fuse for dedupe/title matching.
 8. Trial ESCO/O*NET/Lightcast lookup for expansion.
 9. Trial SkillNER or ESCO extractor as a diagnostics sidecar.
-10. Trial Sentence Transformers rerank on saved fetched jobs only.
-11. Only then increase application automation volume.
+10. Trial SQLite FTS5/BM25 for compact lexical retrieval if current ordering remains noisy.
+11. Keep embeddings, cross-encoders, and learned rerankers deferred while the external agent can review the compact queue and real labelled outcomes are absent.
+12. Only then increase application automation volume.
 
 ## What To Avoid
 
@@ -195,4 +198,4 @@ Stored signal examples:
 
 ## Recommendation
 
-Build ApplyCue as an agent-operated job search and application engine with deterministic safety and truth gates, taxonomy/library-assisted expansion, broad discovery, fuzzy dedupe, optional semantic rerank, agent judgement for messy fit, user feedback, and outcome learning stored as config-level tuning.
+Build ApplyCue as an external-agent-operated job search and application engine with deterministic safety and truth gates, optional taxonomy-assisted expansion, broad replaceable discovery, explainable dedupe and lexical retrieval, Codex/Claude judgement for messy fit, user feedback, and outcome learning stored as approved tuning. Do not embed another model runtime until a separate evidence-backed decision proves it adds value.

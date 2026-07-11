@@ -2,10 +2,8 @@ name: No user data in PRs
 
 # Hard-blocks any PR that adds or modifies user-layer (private data) files.
 # These live ONLY on the candidate's machine per DATA_CONTRACT.md and must never
-# enter the repo — they are personal job-search data. Sample/fixture data belongs
-# under examples/. Tracked scaffolding (.gitkeep keepers, dir READMEs) is exempt.
-# Paths mirror USER_PATHS in update-system.mjs. Uses the API (listFiles) so it
-# works for fork PRs too.
+# enter the repo — they are personal job-search data. Fake fixtures belong in
+# package and app tests. Uses the API (listFiles) so it works for fork PRs too.
 
 on:
   pull_request:
@@ -28,24 +26,12 @@ jobs:
               owner, repo, pull_number, per_page: 100,
             });
 
-            // User/private paths. This extends legacy USER_PATHS from update-system.mjs
-            // with the ApplyCue local profile store paths used by the v0.1 launch.
-            // voice-dna.md is omitted on purpose: it ships as a populated system
-            // default, so edits to it are legit.
+            // Current user/private paths. Removed legacy repo-local paths are not
+            // supported user stores.
             const USER_PATHS = [
               /^\.applycue\//,
               /^assets\//,
-              /^cv\.md$/,
-              /^config\/profile\.yml$/,
-              /^modes\/_profile\.md$/,
-              /^portals\.yml$/,
-              /^article-digest\.md$/,
-              /^interview-prep\//,
-              /^data\//,
-              /^reports\//,
-              /^output\//,
-              /^jds\//,
-              /^writing-samples\//,
+              /^config\/applycue\.local\.json$/,
             ];
             // Tracked scaffolding that legitimately lives under those dirs.
             const isScaffold = (f) => /(^|\/)\.gitkeep$/.test(f) || /(^|\/)README\.md$/.test(f);
@@ -58,7 +44,7 @@ jobs:
             if (bad.length) {
               core.setFailed(
                 'This PR adds/modifies user-layer (private data) files. These live ONLY on your ' +
-                'machine per DATA_CONTRACT.md and must never be committed — use examples/ for ' +
+                'machine per DATA_CONTRACT.md and must never be committed — use test fixtures for ' +
                 'sample data.\nOffending files:\n  ' + bad.join('\n  ')
               );
             } else {

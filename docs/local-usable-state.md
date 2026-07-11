@@ -2,6 +2,8 @@
 
 Date: 2026-07-06
 
+Status: supporting acceptance criteria. `applycue:status`, UAT, and current generated artifacts prove the live state.
+
 ## Decision
 
 ApplyCue is not usable just because `pnpm applycue:first-build` writes files.
@@ -21,24 +23,27 @@ The first local usable state means a user or agent can run one command and immed
 
 ## Local Usable Command
 
-The first usable command is:
+The usable flow is two-stage:
 
 ```powershell
 pnpm applycue:first-build
+pnpm applycue:record-decisions -- --input <reviewed-decisions.json> --prepare
 ```
 
 It should:
 
 1. resolve the external user profile store
 2. load local jobs
-3. apply hard gates and prepare a shortlist
-4. generate `standard_ats_v1` CVs for serious jobs
-5. write reconciliation reports
-6. create application drafts
-7. create browser apply plans for each prepared draft
-8. write local state and outputs under the active output root
-9. render a readable dashboard
-10. print dashboard and manifest paths
+3. apply hard gates and write the ranked suggestion queue
+4. let the engine resolve clear rows and use Codex/Claude only for ambiguous `review` rows or suspected mistakes
+5. prepare the best clear system matches plus recorded ambiguity approvals whose current hard gates pass, capped by `applicationsPerDay`
+6. generate `standard_ats_v1` CVs for those approved jobs
+7. write reconciliation reports
+8. create application drafts
+9. create browser apply plans for each prepared draft
+10. write local state and outputs under the active output root
+11. render a readable dashboard
+12. print dashboard and manifest paths
 
 ## Dashboard Requirements
 

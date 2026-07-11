@@ -182,7 +182,8 @@ These can help the plumbing, but they do not replace ApplyCue's truth engine:
 
 - JSON Resume: useful structured resume schema inspiration.
 - Ajv: validate fact ledger, CV plan, and rendered metadata against JSON Schema.
-- Mammoth.js: import `.docx` CVs into clean HTML for fact extraction.
+- Mammoth.js: extract raw text from `.docx` CVs without embedding converted HTML.
+- PDF.js: extract text from text-based PDFs while keeping the original file authoritative; image-only PDFs require a separately approved OCR path.
 - remark/unified: parse and inspect Markdown output as an AST.
 - Handlebars: render the one standard template from structured data.
 - docx: generate Word `.docx` files from structured content.

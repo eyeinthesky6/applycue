@@ -97,22 +97,22 @@ describe("live browser preflight", () => {
       "product_management_years",
       "unlabeled_field"
     ]);
-    expect(report.answerPrompts?.[0]?.suggestedDryRunCommand).toContain("pnpm approve-answers -- --dry-run");
+    expect(report.answerPrompts?.[0]?.suggestedDryRunCommand).toContain("pnpm applycue:approve-answers -- --dry-run");
     const html = await readFile(report.paths.answerPromptsHtml, "utf8");
     expect(html).toContain("ApplyCue Live Answer Review");
     expect(html).toContain("Copy This To Chat");
     expect(html).toContain("Save Approved Answers");
-    expect(html).toContain("pnpm approve-answers -- --from-live");
+    expect(html).toContain("pnpm applycue:approve-answers -- --from-live");
     expect(html).toContain("--set &quot;notice_period=&lt;approved answer&gt;&quot;");
     expect(html).toContain("What is your notice period?");
     expect(html).toContain("Reusable with your approval");
     expect(html).toContain("One required field on the page had no visible label");
-    expect(html).toContain("pnpm approve-answers -- --dry-run");
+    expect(html).toContain("pnpm applycue:approve-answers -- --dry-run");
     const markdown = await readFile(report.paths.answerPromptsMarkdown, "utf8");
     expect(markdown).toContain("Ask these in chat");
     expect(markdown).toContain("## Copy This To Chat");
     expect(markdown).toContain("live-answer-approval-template.json");
-    expect(markdown).toContain("pnpm approve-answers -- --from-live");
+    expect(markdown).toContain("pnpm applycue:approve-answers -- --from-live");
     expect(markdown).toContain("--set \"notice_period=<approved answer>\"");
     expect(markdown).toContain("Dry-run first");
     expect(markdown).toContain("- Company: Example");

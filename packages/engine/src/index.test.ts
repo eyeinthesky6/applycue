@@ -9,6 +9,8 @@ import {
   approveApplicationAnswers,
   approveSourceSuggestions,
   applyTuningSignals,
+  recordJobDecision,
+  recordJobDecisions,
   recordOutcomeEvent,
   recordTuningSignal,
   runBatch,
@@ -67,6 +69,154 @@ describe("runSampleBatch", () => {
     expect(result.sourcePlan.status).toBe("generated_for_review");
   });
 
+  it("requires a recorded apply decision when normal preparation enables the agent gate", async () => {
+    const seed = await runSampleBatch({ writeFiles: false });
+    const ambiguousProfile: UserProfile = {
+      ...seed.profile,
+      applySettings: {
+        ...seed.profile.applySettings,
+        minimumFitToApply: 1
+      }
+    };
+
+    const withoutDecision = await runBatch({
+      jobs: seed.jobs,
+      profile: ambiguousProfile,
+      requireRecordedJobDecisions: true,
+      runId: "agent-gated-empty",
+      writeFiles: false
+    });
+    const candidate = withoutDecision.jobDecisions.find((item) => item.failedGates.length === 0 && item.decision === "review");
+    expect(candidate).toBeDefined();
+    expect(withoutDecision.applications).toHaveLength(0);
+    expect(withoutDecision.jobDecisions.length).toBeGreaterThan(0);
+    expect(withoutDecision.manifest.funnelHealth?.status).toBe("awaiting_decisions");
+    expect(withoutDecision.manifest.funnelHealth?.awaitingDecisions).toBe(
+      withoutDecision.jobDecisions.filter((item) => item.failedGates.length === 0 && item.decision === "review").length
+    );
+    expect(withoutDecision.manifest.funnelHealth?.suggestedActions.join(" ")).not.toContain("search more public job boards");
+
+    const withDecision = await runBatch({
+      jobs: seed.jobs,
+      profile: ambiguousProfile,
+      recordedJobDecisions: [{
+        id: "decision-agent-gated",
+        jobId: candidate!.jobId,
+        decision: "apply",
+        reasons: ["Approved evidence supports the role."],
+        evidenceRefs: ["outputs/runs/latest-job-decisions.json"],
+        actorKind: "agent",
+        actorName: "codex",
+        decidedAt: "2026-07-10T12:00:00.000Z",
+        backendDecision: candidate!.decision,
+        backendFailedGates: []
+      }],
+      requireRecordedJobDecisions: true,
+      runId: "agent-gated-approved",
+      writeFiles: false
+    });
+    expect(withDecision.applications).toHaveLength(1);
+    expect(withDecision.applications[0]?.jobId).toBe(candidate!.jobId);
+    expect(withDecision.jobDecisions.find((item) => item.jobId === candidate!.jobId)).toMatchObject({
+      decision: candidate!.decision,
+      recordedDecision: "apply",
+      recordedReasons: ["Approved evidence supports the role."],
+      decisionActorKind: "agent",
+      decisionActorName: "codex"
+    });
+  });
+
+  it("prepares clear rule-based matches without requiring an agent decision", async () => {
+    const seed = await runSampleBatch({ writeFiles: false });
+    const profile: UserProfile = {
+      ...seed.profile,
+      applySettings: {
+        ...seed.profile.applySettings,
+        mode: "review",
+        minimumFitToApply: 0.01
+      }
+    };
+    const clearJob = seed.jobs.find((job) => job.id === seed.applications[0]?.jobId);
+    expect(clearJob).toBeDefined();
+
+    const result = await runBatch({
+      jobs: [clearJob!],
+      profile,
+      requireRecordedJobDecisions: true,
+      runId: "system-clear-shortlist",
+      writeFiles: false
+    });
+
+    expect(
+      result.applications.length,
+      JSON.stringify(result.jobDecisions.map((item) => ({ decision: item.decision, failedGates: item.failedGates, priority: item.priority })))
+    ).toBeGreaterThan(0);
+    expect(result.manifest.decisionAuthority).toBe("system_clear");
+    expect(result.manifest.funnelHealth?.awaitingDecisions).toBe(0);
+  });
+
+  it("labels a shortlist hybrid when a recorded decision promotes an ambiguous job beside a clear match", async () => {
+    const seed = await runSampleBatch({ writeFiles: false });
+    const seedClear = seed.jobDecisions.find((item) => item.failedGates.length === 0 && item.decision === "apply");
+    const seedClearJob = seed.jobs.find((job) => job.id === seedClear?.jobId);
+    expect(seedClearJob).toBeDefined();
+    const ambiguousJob: JobRecord = {
+      ...seedClearJob!,
+      id: "hybrid-ambiguous-job",
+      company: "Ambiguous AI Co",
+      title: "AI Program Lead",
+      description: "Lead AI program delivery for fintech stakeholders.",
+      url: "https://example.com/hybrid-ambiguous-job"
+    };
+    const hybridJobs = [seedClearJob!, ambiguousJob];
+    const hybridProfile: UserProfile = {
+      ...seed.profile,
+      applySettings: {
+        ...seed.profile.applySettings,
+        minimumFitToApply: 0.9
+      },
+      matchSettings: {
+        ...seed.profile.matchSettings,
+        minimumFitFloor: 0.1
+      }
+    };
+    const classified = await runBatch({
+      jobs: hybridJobs,
+      profile: hybridProfile,
+      requireRecordedJobDecisions: true,
+      runId: "hybrid-classification",
+      writeFiles: false
+    });
+    const clear = classified.jobDecisions.find((item) => item.failedGates.length === 0 && item.decision === "apply");
+    const ambiguous = classified.jobDecisions.find((item) => item.failedGates.length === 0 && item.decision === "review");
+    expect(clear).toBeDefined();
+    expect(ambiguous).toBeDefined();
+    const jobs = hybridJobs.filter((job) => job.id === clear!.jobId || job.id === ambiguous!.jobId);
+
+    const result = await runBatch({
+      jobs,
+      profile: hybridProfile,
+      recordedJobDecisions: [{
+        id: "decision-hybrid-ambiguous",
+        jobId: ambiguous!.jobId,
+        decision: "apply",
+        reasons: ["The evidence resolves the ambiguous fit."],
+        evidenceRefs: ["outputs/runs/latest-job-decisions.json"],
+        actorKind: "agent",
+        actorName: "codex",
+        decidedAt: "2026-07-11T12:00:00.000Z",
+        backendDecision: "review",
+        backendFailedGates: []
+      }],
+      requireRecordedJobDecisions: true,
+      runId: "hybrid-shortlist",
+      writeFiles: false
+    });
+
+    expect(result.applications).toHaveLength(2);
+    expect(result.manifest.decisionAuthority).toBe("hybrid_system_external");
+  });
+
   it("writes the full ranked decision queue for agent review", async () => {
     const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-decisions-"));
     const result = await runSampleBatch({ workspaceRoot, writeFiles: true });
@@ -76,7 +226,15 @@ describe("runSampleBatch", () => {
       runId: string;
       profileId: string;
       queueCount: number;
-      decisions: Array<{ jobId: string; decision: string; reasons: string[] }>;
+      decisions: Array<{
+        jobId: string;
+        decision: string;
+        reasons: string[];
+        url?: string;
+        descriptionExcerpt?: string;
+        jobDescriptionPath?: string;
+        priority?: number;
+      }>;
     };
 
     expect(queue.runId).toBe(result.manifest.id);
@@ -84,6 +242,12 @@ describe("runSampleBatch", () => {
     expect(queue.queueCount).toBe(result.jobDecisions.length);
     expect(queue.decisions).toHaveLength(result.jobDecisions.length);
     expect(queue.decisions[0]?.reasons.length).toBeGreaterThan(0);
+    expect(queue.decisions[0]?.url).toMatch(/^https?:\/\//);
+    expect(queue.decisions[0]?.descriptionExcerpt?.length).toBeGreaterThan(0);
+    expect(queue.decisions[0]?.jobDescriptionPath).toMatch(/^outputs\/jds\/.+\.md$/);
+    expect(queue.decisions[0]?.priority).toEqual(expect.any(Number));
+    await expect(readFile(path.join(workspaceRoot, queue.decisions[0]!.jobDescriptionPath!), "utf8"))
+      .resolves.toContain("## Job Description");
   });
 
   it("uses local config and local job files when present", async () => {
@@ -993,6 +1157,123 @@ describe("runSampleBatch", () => {
     expect(await readFile(result.outcomesPath, "utf8")).toContain("\"type\":\"interview\"");
   });
 
+  it("records an agent job decision against the latest ranked queue and preserves hard gates", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-record-decision-"));
+    const configPath = path.join(workspaceRoot, "config", "applycue.local.json");
+    const queuePath = path.join(workspaceRoot, "config", "outputs", "runs", "latest-job-decisions.json");
+    await mkdir(path.dirname(queuePath), { recursive: true });
+    await writeFile(configPath, JSON.stringify({ profile: { name: "Decision Candidate" } }), "utf8");
+    await writeFile(queuePath, JSON.stringify({
+      runId: "decision-test-run",
+      profileId: "decision-candidate",
+      generatedAt: "2026-07-10T09:59:00.000Z",
+      queueCount: 2,
+      decisions: [{
+        jobId: "job-clear",
+        company: "Clear Co",
+        title: "Product Lead",
+        sourceName: "ATS",
+        decision: "review",
+        reasons: ["Backend fit was promising."],
+        failedGates: [],
+        nextStep: "Review and prepare before submit."
+      },
+      {
+        jobId: "job-blocked",
+        company: "Blocked Co",
+        title: "Product Lead",
+        sourceName: "ATS",
+        decision: "skip",
+        reasons: ["Portal is blocked."],
+        failedGates: ["blocked-portal: User policy blocks this portal."],
+        nextStep: "Skipped until the blocker is resolved."
+      }]
+    }), "utf8");
+
+    const result = await recordJobDecision({
+      workspaceRoot,
+      applyCueHome: path.join(workspaceRoot, "empty-applycue-home"),
+      actorName: "codex",
+      decision: "apply",
+      evidenceRefs: ["agent-review:job-clear"],
+      jobId: "job-clear",
+      reasons: ["The CV evidence supports the must-have requirements."],
+      decidedAt: "2026-07-10T10:00:00.000Z"
+    });
+
+    expect(result.decision).toMatchObject({
+      actorKind: "agent",
+      actorName: "codex",
+      backendDecision: "review",
+      decision: "apply",
+      jobId: "job-clear"
+    });
+    expect(result.decision.evidenceRefs).toContain("outputs/runs/latest-job-decisions.json");
+    expect(await readFile(result.decisionsPath, "utf8")).toContain("agent-review:job-clear");
+
+    await expect(recordJobDecision({
+      workspaceRoot,
+      applyCueHome: path.join(workspaceRoot, "empty-applycue-home"),
+      actorName: "claude",
+      decision: "apply",
+      jobId: "job-blocked",
+      reasons: ["Would otherwise be a strong match."]
+    })).rejects.toThrow("hard gates failed");
+  });
+
+  it("records reviewed decisions atomically and skips an unchanged retry", async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-record-decisions-"));
+    const configPath = path.join(workspaceRoot, "config", "applycue.local.json");
+    const queuePath = path.join(workspaceRoot, "config", "outputs", "runs", "latest-job-decisions.json");
+    await mkdir(path.dirname(queuePath), { recursive: true });
+    await writeFile(configPath, JSON.stringify({ profile: { name: "Batch Candidate" } }), "utf8");
+    await writeFile(queuePath, JSON.stringify({
+      runId: "batch-decision-test-run",
+      profileId: "batch-candidate",
+      generatedAt: "2026-07-11T09:00:00.000Z",
+      queueCount: 3,
+      decisions: [
+        { jobId: "job-a", company: "A", title: "Product Lead", sourceName: "ATS", decision: "review", reasons: ["Promising."], failedGates: [], nextStep: "Review." },
+        { jobId: "job-b", company: "B", title: "Product Director", sourceName: "ATS", decision: "apply", reasons: ["Strong."], failedGates: [], nextStep: "Apply." },
+        { jobId: "job-blocked", company: "C", title: "Product VP", sourceName: "ATS", decision: "skip", reasons: ["Blocked."], failedGates: ["portal: blocked"], nextStep: "Skip." }
+      ]
+    }), "utf8");
+
+    const decisions = [
+      { jobId: "job-a", decision: "apply" as const, reasons: ["Approved profile evidence covers the requirements."] },
+      { jobId: "job-b", decision: "watch" as const, reasons: ["Good role, but not in today's top batch."] }
+    ];
+    const first = await recordJobDecisions({
+      workspaceRoot,
+      applyCueHome: path.join(workspaceRoot, "empty-applycue-home"),
+      actorName: "codex",
+      decisions
+    });
+    expect(first.recordedCount).toBe(2);
+    expect(first.skippedCount).toBe(0);
+
+    const retry = await recordJobDecisions({
+      workspaceRoot,
+      applyCueHome: path.join(workspaceRoot, "empty-applycue-home"),
+      actorName: "codex",
+      decisions
+    });
+    expect(retry.recordedCount).toBe(0);
+    expect(retry.skippedCount).toBe(2);
+    const beforeBlockedAttempt = await readFile(first.decisionsPath, "utf8");
+
+    await expect(recordJobDecisions({
+      workspaceRoot,
+      applyCueHome: path.join(workspaceRoot, "empty-applycue-home"),
+      actorName: "codex",
+      decisions: [
+        { jobId: "job-a", decision: "watch", reasons: ["Changed judgement."] },
+        { jobId: "job-blocked", decision: "apply", reasons: ["Would be attractive without the hard gate."] }
+      ]
+    })).rejects.toThrow("hard gates failed");
+    expect(await readFile(first.decisionsPath, "utf8")).toBe(beforeBlockedAttempt);
+  });
+
   it("records user and agent tuning signals without editing active config", async () => {
     const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-record-tuning-"));
     const configPath = path.join(workspaceRoot, "config", "applycue.local.json");
@@ -1545,14 +1826,14 @@ Lead product strategy and automation.
     expect(result.manifest.notes.some((note) => note.startsWith("Generated "))).toBe(true);
   });
 
-  it("loads approved reverse ATS directory sources from search config", async () => {
+  it("loads approved JobHive ATS directory sources from search config", async () => {
     const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "applycue-engine-ats-directory-"));
     await mkdir(path.join(workspaceRoot, "config"), { recursive: true });
     await writeFile(
       path.join(workspaceRoot, "config", "applycue.local.json"),
       JSON.stringify({
         profile: {
-          name: "Reverse ATS Candidate",
+          name: "JobHive Candidate",
           email: "reverse@example.com",
           currentDesignation: "Head of Product"
         },
@@ -1580,7 +1861,7 @@ Lead product strategy and automation.
               origin: "system_generated",
               status: "active",
               kind: "ats",
-              label: "Reverse ATS directory scan",
+              label: "JobHive ATS directory scan",
               enabled: true,
               provider: "ats_directory",
               query: "head of product",
@@ -1602,10 +1883,11 @@ Lead product strategy and automation.
       workspaceRoot,
       applyCueHome: path.join(workspaceRoot, "empty-applycue-home"),
       writeFiles: false,
+      atsDirectoryFetchText: async (url) => {
+        expect(url).toBe("https://storage.stapply.ai/jobhive/v1/greenhouse/companies.csv");
+        return "name,slug,url\nReverse Fintech,reversefintech,https://job-boards.greenhouse.io/reversefintech\n";
+      },
       atsDirectoryFetchJson: async (url) => {
-        if (url === "https://raw.githubusercontent.com/Feashliaa/job-board-aggregator/main/data/greenhouse_companies.json") {
-          return ["reversefintech"];
-        }
         if (url === "https://boards-api.greenhouse.io/v1/boards/reversefintech/jobs?content=true") {
           return {
             jobs: [
@@ -1624,9 +1906,9 @@ Lead product strategy and automation.
 
     expect(result.jobs).toHaveLength(1);
     expect(result.jobs[0]?.source.kind).toBe("ats");
-    expect(result.jobs[0]?.company).toBe("Reversefintech");
+    expect(result.jobs[0]?.company).toBe("Reverse Fintech");
     expect(result.cvVariants).toHaveLength(1);
-    expect(result.manifest.notes).toContain("Loaded 1 job(s) from 1 reverse ATS source(s).");
+    expect(result.manifest.notes).toContain("Loaded 1 job(s) from 1 ATS directory source(s).");
   });
 
   it("loads approved job-board sources from config", async () => {

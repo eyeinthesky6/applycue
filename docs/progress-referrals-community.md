@@ -2,6 +2,8 @@
 
 Date: 2026-07-06
 
+Status: deferred product plan. Current launch scope is defined in `launch-readiness.md`.
+
 ## Decision
 
 ApplyCue v1 stays local-first and focused.

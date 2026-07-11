@@ -8,6 +8,8 @@ import {
   approveApplicationAnswers,
   approveSourceSuggestions,
   applyTuningSignals,
+  recordJobDecision,
+  recordJobDecisions,
   recordOutcomeEvent,
   recordTuningSignal,
   type ApplicationAnswerInput,
@@ -15,6 +17,9 @@ import {
   type ApproveApplicationAnswersOptions,
   type ApproveSourceSuggestionsOptions,
   type RecordOutcomeEventOptions,
+  type RecordJobDecisionOptions,
+  type RecordJobDecisionInput,
+  type RecordJobDecisionsOptions,
   type RecordTuningSignalOptions,
   runLocalOrSampleBatch
 } from "@applycue/engine";
@@ -29,6 +34,7 @@ import { runLiveBrowserApply, type LiveBrowserApplyOptions } from "./live-apply.
 import { runLiveBrowserPreflight, type LiveBrowserPreflightOptions } from "./live-preflight.js";
 import { runMasterFormData, type MasterFormDataOptions } from "./master-form-data.js";
 import { setupApplyCue, type SetupApplyCueOptions } from "./setup.js";
+import { runSourceCanary, type SourceCanaryOptions } from "./source-canary.js";
 import { formatApplyCueStatus, readApplyCueStatus, type ApplyCueStatusOptions } from "./status.js";
 import { runApplyCueUat } from "./uat.js";
 import { extractEmailLeads, type ExtractEmailLeadsOptions } from "./email-lead-extractor.js";
@@ -39,10 +45,24 @@ export function rankDiscoveredJobs(jobs: JobRecord[], profile: UserProfile): Ran
 }
 
 export async function runFirstBuild(args: string[] = process.argv.slice(3)): Promise<void> {
-  const result = await runLocalOrSampleBatch(parseRunBatchArgs(args));
+  const result = await runLocalOrSampleBatch({
+    ...parseRunBatchArgs(args),
+    requireRecordedJobDecisions: true
+  });
   const prepared = result.applications.length;
   const cvCount = result.cvVariants.length;
   console.log(`ApplyCue first-build complete: ${prepared} application draft(s), ${cvCount} CV(s).`);
+  console.log(`Decision queue: ${path.join(result.outputRoot, "outputs", "runs", "latest-job-decisions.json")}`);
+  if (prepared === 0 && result.jobs.length > 0) {
+    console.log("No clear or recorded apply candidates were prepared.");
+    console.log("Next: review only the ambiguous rows, then run applycue:record-decisions -- --input <reviewed-decisions.json> --prepare.");
+  } else if (result.manifest.decisionAuthority === "system_clear") {
+    console.log("Preparation authority: clear rule-based shortlist with current hard gates.");
+  } else if (result.manifest.decisionAuthority === "hybrid_system_external") {
+    console.log("Preparation authority: clear rule-based matches plus recorded ambiguity decisions.");
+  } else if (result.manifest.decisionAuthority === "recorded_external") {
+    console.log("Preparation authority: recorded external-agent/user decisions with current hard gates.");
+  }
   console.log(`Dashboard: ${path.join(result.outputRoot, "outputs", "dashboard", "latest.html")}`);
   console.log(`Summary: ${path.join(result.outputRoot, "outputs", "runs", "latest-summary.md")}`);
   console.log(`Run manifest: ${path.join(result.outputRoot, "outputs", "runs", `${result.manifest.id}.json`)}`);
@@ -74,15 +94,18 @@ export async function runApproveAnswers(args: string[] = process.argv.slice(3)):
 
 export async function runSetupApplyCue(args: string[] = process.argv.slice(3)): Promise<void> {
   const result = await setupApplyCue(parseSetupArgs(args));
-  console.log("ApplyCue setup complete.");
+  console.log(result.setupStatus === "ready" ? "ApplyCue setup ready." : "ApplyCue setup needs profile input.");
   console.log(`Profile: ${result.profileDir}`);
   console.log(`Config: ${result.configPath}`);
   console.log(`JobSpy: ${result.jobSpyStatus}`);
   console.log(`Browser tool: ${result.browserToolStatus}`);
   console.log(`Approved safe sources: ${result.approvedSourceCount}`);
-  console.log(`Dashboard: ${result.dashboardPath}`);
-  console.log(`Summary: ${result.summaryPath}`);
-  console.log(`Run manifest: ${result.runManifestPath}`);
+  if (result.missingProfileFields.length > 0) {
+    console.log(`Missing profile fields: ${result.missingProfileFields.join(", ")}`);
+  }
+  if (result.dashboardPath) console.log(`Dashboard: ${result.dashboardPath}`);
+  if (result.summaryPath) console.log(`Summary: ${result.summaryPath}`);
+  if (result.runManifestPath) console.log(`Run manifest: ${result.runManifestPath}`);
   for (const note of result.notes) {
     console.log(`- ${note}`);
   }
@@ -97,6 +120,23 @@ export async function runUat(args: string[] = process.argv.slice(3)): Promise<vo
   console.log(`Report: ${report.paths.markdownReport}`);
   for (const check of report.checks) {
     console.log(`- ${check.status.toUpperCase()}: ${check.label} - ${check.detail}`);
+  }
+}
+
+export async function runSourceCanaryCommand(args: string[] = process.argv.slice(3)): Promise<void> {
+  const { json, options } = parseSourceCanaryArgs(args);
+  const report = await runSourceCanary(options);
+  if (report.status === "fail") process.exitCode = 1;
+  if (json) {
+    console.log(JSON.stringify(report, null, 2));
+    return;
+  }
+  console.log(`ApplyCue source canary ${report.status.toUpperCase()}.`);
+  console.log(report.summary);
+  console.log(`Report: ${report.paths.markdownReport}`);
+  console.log(`JSON: ${report.paths.jsonReport}`);
+  for (const source of report.sources) {
+    console.log(`- ${source.status.toUpperCase()}: ${source.label} (${source.provider}) - ${source.reason}`);
   }
 }
 
@@ -220,6 +260,44 @@ export async function runRecordOutcome(args: string[] = process.argv.slice(3)): 
   console.log(`Config: ${result.configPath}`);
 }
 
+export async function runRecordDecision(args: string[] = process.argv.slice(3)): Promise<void> {
+  const result = await recordJobDecision(parseRecordDecisionArgs(args));
+  console.log(`ApplyCue job decision recorded: ${result.decision.decision} for ${result.decision.jobId}.`);
+  console.log(`Actor: ${result.decision.actorKind}:${result.decision.actorName}`);
+  console.log(`Backend suggestion: ${result.decision.backendDecision}`);
+  console.log(`Decisions: ${result.decisionsPath}`);
+  console.log(`Evidence queue: ${result.sourceQueuePath}`);
+}
+
+export async function runRecordDecisions(args: string[] = process.argv.slice(3)): Promise<void> {
+  const command = parseRecordDecisionsArgs(args);
+  const payload = parseRecordDecisionsFile(await readJsonFile<unknown>(command.inputPath));
+  const result = await recordJobDecisions({
+    actorName: payload.actorName,
+    ...(payload.actorKind ? { actorKind: payload.actorKind } : {}),
+    ...(command.applyCueHome ? { applyCueHome: command.applyCueHome } : {}),
+    ...(command.configPath ? { configPath: command.configPath } : {}),
+    decisions: payload.decisions,
+    ...(command.profileKey ? { profileKey: command.profileKey } : {}),
+    workspaceRoot: process.cwd()
+  });
+  console.log(`ApplyCue decision batch complete: ${result.recordedCount} recorded, ${result.skippedCount} unchanged.`);
+  console.log(`Decisions: ${result.decisionsPath}`);
+  console.log(`Evidence queue: ${result.sourceQueuePath}`);
+  if (!command.prepare) return;
+
+  const prepared = await runLocalOrSampleBatch({
+    ...(command.applyCueHome ? { applyCueHome: command.applyCueHome } : {}),
+    ...(command.configPath ? { configPath: command.configPath } : {}),
+    ...(command.profileKey ? { profileKey: command.profileKey } : {}),
+    requireRecordedJobDecisions: true,
+    workspaceRoot: process.cwd(),
+    writeFiles: true
+  });
+  console.log(`Preparation complete: ${prepared.applications.length} draft(s), ${prepared.cvVariants.length} CV(s), ${prepared.applyRoutes.length} route(s).`);
+  console.log(`Summary: ${path.join(prepared.outputRoot, "outputs", "runs", "latest-summary.md")}`);
+}
+
 export async function runRecordTuning(args: string[] = process.argv.slice(3)): Promise<void> {
   const result = await recordTuningSignal(parseRecordTuningArgs(args));
   console.log(`ApplyCue tuning signal recorded: ${result.signal.origin} ${result.signal.action} ${result.signal.target}.`);
@@ -254,6 +332,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     await runSetupApplyCue();
   } else if (command === "uat") {
     await runUat();
+  } else if (command === "source-canary" || command === "source-canaries") {
+    await runSourceCanaryCommand();
   } else if (command === "browser-uat") {
     await runBrowserUat();
   } else if (command === "browser-live-preflight" || command === "live-preflight") {
@@ -274,6 +354,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     await runBrowserPreflight();
   } else if (command === "record-outcome") {
     await runRecordOutcome();
+  } else if (command === "record-decision" || command === "record-job-decision") {
+    await runRecordDecision();
+  } else if (command === "record-decisions" || command === "record-job-decisions") {
+    await runRecordDecisions();
   } else if (command === "record-tuning" || command === "record-tuning-signal") {
     await runRecordTuning();
   } else if (command === "apply-tuning" || command === "apply-tuning-signals") {
@@ -370,6 +454,57 @@ function parseStatusArgs(args: string[]): { json: boolean; options: ApplyCueStat
       options.applyCueHome = arg.slice("--applycue-home=".length);
     } else {
       throw new Error(`Unknown status option: ${arg}`);
+    }
+  }
+  return { json, options };
+}
+
+function parseSourceCanaryArgs(args: string[]): { json: boolean; options: SourceCanaryOptions } {
+  const options: SourceCanaryOptions = { workspaceRoot: process.cwd() };
+  let json = false;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (!arg || arg === "--") continue;
+    if (arg === "--json") {
+      json = true;
+    } else if (arg === "--include-disabled") {
+      options.includeDisabled = true;
+    } else if (arg === "--include-jobspy") {
+      options.includeJobSpy = true;
+    } else if (arg === "--jobspy-limit") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--jobspy-limit needs a positive source count.");
+      options.jobSpyLimit = parsePositiveInteger(value, "--jobspy-limit");
+      options.includeJobSpy = true;
+      index += 1;
+    } else if (arg.startsWith("--jobspy-limit=")) {
+      options.jobSpyLimit = parsePositiveInteger(arg.slice("--jobspy-limit=".length), "--jobspy-limit");
+      options.includeJobSpy = true;
+    } else if (arg === "--include-ats-directory" || arg === "--include-reverse-ats") {
+      options.includeAtsDirectory = true;
+    } else if (arg === "--config") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--config needs a path.");
+      options.configPath = value;
+      index += 1;
+    } else if (arg.startsWith("--config=")) {
+      options.configPath = arg.slice("--config=".length);
+    } else if (arg === "--profile") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--profile needs a profile key.");
+      options.profileKey = value;
+      index += 1;
+    } else if (arg.startsWith("--profile=")) {
+      options.profileKey = arg.slice("--profile=".length);
+    } else if (arg === "--applycue-home") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--applycue-home needs a path.");
+      options.applyCueHome = value;
+      index += 1;
+    } else if (arg.startsWith("--applycue-home=")) {
+      options.applyCueHome = arg.slice("--applycue-home=".length);
+    } else {
+      throw new Error(`Unknown source-canary option: ${arg}`);
     }
   }
   return { json, options };
@@ -772,6 +907,193 @@ function parseOutcomeType(value: string): OutcomeEvent["type"] {
   ];
   if (allowed.includes(normalized as OutcomeEvent["type"])) return normalized as OutcomeEvent["type"];
   throw new Error(`Unknown outcome type: ${value}`);
+}
+
+function parseRecordDecisionArgs(args: string[]): RecordJobDecisionOptions {
+  const options: Partial<RecordJobDecisionOptions> = {
+    workspaceRoot: process.cwd(),
+    actorKind: "agent",
+    evidenceRefs: [],
+    reasons: []
+  };
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (!arg || arg === "--") continue;
+    if (arg === "--job" || arg === "--job-id") {
+      const value = args[index + 1];
+      if (!value) throw new Error(`${arg} needs a job id.`);
+      options.jobId = value;
+      index += 1;
+    } else if (arg.startsWith("--job=")) {
+      options.jobId = arg.slice("--job=".length);
+    } else if (arg.startsWith("--job-id=")) {
+      options.jobId = arg.slice("--job-id=".length);
+    } else if (arg === "--decision") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--decision needs apply, review, watch, or skip.");
+      options.decision = parseAllowedValue(value, ["apply", "review", "watch", "skip"] as const, "job decision");
+      index += 1;
+    } else if (arg.startsWith("--decision=")) {
+      options.decision = parseAllowedValue(arg.slice("--decision=".length), ["apply", "review", "watch", "skip"] as const, "job decision");
+    } else if (arg === "--reason") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--reason needs text.");
+      options.reasons = [...(options.reasons ?? []), value];
+      index += 1;
+    } else if (arg.startsWith("--reason=")) {
+      options.reasons = [...(options.reasons ?? []), arg.slice("--reason=".length)];
+    } else if (arg === "--evidence" || arg === "--evidence-ref") {
+      const value = args[index + 1];
+      if (!value) throw new Error(`${arg} needs text.`);
+      options.evidenceRefs = [...(options.evidenceRefs ?? []), value];
+      index += 1;
+    } else if (arg.startsWith("--evidence=")) {
+      options.evidenceRefs = [...(options.evidenceRefs ?? []), arg.slice("--evidence=".length)];
+    } else if (arg.startsWith("--evidence-ref=")) {
+      options.evidenceRefs = [...(options.evidenceRefs ?? []), arg.slice("--evidence-ref=".length)];
+    } else if (arg === "--actor") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--actor needs a name such as codex, claude, or user.");
+      options.actorName = value;
+      index += 1;
+    } else if (arg.startsWith("--actor=")) {
+      options.actorName = arg.slice("--actor=".length);
+    } else if (arg === "--actor-kind") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--actor-kind needs agent or user.");
+      options.actorKind = parseAllowedValue(value, ["agent", "user"] as const, "job decision actor kind");
+      index += 1;
+    } else if (arg.startsWith("--actor-kind=")) {
+      options.actorKind = parseAllowedValue(arg.slice("--actor-kind=".length), ["agent", "user"] as const, "job decision actor kind");
+    } else if (arg === "--decided-at") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--decided-at needs an ISO date/time.");
+      options.decidedAt = value;
+      index += 1;
+    } else if (arg.startsWith("--decided-at=")) {
+      options.decidedAt = arg.slice("--decided-at=".length);
+    } else if (arg === "--id") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--id needs a decision id.");
+      options.id = value;
+      index += 1;
+    } else if (arg.startsWith("--id=")) {
+      options.id = arg.slice("--id=".length);
+    } else if (arg === "--config") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--config needs a path.");
+      options.configPath = value;
+      index += 1;
+    } else if (arg.startsWith("--config=")) {
+      options.configPath = arg.slice("--config=".length);
+    } else if (arg === "--profile") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--profile needs a profile key.");
+      options.profileKey = value;
+      index += 1;
+    } else if (arg.startsWith("--profile=")) {
+      options.profileKey = arg.slice("--profile=".length);
+    } else if (arg === "--applycue-home") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--applycue-home needs a path.");
+      options.applyCueHome = value;
+      index += 1;
+    } else if (arg.startsWith("--applycue-home=")) {
+      options.applyCueHome = arg.slice("--applycue-home=".length);
+    } else {
+      throw new Error(`Unknown record-decision option: ${arg}`);
+    }
+  }
+  if (!options.jobId) throw new Error("record-decision needs --job <id>.");
+  if (!options.decision) throw new Error("record-decision needs --decision <apply|review|watch|skip>.");
+  if (!options.actorName) throw new Error("record-decision needs --actor <codex|claude|user|name>.");
+  if (!options.reasons?.length) throw new Error("record-decision needs at least one --reason <text>.");
+  return options as RecordJobDecisionOptions;
+}
+
+interface RecordDecisionsCommandOptions {
+  applyCueHome?: string;
+  configPath?: string;
+  inputPath: string;
+  prepare: boolean;
+  profileKey?: string;
+}
+
+function parseRecordDecisionsArgs(args: string[]): RecordDecisionsCommandOptions {
+  const options: Partial<RecordDecisionsCommandOptions> = { prepare: false };
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (!arg || arg === "--") continue;
+    if (arg === "--input") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--input needs a reviewed decision batch JSON path.");
+      options.inputPath = value;
+      index += 1;
+    } else if (arg.startsWith("--input=")) {
+      options.inputPath = arg.slice("--input=".length);
+    } else if (arg === "--prepare") {
+      options.prepare = true;
+    } else if (arg === "--config") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--config needs a path.");
+      options.configPath = value;
+      index += 1;
+    } else if (arg.startsWith("--config=")) {
+      options.configPath = arg.slice("--config=".length);
+    } else if (arg === "--profile") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--profile needs a profile key.");
+      options.profileKey = value;
+      index += 1;
+    } else if (arg.startsWith("--profile=")) {
+      options.profileKey = arg.slice("--profile=".length);
+    } else if (arg === "--applycue-home") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--applycue-home needs a path.");
+      options.applyCueHome = value;
+      index += 1;
+    } else if (arg.startsWith("--applycue-home=")) {
+      options.applyCueHome = arg.slice("--applycue-home=".length);
+    } else {
+      throw new Error(`Unknown record-decisions option: ${arg}`);
+    }
+  }
+  if (!options.inputPath) throw new Error("record-decisions needs --input <reviewed-decisions.json>.");
+  return options as RecordDecisionsCommandOptions;
+}
+
+function parseRecordDecisionsFile(value: unknown): Pick<RecordJobDecisionsOptions, "actorKind" | "actorName" | "decisions"> {
+  if (!value || typeof value !== "object") throw new Error("The reviewed decision batch must be a JSON object.");
+  const record = value as Record<string, unknown>;
+  const actorName = typeof record.actorName === "string" ? record.actorName.trim() : "";
+  if (!actorName) throw new Error("The reviewed decision batch needs actorName such as codex, claude, or user.");
+  const actorKind = record.actorKind === undefined
+    ? "agent"
+    : parseAllowedValue(String(record.actorKind), ["agent", "user"] as const, "job decision actor kind");
+  if (!Array.isArray(record.decisions) || record.decisions.length === 0) {
+    throw new Error("The reviewed decision batch needs a non-empty decisions array.");
+  }
+  const decisions = record.decisions.map((item, index): RecordJobDecisionInput => {
+    if (!item || typeof item !== "object") throw new Error(`Decision ${index + 1} must be an object.`);
+    const decision = item as Record<string, unknown>;
+    const jobId = typeof decision.jobId === "string" ? decision.jobId.trim() : "";
+    if (!jobId) throw new Error(`Decision ${index + 1} needs jobId.`);
+    const reasons = Array.isArray(decision.reasons)
+      ? decision.reasons.filter((reason): reason is string => typeof reason === "string")
+      : [];
+    const evidenceRefs = Array.isArray(decision.evidenceRefs)
+      ? decision.evidenceRefs.filter((ref): ref is string => typeof ref === "string")
+      : [];
+    return {
+      jobId,
+      decision: parseAllowedValue(String(decision.decision ?? ""), ["apply", "review", "watch", "skip"] as const, `decision ${index + 1}`),
+      reasons,
+      ...(evidenceRefs.length > 0 ? { evidenceRefs } : {}),
+      ...(typeof decision.decidedAt === "string" ? { decidedAt: decision.decidedAt } : {}),
+      ...(typeof decision.id === "string" ? { id: decision.id } : {})
+    };
+  });
+  return { actorKind, actorName, decisions };
 }
 
 function parseRecordTuningArgs(args: string[]): RecordTuningSignalOptions {
@@ -1311,6 +1633,20 @@ function parseSetupArgs(args: string[]): SetupApplyCueOptions {
       options.targetRankingQueue = parsePositiveInteger(arg.slice("--target-ranking-queue=".length), "--target-ranking-queue");
     } else if (arg === "--auto-approve-sources") {
       options.autoApproveSources = true;
+    } else if (arg === "--input") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--input needs an ApplyCue config JSON path.");
+      options.profileInputPath = value;
+      index += 1;
+    } else if (arg.startsWith("--input=")) {
+      options.profileInputPath = arg.slice("--input=".length);
+    } else if (arg === "--base-cv") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--base-cv needs a DOCX, text-based PDF, Markdown, or text CV path.");
+      options.baseCvPath = value;
+      index += 1;
+    } else if (arg.startsWith("--base-cv=")) {
+      options.baseCvPath = arg.slice("--base-cv=".length);
     } else if (arg === "--profile") {
       const value = args[index + 1];
       if (!value) throw new Error("--profile needs a profile key.");
@@ -1450,6 +1786,7 @@ function printUsage(): void {
   console.log(`ApplyCue worker commands:
   first-build [--more-results] [--target-ranking-queue <count>] [--freshness-days <days>] [--include-older-posts]
   status [--json]
+  source-canary [--json] [--include-disabled] [--include-jobspy] [--jobspy-limit <count>] [--include-ats-directory]
   approve-answers --field <field-or-question> --value <approved-answer> [--alias <label>] [--dry-run]
   approve-answers --from-file <live-answer-approval-template.json> [--dry-run]
   approve-answers --from-live --set field=value [--set field=value] [--dry-run]
@@ -1461,9 +1798,11 @@ function printUsage(): void {
   form-data [--confirm] [--more-results] [--target-ranking-queue <count>] [--freshness-days <days>] [--include-older-posts]
   scan-email-leads --input <raw-email-connector-export.json|jsonl> [--import] [--import-dry-run]
   import-email-leads --input <connector-export.json|jsonl> [--dry-run]
-  setup [--skip-tools] [--skip-source-approval] [--auto-approve-sources] [--more-results] [--target-ranking-queue <count>] [--freshness-days <days>] [--include-older-posts]
+  setup [--input <applycue-config.json>] [--base-cv <cv.docx|cv.pdf|cv.md|cv.txt>] [--profile <key>] [--skip-tools] [--skip-source-approval] [--auto-approve-sources] [--more-results] [--target-ranking-queue <count>] [--freshness-days <days>] [--include-older-posts]
   uat [--skip-tools] [--skip-source-approval] [--auto-approve-sources] [--more-results] [--target-ranking-queue <count>] [--freshness-days <days>] [--include-older-posts]
   record-outcome --application <application-id> --type <type> [--note <text>]
+  record-decision --job <job-id> --decision <apply|review|watch|skip> --actor <name> --reason <text> [--evidence <ref>]
+  record-decisions --input <reviewed-decisions.json> [--prepare]
   record-tuning --origin <origin> --target <target> --action <action> --value <text> --reason <text>
   apply-tuning --ids <signal-id[,signal-id]> [--dry-run]
   apply-tuning --all [--dry-run]

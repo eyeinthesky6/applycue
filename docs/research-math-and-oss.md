@@ -2,6 +2,8 @@
 
 Date: 2026-07-07
 
+Status: supporting research. `ARCHITECTURE.md` owns current math and judgement boundaries.
+
 ## Stance
 
 ApplyCue is not a generic job board, search engine, or "Google for jobs."
@@ -164,7 +166,8 @@ Do not force the user to explain every rejection. If they give a reason, store i
 Use libraries where they remove boring plumbing:
 
 - `docx` for DOCX export
-- Mammoth.js for DOCX CV import
+- Mammoth.js for the implemented raw-text DOCX CV import
+- PDF.js for the implemented text-based PDF CV import
 - Ajv or TypeScript contracts for validation
 - JobSpy for job-board fetching
 - Playwright/browser tools for application execution and testing

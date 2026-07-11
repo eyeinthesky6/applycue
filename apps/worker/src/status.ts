@@ -1,4 +1,4 @@
-import type { ProgressFreshnessSummary, ProgressScanHistorySummary, ProgressSourceOutcomeSummary, ProgressSourceQualitySummary, RunManifest } from "@applycue/core";
+import type { ProgressFreshnessSummary, ProgressFunnelHealthSummary, ProgressScanHistorySummary, ProgressSourceOutcomeSummary, ProgressSourceQualitySummary, RunManifest } from "@applycue/core";
 import { getApplyCueProfileConfigPath, getApplyCueProfileDir } from "@applycue/profile";
 import { access, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
@@ -6,7 +6,7 @@ import type { BrowserApplyUatReport, BrowserApplyUatStatus } from "./browser-uat
 import type { LiveBrowserPreflightReport, LiveBrowserPreflightStatus } from "./live-preflight.js";
 import type { UatReport, UatStatus } from "./uat.js";
 
-export type ApplyCueStatusKind = "needs_setup" | "needs_profile" | "needs_run" | "needs_uat" | "warning" | "blocked" | "ready";
+export type ApplyCueStatusKind = "needs_setup" | "needs_profile" | "needs_run" | "needs_decisions" | "needs_uat" | "warning" | "blocked" | "ready";
 
 export interface ApplyCueStatusOptions {
   applyCueHome?: string;
@@ -66,6 +66,8 @@ export interface ApplyCueLatestRunStatus {
   jobs: number;
   profileId: string;
   sourceCodeWriteCount: number;
+  decisionAuthority?: RunManifest["decisionAuthority"];
+  funnelHealth?: ProgressFunnelHealthSummary;
   freshness?: ProgressFreshnessSummary;
   scanHistory?: ProgressScanHistorySummary;
   sourceOutcomes?: ProgressSourceOutcomeSummary;
@@ -81,6 +83,7 @@ export interface ApplyCueStatusReport {
   nextAction: string;
   paths: {
     config: string;
+    decisionQueue: string;
     liveAnswerApprovalTemplate: string;
     dashboard: string;
     browserUatReport: string;
@@ -133,6 +136,7 @@ export async function readApplyCueStatus(options: ApplyCueStatusOptions = {}): P
   const runsDir = path.join(profileDir, "outputs", "runs");
   const dashboardPath = path.join(profileDir, "outputs", "dashboard", "latest.html");
   const summaryPath = path.join(runsDir, "latest-summary.md");
+  const decisionQueuePath = path.join(runsDir, "latest-job-decisions.json");
   const uatReportPath = path.join(runsDir, "uat-report.json");
   const browserUatReportPath = path.join(profileDir, "outputs", "browser-uat", "browser-uat-report.json");
   const livePreflightDir = path.join(profileDir, "outputs", "live-preflight");
@@ -164,6 +168,7 @@ export async function readApplyCueStatus(options: ApplyCueStatusOptions = {}): P
   const status = determineStatus(config, latestUat, latestRun, summaryExcerpt.length > 0);
   const paths = {
     config: configPath,
+    decisionQueue: decisionQueuePath,
     dashboard: dashboardPath,
     browserUatReport: browserUatReportPath,
     liveAnswerApprovalTemplate: liveAnswerApprovalTemplatePath,
@@ -276,6 +281,22 @@ export function formatApplyCueStatus(report: ApplyCueStatusReport): string {
     lines.push(
       `Latest run: ${report.latestRun.jobs} job(s), ${report.latestRun.cvs} CV(s), ${report.latestRun.applications} application draft(s).`
     );
+    if (report.latestRun.decisionAuthority === "awaiting_external") {
+      lines.push("Decision authority: the rules found no clear shortlist yet; ambiguous jobs await Codex, Claude, or user review.");
+    } else if (report.latestRun.decisionAuthority === "system_clear") {
+      lines.push("Decision authority: clear rule-based shortlist with current hard gates; review mode still prevents unapproved submission.");
+    } else if (report.latestRun.decisionAuthority === "hybrid_system_external") {
+      lines.push("Decision authority: clear rule-based matches plus recorded Codex, Claude, or user decisions for ambiguous jobs.");
+    } else if (report.latestRun.decisionAuthority === "recorded_external") {
+      lines.push("Decision authority: recorded Codex, Claude, or user decisions with current hard gates.");
+    } else {
+      lines.push("Decision authority: UAT/test or older unproven suggestions only; these drafts are not an agent-approved preparation queue.");
+    }
+    if (report.latestRun.funnelHealth) {
+      lines.push(
+        `Decision queue: ${report.latestRun.funnelHealth.recordedDecisions ?? 0} recorded, ${report.latestRun.funnelHealth.awaitingDecisions ?? 0} awaiting review.`
+      );
+    }
     if (report.latestRun.sourceQuality) {
       lines.push(
         `Source quality: ${report.latestRun.sourceQuality.keptJobs} kept of ${report.latestRun.sourceQuality.inputJobs} found.`
@@ -393,6 +414,8 @@ async function readLatestRun(manifestPath: string): Promise<ApplyCueLatestRunSta
     profileId: parsed.profileId,
     sourceCodeWriteCount: parsed.sourceCodeWriteCount
   };
+  if (parsed.decisionAuthority) latestRun.decisionAuthority = parsed.decisionAuthority;
+  if (parsed.funnelHealth) latestRun.funnelHealth = parsed.funnelHealth;
   if (parsed.freshness) latestRun.freshness = parsed.freshness;
   if (parsed.scanHistory) latestRun.scanHistory = parsed.scanHistory;
   if (parsed.sourceOutcomes) latestRun.sourceOutcomes = parsed.sourceOutcomes;
@@ -423,22 +446,30 @@ function isLivePreflightCurrent(
 }
 
 async function resolveManifestPath(runsDir: string, reportedManifestPath?: string): Promise<string | undefined> {
+  // UAT reports point at isolated test manifests. Prefer the newest normal run
+  // in the profile and use the reported UAT manifest only when no real run
+  // exists yet.
+  const normalManifestPath = await findLatestManifestPath(runsDir);
+  if (normalManifestPath) return normalManifestPath;
   if (reportedManifestPath && await fileExists(reportedManifestPath)) return reportedManifestPath;
-  return findLatestManifestPath(runsDir);
+  return undefined;
 }
 
 async function findLatestManifestPath(runsDir: string): Promise<string | undefined> {
   try {
     const entries = await readdir(runsDir, { withFileTypes: true });
-    const candidates = entries
+    const candidates = await Promise.all(entries
       .filter((entry) => entry.isFile() && entry.name.endsWith(".json") && entry.name !== "uat-report.json")
-      .map((entry) => path.join(runsDir, entry.name));
-    let latest: { path: string; mtimeMs: number } | undefined;
+      .map(async (entry) => {
+        const candidatePath = path.join(runsDir, entry.name);
+        return { path: candidatePath, mtimeMs: (await stat(candidatePath)).mtimeMs };
+      }));
+    candidates.sort((left, right) => right.mtimeMs - left.mtimeMs);
     for (const candidate of candidates) {
-      const stats = await stat(candidate);
-      if (!latest || stats.mtimeMs > latest.mtimeMs) latest = { path: candidate, mtimeMs: stats.mtimeMs };
+      const parsed = await readJsonFile<unknown>(candidate.path);
+      if (isRunManifest(parsed)) return candidate.path;
     }
-    return latest?.path;
+    return undefined;
   } catch {
     return undefined;
   }
@@ -471,24 +502,27 @@ function buildAgentHandoff(input: {
   summaryContent: string;
 }): ApplyCueAgentHandoff {
   const parsed = parseRunSummaryForHandoff(input.summaryContent);
+  const hasApprovedPreparation = isApprovedDecisionAuthority(input.latestRun?.decisionAuthority);
   const headline = buildHandoffHeadline(input.status, input.latestUat, input.latestRun, input.missing);
   const readyQueue = parsed.readyQueue.length > 0
-    ? parsed.readyQueue
+    ? !isApprovedDecisionAuthority(input.latestRun?.decisionAuthority) ? [] : parsed.readyQueue
     : input.latestRun?.applications
-      ? [`${input.latestRun.applications} prepared application(s); open the summary for role details.`]
+      ? !isApprovedDecisionAuthority(input.latestRun.decisionAuthority)
+        ? []
+        : [`${input.latestRun.applications} prepared application(s); open the summary for role details.`]
       : [];
   const needsAttention = [
     ...input.missing.map((item) => `Missing or not proven: ${item}`),
     ...browserUatAttention(input.latestBrowserUat),
     ...livePreflightAttention(input.latestLivePreflight),
-    ...parsed.needsAttention
+    ...(hasApprovedPreparation ? parsed.needsAttention : [])
   ];
   const browserSteps = browserUatNextSteps(input.latestBrowserUat);
   const liveSteps = livePreflightNextSteps(input.latestLivePreflight);
   const safetySteps = [...browserSteps, ...liveSteps];
   const nextSteps = [
     ...safetySteps,
-    ...(parsed.nextSteps.length > 0
+    ...(hasApprovedPreparation && parsed.nextSteps.length > 0
       ? parsed.nextSteps
       : safetySteps.length > 0
         ? []
@@ -498,6 +532,7 @@ function buildAgentHandoff(input: {
   const evidence = [
     `Profile: ${input.paths.profile}`,
     `Config: ${input.paths.config}`,
+    `Decision queue: ${input.paths.decisionQueue}`,
     `Dashboard: ${input.paths.dashboard}`,
     `Summary: ${input.paths.summary}`,
     `UAT report: ${input.paths.uatReport}`,
@@ -598,58 +633,72 @@ function approvalCommand(latestLivePreflight: LiveBrowserPreflightReport, maxFie
   const visibleFields = Number.isFinite(maxFields) ? reusableFields.slice(0, maxFields) : reusableFields;
   const sets = visibleFields.map((field) => `--set ${field}="<approved answer>"`);
   const suffix = Number.isFinite(maxFields) && reusableFields.length > maxFields ? " ..." : "";
-  return `pnpm approve-answers -- --from-live ${sets.join(" ")}${suffix}`.trim();
+  return `pnpm applycue:approve-answers -- --from-live ${sets.join(" ")}${suffix}`.trim();
 }
 
 function buildCommandCenter(input: {
   latestBrowserUat: BrowserApplyUatReport | undefined;
   latestLivePreflight: LiveBrowserPreflightReport | undefined;
+  latestRun: ApplyCueLatestRunStatus | undefined;
   status: ApplyCueStatusKind;
 }): string[] {
   if (input.status === "needs_setup" || input.status === "needs_profile") {
-    return ["pnpm setup-applycue", "pnpm status"];
+    return ["pnpm applycue:setup", "pnpm applycue:status"];
   }
   if (input.status === "needs_run") {
-    return ["pnpm first-build", "pnpm uat", "pnpm status"];
+    if (input.latestRun && !isApprovedDecisionAuthority(input.latestRun.decisionAuthority)) {
+      return [
+        "pnpm applycue:record-decision -- --job <id> --decision <apply|review|watch|skip> --actor <name> --reason <why> --evidence <ref>",
+        "pnpm applycue:first-build",
+        "pnpm applycue:status"
+      ];
+    }
+    return ["pnpm applycue:first-build", "pnpm applycue:uat", "pnpm applycue:status"];
+  }
+  if (input.status === "needs_decisions") {
+    return [
+      "pnpm applycue:record-decisions -- --input <reviewed-decisions.json> --prepare",
+      "pnpm applycue:status"
+    ];
   }
   if (input.status === "needs_uat") {
-    return ["pnpm uat", "pnpm browser-uat", "pnpm status"];
+    return ["pnpm applycue:uat", "pnpm applycue:browser-uat", "pnpm applycue:status"];
   }
   if (input.status === "blocked") {
-    return ["pnpm uat", "pnpm status"];
+    return ["pnpm applycue:uat", "pnpm applycue:status"];
   }
   if (input.status === "warning" && input.latestBrowserUat && input.latestBrowserUat.status !== "pass") {
-    return ["pnpm browser-uat", "pnpm status"];
+    return ["pnpm applycue:browser-uat", "pnpm applycue:status"];
   }
   if (input.status === "warning") {
-    return ["pnpm form-data", "pnpm apply-route", "pnpm uat", "pnpm status"];
+    return ["pnpm applycue:form-data", "pnpm applycue:apply-route", "pnpm applycue:uat", "pnpm applycue:status"];
   }
   if (input.latestBrowserUat && input.latestBrowserUat.status !== "pass") {
-    return ["pnpm browser-uat", "pnpm status"];
+    return ["pnpm applycue:browser-uat", "pnpm applycue:status"];
   }
   if (input.latestLivePreflight && input.latestLivePreflight.status !== "pass") {
     return livePreflightCommandCenter(input.latestLivePreflight);
   }
   if (input.latestLivePreflight?.status === "pass") {
-    return ["pnpm form-data", "pnpm browser-live-apply", "pnpm browser-live-preflight", "pnpm status"];
+    return ["pnpm applycue:form-data", "pnpm applycue:browser-live-apply", "pnpm applycue:browser-live-preflight", "pnpm applycue:status"];
   }
-  return ["pnpm form-data", "pnpm apply-route", "pnpm browser-live-preflight", "pnpm status"];
+  return ["pnpm applycue:form-data", "pnpm applycue:apply-route", "pnpm applycue:browser-live-preflight", "pnpm applycue:status"];
 }
 
 function livePreflightCommandCenter(latestLivePreflight: LiveBrowserPreflightReport): string[] {
   if (latestLivePreflight.status === "skipped") {
-    return ["pnpm browser-live-preflight", "pnpm status"];
+    return ["pnpm applycue:browser-live-preflight", "pnpm applycue:status"];
   }
   if (latestLivePreflight.status === "pause") {
     const promptCount = latestLivePreflight.answerPrompts?.length ?? 0;
     const reusablePromptCount = latestLivePreflight.answerPrompts?.filter((prompt) => prompt.canSaveAsReusable).length ?? 0;
     if (promptCount > 0 && reusablePromptCount > 0) {
       const command = approvalCommand(latestLivePreflight);
-      return [`${command} --dry-run`, command, "pnpm browser-live-preflight", "pnpm status"];
+      return [`${command} --dry-run`, command, "pnpm applycue:browser-live-preflight", "pnpm applycue:status"];
     }
-    return ["pnpm browser-live-preflight", "pnpm status"];
+    return ["pnpm applycue:browser-live-preflight", "pnpm applycue:status"];
   }
-  return ["pnpm browser-live-preflight", "pnpm status"];
+  return ["pnpm applycue:browser-live-preflight", "pnpm applycue:status"];
 }
 
 function browserUatAttention(latestBrowserUat: BrowserApplyUatReport | undefined): string[] {
@@ -685,7 +734,14 @@ function buildHandoffHeadline(
     return `Setup needs blocking profile data: ${missing.join(", ") || "profile details"}.`;
   }
   if (status === "needs_run") {
+    if (missing.includes("agent-approved preparation run")) {
+      return "UAT mechanics passed, but the ranked jobs still need recorded Codex/Claude or user decisions before preparation is current.";
+    }
     return "Profile exists, but no current run summary is available.";
+  }
+  if (status === "needs_decisions" && latestRun) {
+    const awaiting = latestRun.funnelHealth?.awaitingDecisions ?? latestRun.jobs;
+    return `${awaiting} ranked job(s) await Codex/Claude or user review; source supply is sufficient and should not be widened yet.`;
   }
   if (status === "needs_uat") {
     return "Run exists, but UAT has not proven it is safe for browser/application work.";
@@ -743,6 +799,11 @@ function determineStatus(
   if (!config.exists) return "needs_setup";
   if (config.readError || !config.hasBaseCv || !config.hasTargetRoles || !config.hasUserIdentity) return "needs_profile";
   if (!latestRun || !hasSummary) return "needs_run";
+  if (latestRun.funnelHealth?.status === "awaiting_decisions" && (latestRun.funnelHealth.awaitingDecisions ?? 0) > 0) {
+    return "needs_decisions";
+  }
+  if (latestRun.decisionAuthority === "awaiting_external" && latestRun.jobs > 0) return "needs_decisions";
+  if (!isApprovedDecisionAuthority(latestRun.decisionAuthority)) return "needs_run";
   if (!latestUat) return "needs_uat";
   if (latestUat.status === "fail") return "blocked";
   if (latestUat.status === "warn") return "warning";
@@ -766,10 +827,24 @@ function buildMissingList(input: {
     if (!input.config.hasTargetRoles) missing.push("target roles");
   }
   if (!input.latestRun) missing.push("latest run manifest");
+  if (
+    input.latestRun?.decisionAuthority === "awaiting_external" ||
+    (input.latestRun?.funnelHealth?.status === "awaiting_decisions" && (input.latestRun.funnelHealth.awaitingDecisions ?? 0) > 0)
+  ) {
+    missing.push("recorded candidate decisions");
+  } else if (input.latestRun && !isApprovedDecisionAuthority(input.latestRun.decisionAuthority)) {
+    missing.push("agent-approved preparation run");
+  }
   if (!input.summaryExists) missing.push("chat summary");
   if (!input.dashboardExists) missing.push("dashboard");
   if (!input.latestUat) missing.push("UAT report");
   return missing;
+}
+
+function isApprovedDecisionAuthority(
+  authority: RunManifest["decisionAuthority"] | undefined
+): authority is "system_clear" | "hybrid_system_external" | "recorded_external" {
+  return authority === "system_clear" || authority === "hybrid_system_external" || authority === "recorded_external";
 }
 
 function nextActionFor(
@@ -785,7 +860,13 @@ function nextActionFor(
     return `Ask only for the missing blocking setup data (${missing.join(", ")}), then rerun setup in review mode.`;
   }
   if (status === "needs_run") {
+    if (missing.includes("agent-approved preparation run")) {
+      return "Review outputs/runs/latest-job-decisions.json, record apply/review/watch/skip decisions, then rerun first-build so only recorded apply jobs are prepared.";
+    }
     return "Run a safe review batch so the dashboard, summary, and manifest exist.";
+  }
+  if (status === "needs_decisions") {
+    return "Review the enriched decision queue, save one reviewed decision batch, then run record-decisions with --prepare to generate CVs, diagnostics, drafts, and routes without another manual step.";
   }
   if (status === "needs_uat") {
     return "Run UAT before live browser application testing.";

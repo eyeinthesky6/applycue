@@ -6,6 +6,7 @@ import {
 } from "@applycue/browser-agent";
 import type { BrowserApplyAction, BrowserApplyPlan } from "@applycue/core";
 import { runLocalOrSampleBatch, type SampleBatchResult } from "@applycue/engine";
+import { getApplyCueProfileDir } from "@applycue/profile";
 import { access, mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -43,6 +44,7 @@ export interface BrowserApplyUatOptions extends SetupApplyCueOptions {
   batch?: Pick<SampleBatchResult, "browserPlans" | "outputRoot">;
   importPlaywright?: DynamicImport;
   playwright?: PlaywrightModule;
+  runBatch?: typeof runLocalOrSampleBatch;
 }
 
 interface PlaywrightBrowser {
@@ -62,8 +64,17 @@ const dynamicImport: DynamicImport = new Function("specifier", "return import(sp
 
 export async function runBrowserApplyUat(options: BrowserApplyUatOptions = {}): Promise<BrowserApplyUatReport> {
   const workspaceRoot = options.workspaceRoot ?? process.cwd();
-  const batch = options.batch ?? await runLocalOrSampleBatch({
+  const profileDir = getApplyCueProfileDir({
+    ...(options.applyCueHome ? { applyCueHome: options.applyCueHome } : {}),
+    ...(options.profileKey ? { profileKey: options.profileKey } : {})
+  });
+  const generatedBatchOutputRoot = path.join(profileDir, "outputs", "browser-uat", "batch");
+  const batch = options.batch ?? await (options.runBatch ?? runLocalOrSampleBatch)({
     workspaceRoot,
+    outputRoot: generatedBatchOutputRoot,
+    requireRecordedJobDecisions: false,
+    runId: "browser-uat-batch",
+    scanHistoryPath: path.join(generatedBatchOutputRoot, "data", "local", "scan-history.jsonl"),
     ...(options.applyCueHome ? { applyCueHome: options.applyCueHome } : {}),
     ...(typeof options.freshnessDays === "number" ? { freshnessDays: options.freshnessDays } : {}),
     ...(typeof options.generatedSourceExpansion === "boolean" ? { generatedSourceExpansion: options.generatedSourceExpansion } : {}),
@@ -72,7 +83,9 @@ export async function runBrowserApplyUat(options: BrowserApplyUatOptions = {}): 
     ...(typeof options.targetRankingQueue === "number" ? { targetRankingQueue: options.targetRankingQueue } : {}),
     writeFiles: true
   });
-  const outputDir = path.join(batch.outputRoot, "outputs", "browser-uat");
+  const outputDir = options.batch
+    ? path.join(batch.outputRoot, "outputs", "browser-uat")
+    : path.join(profileDir, "outputs", "browser-uat");
   const reportPaths = browserUatPaths(outputDir, "browser-uat");
   await mkdir(outputDir, { recursive: true });
 

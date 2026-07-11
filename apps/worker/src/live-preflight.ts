@@ -109,6 +109,7 @@ export async function runLiveBrowserPreflight(
   const workspaceRoot = options.workspaceRoot ?? process.cwd();
   const batch = options.batch ?? await runLocalOrSampleBatch({
     workspaceRoot,
+    requireRecordedJobDecisions: true,
     ...(options.applyCueHome ? { applyCueHome: options.applyCueHome } : {}),
     ...(options.profileKey ? { profileKey: options.profileKey } : {}),
     writeFiles: true
@@ -473,7 +474,7 @@ function buildAnswerApprovalTemplate(report: LiveBrowserPreflightReport): LiveAn
     ...(report.selectedRoleTitle ? { selectedRoleTitle: report.selectedRoleTitle } : {}),
     ...(report.checkedUrl ? { checkedUrl: report.checkedUrl } : {}),
     sourceRef,
-    instructions: "For reusable answers only: fill value, set approveForReuse to true after explicit user approval, then run pnpm approve-answers -- --from-file <this-file> --dry-run before saving. One-off answers are included for form review only and are ignored by reusable answer approval.",
+    instructions: "For reusable answers only: fill value, set approveForReuse to true after explicit user approval, then run pnpm applycue:approve-answers -- --from-file <this-file> --dry-run before saving. One-off answers are included for form review only and are ignored by reusable answer approval.",
     reusableAnswers: prompts.filter((prompt) => prompt.canSaveAsReusable).map(toTemplateItem),
     oneOffAnswers: prompts.filter((prompt) => !prompt.canSaveAsReusable).map(toTemplateItem)
   };
@@ -507,7 +508,7 @@ function createAnswerPrompt(question: string, kind: LiveBrowserAnswerPrompt["kin
   };
   if (canSaveAsReusable) {
     prompt.suggestedDryRunCommand = [
-      "pnpm approve-answers -- --dry-run",
+      "pnpm applycue:approve-answers -- --dry-run",
       `--field ${quoteCliArg(field)}`,
       "--value \"<approved answer>\"",
       `--alias ${quoteCliArg(cleanedQuestion)}`
@@ -586,9 +587,9 @@ ${promptLines}
 function renderApproveAnswersSetCommand(prompts: LiveBrowserAnswerPrompt[]): string {
   const reusablePrompts = prompts.filter((prompt) => prompt.canSaveAsReusable);
   if (reusablePrompts.length === 0) {
-    return "pnpm approve-answers -- --from-live --dry-run";
+    return "pnpm applycue:approve-answers -- --from-live --dry-run";
   }
-  const lines = ["pnpm approve-answers -- --from-live `"];
+  const lines = ["pnpm applycue:approve-answers -- --from-live `"];
   lines.push(
     ...reusablePrompts.map((prompt, index) => {
       const suffix = index === reusablePrompts.length - 1 ? "" : " `";

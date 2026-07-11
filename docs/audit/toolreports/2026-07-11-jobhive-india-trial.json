@@ -1,0 +1,127 @@
+{
+  "trial": "jobhive-india-discovery",
+  "tool": "JobHive dataset with DuckDB remote Parquet queries",
+  "lane": "India ATS snapshot discovery and ATS company seed directory",
+  "success": true,
+  "evidence_level": "contract",
+  "runtime_promotion_allowed": false,
+  "owner": "packages/discovery",
+  "forbidden_authority": [
+    "candidate ranking",
+    "CV facts or truth",
+    "source approval",
+    "application permission",
+    "user state"
+  ],
+  "allowed_write_scope": [
+    "packages/discovery adapter code",
+    "focused tests",
+    "architecture and configuration docs",
+    "this evidence report"
+  ],
+  "evidence": {
+    "license": "MIT",
+    "manifest_url": "https://storage.stapply.ai/jobhive/v1/manifest.json",
+    "manifest_jobs_observed": 4278883,
+    "directory_live_smoke": {
+      "providers": ["rippling", "recruitee", "pinpoint", "bamboohr"],
+      "sampled_companies_per_provider": 2,
+      "normalized_jobs": 148,
+      "india_jobs": 0,
+      "finding": "Transport passed, but global company sampling did not target India. Directory retained only as a bounded seed."
+    },
+    "snapshot_live_contract": {
+      "providers": ["rippling", "recruitee", "pinpoint", "bamboohr"],
+      "title_term": "product",
+      "location_term": "India",
+      "normalized_jobs": 30,
+      "warnings": 0,
+      "duration_ms": 17864,
+      "production_substring_false_positives": 0
+    },
+    "focused_tests": {
+      "files": 4,
+      "tests_passed_before_final_full_check": 103
+    },
+    "final_verification": {
+      "applycue_check": "pass",
+      "test_files": 21,
+      "tests_passed": 253,
+      "uat": "pass",
+      "uat_jobs": 72,
+      "uat_cvs": 5,
+      "uat_application_drafts": 5,
+      "uat_browser_plans": 5,
+      "local_duckdb_version": "1.5.4",
+      "installed_runtime_smoke": {
+        "providers": ["pinpoint", "bamboohr"],
+        "normalized_jobs": 5,
+        "warnings": 0,
+        "duration_ms": 12287
+      },
+      "profile_runtime": {
+        "jobhive_source_approved": true,
+        "broad_ats_directory_enabled": false,
+        "discovered_jobs_all_sources": 98,
+        "source_quality_kept": 74,
+        "freshness_kept": 71,
+        "dedupe_kept": 62,
+        "jobhive_strict_senior_jobs": 1,
+        "jobhive_jobs_after_freshness": 0,
+        "jobhive_filtered_example": {
+          "title": "Director of Product, Global Tax Platform",
+          "location": "Bangalore, India",
+          "posted_at": "2026-04-22T15:34:56.692Z",
+          "reason": "outside the active 30-day freshness window"
+        }
+      }
+    }
+  },
+  "kpi_coverage": {
+    "input_contract": "pass",
+    "output_contract": "pass",
+    "india_relevance_smoke": "pass",
+    "unsafe_url_rejection": "pass",
+    "whole_term_matching": "pass",
+    "latency": "pass for optional batch source",
+    "unique_yield_vs_jobspy": "not yet measured",
+    "stale_and_duplicate_rate": "not yet measured",
+    "outcome_value": "not yet measured"
+  },
+  "custom_component_map": [
+    {
+      "component": "ApplyCue ATS adapters, normalization, filters, ranking, and policy",
+      "decision": "keep"
+    },
+    {
+      "component": "Feashliaa mutable CC BY-NC company-list runtime dependency",
+      "decision": "replace"
+    },
+    {
+      "component": "JobHive aggregate snapshot download",
+      "decision": "reject for normal runs"
+    }
+  ],
+  "consumption_plan": {
+    "input": "approved JobBoardSourceConfig or AtsDirectorySourceConfig",
+    "output": "ApplyCue JobRecord[]",
+    "vendor_native_objects_persisted": false
+  },
+  "win_definition": {
+    "responsibility": "supply relevant India ATS jobs without custom scraper maintenance or a non-commercial data dependency",
+    "contract_win": true,
+    "default_source_win": false
+  },
+  "accuracy_and_relevance_model": {
+    "title_and_location_filter": "case-insensitive whole-term regex executed in DuckDB",
+    "downstream_controls": ["ApplyCue search profile", "dedupe", "freshness", "hard gates", "agent review"],
+    "non_faked_evidence": "live remote JobHive Parquet and employer ATS URLs"
+  },
+  "decision": {
+    "pattern": "sidecar",
+    "status": "review-only implementation ready",
+    "auto_approved": false,
+    "next_gate": "repeated JobHive-versus-JobSpy overlap, freshness, unique qualified yield, and outcome scorecards"
+  },
+  "rollback": "Disable or remove the jobhive/ats_directory source entry; JobSpy, direct ATS, manual, email, and browser-approved lanes remain."
+}

@@ -1,84 +1,86 @@
-# Legal Disclaimer & Acceptable Use
+# Legal Disclaimer And Acceptable Use
 
-## 1. Nature of the Project
+Status: project disclaimer, not legal advice. Review with qualified counsel before a formal commercial or regulated launch.
 
-`ApplyCue` is a collection of Markdown prompts, Node.js scripts, and HTML templates. It is strictly a local execution tool. The maintainers do not host, deploy, or operate an AI system, nor do we provide API access to Large Language Models (LLMs).
+## 1. Current Product Shape
 
-Users download the code, run it on their own machines, and connect it to their own AI provider (Anthropic, OpenAI, or any other). The maintainers have no visibility into, control over, or responsibility for how the tool is used after download.
+ApplyCue is currently distributed as local source code plus an agent skill. The supported engine is TypeScript under `apps/` and `packages/`; inherited Markdown modes and root scripts have been removed from this branch, with historical evidence retained only in dated docs and Git history.
 
-## 2. Data Privacy (GDPR)
+The canonical runtime does not require ApplyCue to host a model or require a model API key. The user chooses an external agent product such as Codex or Claude. That agent provider may process the CV, job description, and chat content under its own terms and privacy settings.
 
-The maintainers do not act as a Data Controller or Data Processor under GDPR or any other data protection regulation.
+## 2. Personal Data
 
-- All Personal Identifiable Information (PII) you input — CVs, contact details, career history — is processed locally on your machine.
-- When you use an AI CLI tool (Claude Code, Codex, OpenCode), your data is sent directly to the AI provider you chose. Review their privacy policies.
-- We do not collect analytics, telemetry, or usage data of any kind.
-- API keys, credentials, and personal files are gitignored by default. Never commit them to a public fork.
+Current ApplyCue profiles, CVs, generated documents, receipts, and outcomes should remain in the user's external local store under `~/.applycue/profiles/<profile>/`. They must not be committed to the source repository or included in public support reports.
 
-## 3. AI Model Behavior
+Using an external agent, browser account, email connector, hosted model, job portal, or cloud service may transmit personal data to that provider. Users and operators must review the exact provider, account, retention, region, and permission settings before sending real data.
 
-This tool interfaces with AI models via third-party CLI tools. The maintainers do not control these models and cannot guarantee their behavior.
+This document does not make a universal GDPR controller/processor determination. That role depends on the actual deployment, data flow, organisation, and purpose.
 
-- **Hallucinations:** AI models may fabricate skills, job history, qualifications, or company information. You must manually verify all generated documents before submitting them to an employer.
-- **Safety guardrails:** The default prompts instruct the AI never to auto-submit applications and to stop before the final send/apply action. However, AI compliance is not guaranteed. If you use different models, modify the system prompts, or override the safety instructions, you accept full responsibility for the AI's actions.
-- **Evaluation accuracy:** Job offer scores and recommendations are AI-generated opinions based on pattern matching, not professional career advice. They should inform your judgment, not replace it.
+## 3. AI And Generated Content
+
+External agents and any future model provider can make mistakes or invent information. ApplyCue includes typed facts, proof mapping, CV reconciliation, hard gates, and review paths, but those controls do not guarantee that every output is correct.
+
+Users and operators must verify generated CVs, answers, messages, and application decisions. Unsupported candidate claims must not be submitted. Correct problems through approved profile facts, proof, answers, or tuning and regenerate; do not hand-edit a generated application artifact to bypass the truth path.
+
+The first run is review-first. Browser submission is allowed only when the generated plan, current preflight, saved user policy, and explicit live command all permit it. Email and DM routes are draft-only in ApplyCue and final send requires explicit user confirmation in the connected tool or browser.
 
 ## 4. Third-Party Platforms
 
-ApplyCue interacts with career portals and job boards (Greenhouse, Lever, Ashby, Workday, and others).
+ApplyCue can interact with public job sources and user-approved career portals. Users and operators must comply with each platform's terms and applicable law.
 
-- Users must comply with the Terms of Service of every platform they interact with.
-- Do not use this tool to scrape platforms that prohibit automated access.
-- Do not use this tool to spam employers, overwhelm ATS systems, or submit mass applications.
-- Any consequences from ToS violations — including IP bans, account restrictions, or legal action from platforms — are solely the responsibility of the user.
-- The maintainers actively reject contributions that facilitate ToS violations (see CONTRIBUTING.md).
+Do not use ApplyCue to:
+
+- bypass access controls, CAPTCHA, or platform restrictions;
+- scrape a source that prohibits the intended access;
+- spam employers or submit misleading applications;
+- overwhelm an ATS or job board;
+- collect or disclose personal data without a valid purpose and permission.
+
+Platform restrictions, account actions, and external-service availability remain outside ApplyCue's control.
 
 ## 5. Acceptable Use
 
-ApplyCue is designed to help individuals make better career decisions, not to automate away human judgment. Acceptable use includes:
+Acceptable use includes:
 
-- Evaluating job offers to prioritize your time
-- Generating tailored CVs that you review and edit before submitting
-- Scanning public career pages for open positions
-- Tracking your application pipeline
+- discovering and reviewing roles from approved sources;
+- generating truthful CVs and application materials from approved facts;
+- preparing or submitting applications within saved policy and current preflight evidence;
+- tracking replies, interviews, offers, rejections, and user feedback;
+- drafting messages that the user explicitly confirms before sending.
 
 Unacceptable use includes:
 
-- Auto-submitting applications without human review
-- Scraping platforms that prohibit automated access
-- Submitting AI-generated content without verifying its accuracy
-- Using the tool to discriminate, deceive, or misrepresent qualifications
+- inventing qualifications, employment, education, metrics, identity, or outcomes;
+- submitting outside the user's policy, current preflight, or required confirmation;
+- using fees, private identity documents, or suspicious registration flows without review;
+- discriminating unlawfully, deceiving employers, or impersonating another person;
+- exposing credentials, CVs, application answers, or receipts in the source repository.
 
-## 6. EU AI Act
+## 6. EU AI Act And Other Regulation
 
-Because this tool runs locally, is free, and is open-source, the maintainers are not placing an AI system on the market or putting one into service under the EU AI Act. Users who deploy the tool in a commercial or organizational context should assess their own obligations under the AI Act.
+Do not assume that local execution, an MIT licence, or open-source distribution creates a blanket EU AI Act exemption. Applicability depends on facts such as whether a party is a provider, deployer, importer, distributor, or product manufacturer; where the system and its outputs are used; and whether an exception actually applies.
 
-## 7. Indemnification
+ApplyCue does not currently train or place a general-purpose AI model on the market. A future hosted service, embedded model, substantial model modification, commercial deployment, or organisational hiring use would require a fresh legal assessment.
 
-By using ApplyCue, you agree to indemnify, defend, and hold harmless the authors, contributors, and any affiliated parties from and against any and all claims, damages, losses, liabilities, costs, and expenses (including reasonable attorneys' fees) arising from your use of this software, your violation of these terms, or your violation of any third-party terms of service.
+Primary references:
 
-## 8. Cost Responsibility
+- [Regulation (EU) 2024/1689](https://eur-lex.europa.eu/eli/reg/2024/1689/oj)
+- [European Commission guidance for general-purpose AI providers](https://digital-strategy.ec.europa.eu/en/policies/guidelines-gpai-providers)
 
-If you use paid AI providers (Anthropic API, OpenAI API, etc.), you are solely responsible for monitoring and managing your own token usage and associated costs. The maintainers are not responsible for unexpected charges.
+## 7. Costs And External Accounts
 
-## 9. MIT License
+Users are responsible for charges from agent products, model APIs, browser services, job platforms, cloud tools, or other external providers they choose. ApplyCue should not enable paid services or edit credentials without explicit user approval.
 
-As stated in the [LICENSE](LICENSE) file:
+## 8. Warranty And Liability
 
-> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ApplyCue is provided under the MIT licence. See [`LICENSE`](LICENSE) for the governing warranty and liability terms.
 
-## 10. Trademark
+No result is guaranteed. Generated artifacts and passing UAT prove workflow behaviour, not interviews, offers, employment, legal compliance, or platform acceptance.
 
-The "ApplyCue" name and brand identity are separate from the MIT
-license that governs the source code. The MIT license grants broad
-rights to use, modify, and redistribute the code; it does not grant
-rights to use the project name in commercial product naming,
-endorsement claims, or affiliation messaging.
+## 9. Project Name
 
-See [TRADEMARK.md](TRADEMARK.md) for permitted uses, restricted uses,
-and how to request written permission for commercial naming or
-endorsement.
+The source code is MIT licensed. No separate trademark policy is currently published in this repository. Do not claim endorsement, affiliation, or official status that does not exist.
 
-## 11. Changes
+## 10. Changes
 
-This disclaimer may be updated as the project evolves. Users are encouraged to review it periodically.
+This disclaimer may change as the distribution, model boundary, connectors, and legal context evolve.

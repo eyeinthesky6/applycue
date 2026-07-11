@@ -2,6 +2,10 @@
 
 Date: 2026-07-05
 
+Status: target product journey and behaviour reference. `product-roadmap.md` owns version scope; the canonical skill and launch/runbook documents define what operates today.
+
+Terminology note: the historical MVP labels later in this document describe the desired local journey, not an independent release definition.
+
 ## Product Summary
 
 ApplyCue is a CV-to-offer agent.
@@ -21,7 +25,7 @@ The core value is not manual job search. The core value is automation plus custo
 - draft follow-ups and interview prep
 - learn what is working
 
-The user sets the rules, reviews early runs, adjusts preferences, and approves exceptions. After that, ApplyCue should run mostly by itself.
+The user sets the rules, reviews early runs, adjusts preferences, and approves exceptions. After that, the external agent should automatically run discovery, filtering, queue review, receipt recording, CV/draft/route generation, tracking, and safe follow-up work. ApplyCue still pauses for missing facts, changed scope, logged-in access, sensitive answers, send/submit, and other policy boundaries. Unattended scheduling is a later capability.
 
 ## 1. How A User Discovers ApplyCue
 
@@ -111,6 +115,8 @@ Optional setup:
 - calendar access for interview scheduling support
 - logged-in browser session access for job boards or LinkedIn-style sources
 
+These are optional capabilities, not assumed accounts. The agent first inspects what its current host actually exposes, explains the narrow use and fallback, and asks for one connection only when useful. The host owns OAuth and login state. For job sites, the user chooses one or two preferred sites and logs in directly; search/inspection permission is separate from submit or messaging permission. See `docs/connector-capability-policy.md`.
+
 ApplyCue then builds:
 
 - profile model
@@ -142,7 +148,8 @@ Examples:
 Use this at the start or whenever the user wants full control.
 
 - ApplyCue discovers jobs.
-- ApplyCue shortlists jobs.
+- ApplyCue writes an evidence-rich ranked queue.
+- Codex/Claude reviews the queue and records one atomic decision batch; the user is asked only when a missing fact could materially change a decision.
 - ApplyCue creates CV variants.
 - ApplyCue prepares applications.
 - User reviews each application before submit.
@@ -151,16 +158,17 @@ Use this at the start or whenever the user wants full control.
 
 Use this for normal automated search.
 
-- ApplyCue auto-submits applications that pass configured rules.
+- ApplyCue may submit only when the generated plan, user policy, current preflight, and explicit live command all allow it; otherwise it pauses.
 - ApplyCue pauses for unclear fields, missing proof, unusual compensation questions, work authorization, relocation, or user-defined sensitive topics.
 - User reviews exceptions, not every application.
 - User sets applications per day.
+- Once the user has set scope, the agent runs discovery, queue review, decision receipts, and downstream preparation without asking the user to run commands or approve routine processing.
 
 ### Push
 
 Use this when the user needs interviews quickly.
 
-- ApplyCue runs daily or scheduled batches.
+- Agents can run daily batches now; unattended scheduling is a later product capability.
 - User sets applications per day.
 - User sets source mix.
 - User sets how strict the batch should be.
@@ -491,7 +499,7 @@ It can:
 - upload the right CV
 - answer known questions
 - draft custom answers
-- submit automatically if the application matches apply settings
+- submit only when apply settings, current preflight, and the explicit live command all allow it
 - pause if something is outside policy
 
 Pause examples:
@@ -592,10 +600,10 @@ This updates:
 ## What We Are Doing
 
 - building a CV-to-offer agent
-- running autonomous daily or scheduled batches
+- running agent-operated daily batches now; unattended scheduled batches later
 - making source discovery core
 - supporting job boards, posts, communities, email, and connectors
-- using hard gates and agent-led shortlisting
+- using hard gates, clear system shortlisting, and agent review only for ambiguity
 - generating truthful custom CVs at volume
 - applying on the user's behalf within configured rules
 - tracking replies and outcomes
@@ -676,7 +684,7 @@ Current v0.1 distribution:
 Developer distribution later:
 
 - npm scaffolder package
-- CLI for setup and scheduled runs
+- CLI for setup and agent-operated runs
 - optional GitHub repo storage for power users
 
 Non-developer distribution:

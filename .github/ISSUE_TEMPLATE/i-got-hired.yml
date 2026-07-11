@@ -23,7 +23,7 @@ body:
     attributes:
       label: Your story
       description: How did ApplyCue help? What features made the difference?
-      placeholder: "e.g., I evaluated 50+ listings, the scoring helped me focus on 3 real matches, generated tailored CVs for each..."
+      placeholder: "e.g., ApplyCue found relevant roles, helped review them, and prepared truthful tailored CVs..."
     validations:
       required: true
   - type: dropdown
@@ -31,13 +31,11 @@ body:
     attributes:
       label: Most useful feature
       options:
-        - A-F Evaluation scoring
-        - PDF / CV generation
-        - Portal scanner
-        - Interview prep (STAR stories)
-        - Batch processing
-        - Follow-up tracker
-        - Ghost job detection (Block G)
+        - Discovery and source quality
+        - Codex / Claude job review
+        - Truthful CV generation
+        - Application routes and browser preflight
+        - Outcome tracking
         - Other
     validations:
       required: true

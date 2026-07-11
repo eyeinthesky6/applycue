@@ -1,5 +1,6 @@
 import type { Compensation, EmploymentType, JobRecord, JobSource, WorkMode } from "@applycue/core";
 import { normalizeJob, type RawJobInput } from "@applycue/normalizer";
+import { mapWithConcurrency } from "./concurrency.js";
 
 export type AtsProviderId =
   "greenhouse" |
@@ -25,7 +26,49 @@ export interface AtsCompanySourceConfig {
   enabled?: boolean;
 }
 
+export function parseAtsCompanySources(value: unknown): AtsCompanySourceConfig[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item): AtsCompanySourceConfig[] => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const record = item as Record<string, unknown>;
+    const company = stringValue(record.company) ?? stringValue(record.name);
+    if (!company) return [];
+    const provider = parseAtsProvider(record.provider);
+    const source: AtsCompanySourceConfig = { company };
+    const id = stringValue(record.id);
+    const careersUrl = stringValue(record.careersUrl) ?? stringValue(record.careers_url);
+    const apiUrl = stringValue(record.apiUrl) ?? stringValue(record.api);
+    const boardToken = stringValue(record.boardToken) ?? stringValue(record.board_token);
+    if (id) source.id = id;
+    if (provider) source.provider = provider;
+    if (careersUrl) source.careersUrl = careersUrl;
+    if (apiUrl) source.apiUrl = apiUrl;
+    if (boardToken) source.boardToken = boardToken;
+    if (typeof record.enabled === "boolean") source.enabled = record.enabled;
+    return [source];
+  });
+}
+
+function parseAtsProvider(value: unknown): AtsProviderId | undefined {
+  if (
+    value !== "greenhouse" &&
+    value !== "lever" &&
+    value !== "ashby" &&
+    value !== "workable" &&
+    value !== "smartrecruiters" &&
+    value !== "bamboohr" &&
+    value !== "breezy" &&
+    value !== "recruitee" &&
+    value !== "pinpoint" &&
+    value !== "workday" &&
+    value !== "personio" &&
+    value !== "rippling"
+  ) return undefined;
+  return value;
+}
+
 export interface DiscoverCompanyPagesOptions {
+  concurrency?: number;
   fetchJson?: FetchJson;
   fetchText?: FetchText;
   onWarning?: (message: string) => void;
@@ -44,6 +87,8 @@ export interface FetchJsonOptions {
 }
 
 const DEFAULT_TIMEOUT_MS = 20_000;
+const DEFAULT_SOURCE_CONCURRENCY = 6;
+const DEFAULT_DETAIL_CONCURRENCY = 6;
 
 export async function discoverJobsFromCompanyPages(
   sources: AtsCompanySourceConfig[],
@@ -51,17 +96,18 @@ export async function discoverJobsFromCompanyPages(
 ): Promise<JobRecord[]> {
   const fetchJson = options.fetchJson ?? defaultFetchJson;
   const fetchText = options.fetchText ?? defaultFetchText;
-  const jobGroups = await Promise.all(
-    sources
-      .filter((source) => source.enabled !== false)
-      .map(async (source) => {
-        try {
-          return await discoverJobsFromCompanyPage(source, fetchJson, fetchText);
-        } catch (error) {
-          options.onWarning?.(`${source.company}: ${error instanceof Error ? error.message : String(error)}`);
-          return [];
-        }
-      })
+  const enabledSources = sources.filter((source) => source.enabled !== false);
+  const jobGroups = await mapWithConcurrency(
+    enabledSources,
+    options.concurrency ?? DEFAULT_SOURCE_CONCURRENCY,
+    async (source) => {
+      try {
+        return await discoverJobsFromCompanyPage(source, fetchJson, fetchText);
+      } catch (error) {
+        options.onWarning?.(`${source.company}: ${error instanceof Error ? error.message : String(error)}`);
+        return [];
+      }
+    }
   );
   return uniqueJobsById(jobGroups.flat());
 }
@@ -224,7 +270,11 @@ async function discoverWorkableJobs(source: AtsCompanySourceConfig, fetchText: F
   const feedUrl = resolveWorkableFeedUrl(source);
   const feed = await fetchText(feedUrl, { headers: { accept: "text/markdown,text/plain,*/*" } });
   const rows = parseWorkableMarkdownFeed(feed);
-  const jobs = await Promise.all(rows.map(async (row) => normalizeJob(toWorkableRawJob(row, source, await fetchOptionalText(row.detailMarkdownUrl, fetchText)))));
+  const jobs = await mapWithConcurrency(
+    rows,
+    DEFAULT_DETAIL_CONCURRENCY,
+    async (row) => normalizeJob(toWorkableRawJob(row, source, await fetchOptionalText(row.detailMarkdownUrl, fetchText)))
+  );
   return jobs;
 }
 
@@ -288,10 +338,10 @@ async function discoverSmartRecruitersJobs(source: AtsCompanySourceConfig, fetch
     if (items.length < SMARTRECRUITERS_PAGE_SIZE) break;
   }
 
-  const jobs = await Promise.all(rows.map(async (job) => {
+  const jobs = await mapWithConcurrency(rows, DEFAULT_DETAIL_CONCURRENCY, async (job) => {
     const detail = await fetchOptionalJson(resolveSmartRecruitersDetailUrl(job, slug), fetchJson);
     return normalizeJob(toSmartRecruitersRawJob(job, detail, source, slug));
-  }));
+  });
   return jobs;
 }
 

@@ -2,7 +2,9 @@
 
 Date: 2026-07-10
 
-This document explains why this repo has both an independent ApplyCue branch and the current career-ops-based branch. It is for future agents so they do not restart old debates or mix the two directions by accident.
+Status: current branch and architecture history; `ARCHITECTURE.md` owns the final direction.
+
+This document explains why the current branch started from career-ops, how the independent ApplyCue engine became the supported runtime, and why the inherited implementation was first quarantined and then removed.
 
 ## Current Default Direction
 
@@ -12,9 +14,24 @@ Use this branch for live UAT and current product work:
 applycue/career-ops-fork
 ```
 
-This branch starts from the working career-ops codebase and adds ApplyCue layers on top: profile storage, user preference gates, source handling, CV truth checks, application routes, browser UAT, form data, outcome tracking, and agent skills.
+This branch started from the career-ops repository, but the supported runtime is now the typed ApplyCue implementation under `apps/` and `packages/`. Profile storage, preference gates, discovery, CV truth checks, routes, browser UAT, form data, outcomes, and agent skills are owned there.
 
-Reason: career-ops already had a working job-search loop, provider integrations, dashboard/tracker ideas, and CV artifact flow. For a product whose goal is "CV to offer letter", proving the full loop mattered more than owning every line of code from scratch on day one.
+The inherited career-ops implementation has been removed from this branch. Dated reviews and Git history remain referenceable, but no local fork tree, supported package script, or runtime fallback remains. Full ApplyCue checks and UAT are rerun after the deletion.
+
+## Final Architecture Direction
+
+The branch choice is not the permanent architecture choice. The accepted target as of 2026-07-10 is documented in `docs/ARCHITECTURE.md`:
+
+- ApplyCue remains one typed modular product engine;
+- Codex, Claude, or another external agent handles fuzzy judgement and user-authorized actions;
+- ApplyCue does not need an embedded model provider for the current product;
+- mature permissive OSS is adopted only for replaceable plumbing behind ApplyCue contracts;
+- historical provider/resilience lessons may be reimplemented or adopted from an approved permissive source behind ApplyCue contracts;
+- the inherited scanner, tracker, prompt modes, evaluators, and batch control plane do not remain a second canonical runtime.
+
+Continue using this branch for current UAT and product work. Do not restart the old branch wholesale and do not restore the removed implementation as a fallback.
+
+This does not ban model APIs forever. The accepted order is native Codex/Claude judgement through the ApplyCue skill now, an optional hosted model API only after a benchmarked product decision, and local/fine-tuned models only after enough consented corrections, evaluation evidence, time, and budget exist. The canonical shortlist and trial gate are in `docs/ai-judgment-trial-plan.md`.
 
 ## Independent Direction
 
@@ -40,7 +57,7 @@ Why we paused it:
 - we needed live usable output quickly, not a research project
 - career-ops already worked well enough to validate the product loop
 
-Use the independent branch only for reference, extraction, or later rebuild work. Do not use it for tomorrow's live UAT.
+The preserved independent branches remain comparison points. Current UAT runs from this checkout because the independent ApplyCue engine is already the supported runtime here; do not switch branches merely because an older note calls one branch “independent.”
 
 ## Pivots In Plain Language
 
@@ -50,7 +67,9 @@ Use the independent branch only for reference, extraction, or later rebuild work
 4. We decided the product value is not a perfect score. The value is an agent reliably finding roles, preparing truthful CVs, and helping apply at volume with user control.
 5. We switched to career-ops as the base because it already found jobs and generated useful artifacts.
 6. We renamed and layered ApplyCue behavior on top instead of hand-editing one-off CVs or building a giant matching engine.
-7. We kept the independent branch so good ideas are not lost, but the current launch path is the career-ops fork.
+7. The independent TypeScript ApplyCue engine reached the same supported output path without calling the inherited runtime.
+8. We moved career-ops code, Docker/Nix packaging, and legacy-only automation under `legacy/career-ops/` so any accidental dependency would fail visibly.
+9. After the independent ApplyCue runtime passed without it, we removed that forked tree from the branch. Historical comparisons remain in docs and Git history.
 
 ## Current Product Rule
 
@@ -71,7 +90,7 @@ Code should handle:
 - hard blockers such as geography, fraud, duplicate jobs, closed jobs, and impossible work authorization
 - truthful CV generation from approved facts
 - reconciliation against the base CV and approved facts
-- generated DOCX/PDF/HTML artifacts
+- generated DOCX/HTML/Markdown artifacts
 - application routes and browser plans
 - receipts, outcomes, and learning signals
 - privacy guardrails so user assets stay outside the repo
@@ -108,12 +127,12 @@ backup/independent-applycue-20260708
   Saved backup of the independent plan before switching base.
 
 applycue/career-ops-fork
-  Current working branch for live UAT and launch prep.
+  Current working branch name retained for history. Its supported runtime is independent ApplyCue code; inherited career-ops code has been removed.
 ```
 
 ## Guidance For Next Agents
 
-Start from `applycue/career-ops-fork` unless the user explicitly asks to inspect or revive the independent path.
+Start from the current branch for ApplyCue work. Treat its historical name as provenance, not as permission to restore the removed fork runtime.
 
 Before adding new architecture, read:
 
@@ -130,4 +149,3 @@ For live usage, keep one profile per candidate under:
 ```
 
 Do not put real CVs or generated user outputs into the repo.
-

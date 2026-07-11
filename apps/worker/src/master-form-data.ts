@@ -44,6 +44,7 @@ export async function runMasterFormData(options: MasterFormDataOptions = {}): Pr
   const workspaceRoot = options.workspaceRoot ?? process.cwd();
   const batch = options.batch ?? await runLocalOrSampleBatch({
     workspaceRoot,
+    requireRecordedJobDecisions: true,
     ...(options.applyCueHome ? { applyCueHome: options.applyCueHome } : {}),
     ...(typeof options.freshnessDays === "number" ? { freshnessDays: options.freshnessDays } : {}),
     ...(typeof options.generatedSourceExpansion === "boolean" ? { generatedSourceExpansion: options.generatedSourceExpansion } : {}),

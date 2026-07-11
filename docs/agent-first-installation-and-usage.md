@@ -2,6 +2,8 @@
 
 Date: 2026-07-10
 
+Status: current user-flow and distribution reference. Feature-specific current/later labels in this document remain controlling for those sections.
+
 ## Decision
 
 ApplyCue is used through chat.
@@ -69,6 +71,8 @@ Target install options:
 
 The user should see one action, not a command list.
 
+For the current beta, the shareable entrypoint is `https://github.com/eyeinthesky6/applycue`. The user can paste that link into Codex or Claude with their CV and ask the agent to set up and run ApplyCue. A later landing page should explain the promise and hand the same repository/skill entrypoint to the chosen agent; it must not create a second copy of the workflow instructions.
+
 ### 3. Agent Setup
 
 The agent does the setup work:
@@ -80,6 +84,7 @@ The agent does the setup work:
 - imports the CV into `assets/base-cvs/`
 - creates or updates `applycue.json`
 - generates the source plan
+- inspects the current host's connector and browser capabilities before asking the user to connect anything
 - asks only blocking questions
 - records pending non-blocking questions
 - runs the first safe batch in review mode
@@ -91,6 +96,16 @@ The user does:
 - approve sensitive facts or major repositioning
 - choose mode and application count
 - connect browser/accounts only when needed
+
+The current setup transport reuses the existing ApplyCue config contract. After collecting approved answers, the agent writes a temporary JSON packet and runs:
+
+```powershell
+pnpm applycue:setup -- --input <approved-setup.json> --base-cv <candidate-cv.docx-or-pdf-or-text>
+```
+
+The packet is not a second profile format. It uses the same top-level `profile`, `preferences`, `searchSettings`, `applySettings`, and related fields documented in `configuration.md`. Setup merges those fields, copies the original CV into the profile store, extracts readable text in code from DOCX/PDF/text input, and refuses to claim a first run when identity/contact, base CV, or target roles are still missing.
+
+Connection is host-owned: the agent explains the narrow purpose and fallback, the user approves, and Codex/Claude performs its normal app/MCP/OAuth flow. For job sites, ask which one or two sites the user already prefers and let the user log in directly in the real browser. ApplyCue stores approved source intent and imported evidence, not credentials. See `docs/connector-capability-policy.md`.
 
 ### 4. First Run
 
@@ -216,21 +231,21 @@ Root wrappers such as `CLAUDE.md`, `CODEX.md`, and `OPENCODE.md` import `AGENTS.
 
 ## Setup Tooling
 
-Build an agent-run setup command:
+The current repository exposes the agent-run setup command as:
+
+```text
+pnpm applycue:setup
+```
+
+A future standalone V1 installer may expose the thinner spelling:
 
 ```text
 applycue setup
 ```
 
-For repo development this can be:
-
-```powershell
-pnpm applycue:setup
-```
-
 But that command is for the agent, not the user.
 
-Setup should:
+Current setup does the following:
 
 - verify Node and package dependencies
 - verify Python only if JobSpy is enabled
@@ -243,6 +258,30 @@ Setup should:
 - report missing credentials or connectors in plain language
 - never write secrets into config
 
+Implemented setup acceptance behavior:
+
+- `--input` accepts the existing ApplyCue config JSON shape;
+- `--base-cv` imports the original DOCX, text-based PDF, Markdown, or plain-text file into `assets/base-cvs/`;
+- Mammoth extracts raw DOCX text and PDF.js extracts PDF text; ApplyCue never embeds converted document HTML;
+- an empty/image-only PDF reports the OCR gap instead of allowing an agent-authored substitute;
+- incomplete setup returns `needs_profile` with exact missing fields and no empty first-run manifest;
+- complete setup runs the bounded starter-source and first-batch path;
+- generated job-specific Markdown, HTML, and DOCX files remain code-owned outputs of the truth/reconciliation pipeline.
+
+### Current installation chain
+
+| Stage | What is needed | Who handles it |
+| --- | --- | --- |
+| Discover | Repository URL and a Codex/Claude-compatible local agent | User supplies the link; agent reads repo instructions |
+| Open/install | Git, Node 24, pnpm 11.7.0 | Agent checks them; system-level installation requires user approval |
+| Product dependencies | TypeScript workspace, Mammoth, PDF.js, `docx`, Playwright Chromium | `pnpm install` |
+| Candidate setup | Original CV plus approved identity/contact, target roles, locations, and policy | User answers in chat; agent runs `applycue:setup` |
+| Broad board discovery | Optional Python 3.10-3.12 | Setup creates `~/.applycue/tools/jobspy-venv`; public no-key fallback works without it |
+| Email/job accounts | Optional host connector or user-owned browser login | Connected only when immediately useful and explicitly approved |
+| Daily workflow | Existing ApplyCue commands and canonical skill | Codex/Claude runs them; user sees chat summaries and approval questions |
+
+The current repository URL is therefore shareable, but not yet a one-click consumer installer: the recipient needs a supported local agent and the machine prerequisites above. V1 replaces the source checkout/pnpm detail with a thin installer while keeping the same engine and skill.
+
 ## UAT Command
 
 The agent should use one command to prove the local loop is ready for user testing:
@@ -254,7 +293,8 @@ pnpm applycue:uat
 This command:
 
 - runs setup
-- runs discovery and batch preparation
+- runs discovery and test-only backend-suggestion preparation to exercise the mechanics
+- writes test artifacts under `outputs/uat/` so they cannot replace the normal preparation manifest, dashboard, summary, or authority
 - checks that jobs, CVs, application drafts, dashboard, and manifest were produced
 - checks that closed jobs do not receive generated CVs, application drafts, or browser plans
 - supports injected liveness/page verification without requiring live network checks in every UAT run
@@ -272,16 +312,19 @@ This command:
 ```text
 ~/.applycue/profiles/<profile>/outputs/runs/uat-report.json
 ~/.applycue/profiles/<profile>/outputs/runs/uat-report.md
-~/.applycue/profiles/<profile>/outputs/runs/latest-summary.md
+~/.applycue/profiles/<profile>/outputs/uat/outputs/runs/latest-summary.md
+~/.applycue/profiles/<profile>/outputs/uat/outputs/runs/local-uat.json
 ```
 
-`PASS` means the loop is ready for user review.
+`pnpm applycue:browser-uat` similarly creates any suggestion-mode preparation under `outputs/browser-uat/batch/` and writes the browser proof under `outputs/browser-uat/`. It must not overwrite `outputs/runs/local-first-build.json`.
+
+`PASS` means the discovery, CV, route, browser-plan, and receipt mechanics passed. It does not make the UAT suggestion drafts agent-approved work.
 
 `WARN` means the loop is usable but has a concrete UAT finding, such as low batch volume.
 
 `FAIL` means the agent should fix the blocker before asking the user to test.
 
-For normal user handoff, the agent should start from `latest-summary.md`. It is shorter than the dashboard and already includes prepared jobs, CV paths, browser plans, receipts, skipped/watch items, and next actions.
+After UAT, normal status remains attached to the real run because UAT artifacts are isolated. Clear system matches prepare automatically. If status reports unresolved ambiguity or the shortlist needs correction, review only the relevant `review` rows in `latest-job-decisions.json`, write one decision batch, and run `pnpm applycue:record-decisions -- --input <reviewed-decisions.json> --prepare`.
 
 For review-mode runs, browser dry-run receipts should normally be `paused`, not `submitted`. That proves the agent can fill known fields and upload the generated DOCX, while still stopping before final submit for user approval.
 
@@ -299,6 +342,7 @@ This is a read-only checkpoint for the agent. It reports:
 - whether the latest run manifest, dashboard, chat summary, and UAT report exist
 - latest UAT status
 - latest run counts
+- whether the latest preparation authority is recorded external judgement or test-only backend suggestions
 - source quality, scan history, and source learning signals when present
 - live preflight answer prompt count and the first questions to ask when a real form pauses
 - an Agent command center with the exact next repo commands for the agent
@@ -316,7 +360,7 @@ For application execution, start from the generated apply route instead of choos
 pnpm applycue:apply-route -- --route-id <route-id>
 ```
 
-The dispatcher writes an execution report. Browser routes first require confirmed master form data, then point to the required live preflight/apply commands. Email and DM routes write draft artifacts only; sending happens outside ApplyCue through native Codex, Claude, Hermes, or similar connected tools when available. Browser control is a fallback only when connector access is unavailable and the user approves that session. API routes pause unless a real local adapter executor exists. Manual-review routes write the blocker/questions. This keeps chat as the user surface while the generated files remain the source of truth.
+The dispatcher writes an execution report. Browser routes first require confirmed master form data, then point to the required live preflight/apply commands. Email and DM routes write draft artifacts only; sending happens outside ApplyCue through native Codex, Claude, Hermes, or similar connected tools when available. Browser control is a fallback only when connector access is unavailable and the user approves that session. API routes pause unless a real local adapter executor exists. Manual-review routes write the blocker/questions. This keeps chat as the user surface while generated routes and receipts remain execution evidence; approved profile data and typed contracts remain the truth owners.
 
 For inbox discovery, the user should not download or format anything. The agent searches Gmail/Outlook through a native connector when available, writes the raw connector result locally, then runs:
 

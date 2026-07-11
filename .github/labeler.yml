@@ -3,57 +3,48 @@
       - any-glob-to-any-file:
           - AGENTS.md
           - CLAUDE.md
+          - CODEX.md
           - OPENCODE.md
           - DATA_CONTRACT.md
-          - modes/_shared.md
+          - docs/ARCHITECTURE.md
+          - packages/core/**
+          - packages/engine/**
 
 "⚠️ agent-behavior":
   - changed-files:
       - any-glob-to-any-file:
-          - modes/*.md
-          - modes/**/*.md
+          - skills/applycue/**
           - .claude/skills/**
           - .opencode/skills/**
           - .qwen/skills/**
           - .antigravitycli/skills/**
           - .grok/skills/**
 
-"🔧 scripts":
+"🔧 worker":
   - changed-files:
       - any-glob-to-any-file:
-          - "*.mjs"
-          - batch/**
+          - apps/worker/**
+          - apps/browser-agent/**
 
 "📄 docs":
   - changed-files:
       - any-glob-to-any-file:
           - docs/**
           - "README*.md"
-          - CONTRIBUTING.md
-          - GOVERNANCE.md
-          - CODE_OF_CONDUCT.md
           - SECURITY.md
           - SUPPORT.md
 
-"🌐 i18n":
+"📊 product-output":
   - changed-files:
       - any-glob-to-any-file:
-          - "README.*.md"
-          - modes/de/**
-          - modes/fr/**
-          - modes/ja/**
-          - modes/ru/**
-
-"📊 dashboard":
-  - changed-files:
-      - any-glob-to-any-file:
-          - dashboard/**
+          - packages/tracker/**
+          - packages/cv-tailor/**
 
 "📦 dependencies":
   - changed-files:
       - any-glob-to-any-file:
           - package.json
-          - package-lock.json
+          - pnpm-lock.yaml
 
 "⚙️ ci":
   - changed-files:

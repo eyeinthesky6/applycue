@@ -6,6 +6,8 @@ export type JobLiveState = "live" | "closed" | "unknown";
 
 export type ApplyDecision = "apply" | "review" | "watch" | "skip";
 
+export type JobDecisionActorKind = "agent" | "user";
+
 export type ApplyMode = "review" | "daily" | "push";
 
 export type TuningSignalOrigin =
@@ -261,6 +263,19 @@ export interface TuningSignal {
   approvedByUser?: boolean;
   createdAt: string;
   appliedAt?: string;
+}
+
+export interface RecordedJobDecision {
+  id: ApplyCueId;
+  jobId: ApplyCueId;
+  decision: ApplyDecision;
+  reasons: string[];
+  evidenceRefs: string[];
+  actorKind: JobDecisionActorKind;
+  actorName: string;
+  decidedAt: string;
+  backendDecision: ApplyDecision;
+  backendFailedGates: string[];
 }
 
 export type UserAssetKind =
@@ -568,7 +583,7 @@ export interface ProgressSafetySummary {
   examples: string[];
 }
 
-export type ProgressFunnelHealthStatus = "healthy" | "low_volume" | "high_volume" | "noisy_sources";
+export type ProgressFunnelHealthStatus = "healthy" | "awaiting_decisions" | "low_volume" | "high_volume" | "noisy_sources";
 
 export interface ProgressFunnelPressureItem {
   id: string;
@@ -585,6 +600,8 @@ export interface ProgressFunnelHealthSummary {
   discoveredJobs: number;
   keptForRanking: number;
   rankedJobs: number;
+  recordedDecisions?: number;
+  awaitingDecisions?: number;
   watchOrSkippedJobs: number;
   dominantFilters: ProgressFunnelPressureItem[];
   dominantGateBlocks: ProgressFunnelPressureItem[];
@@ -702,8 +719,24 @@ export interface ProgressJobDecisionItem {
   company: string;
   title: string;
   sourceName: string;
+  url?: string;
+  jobDescriptionPath?: string;
+  descriptionExcerpt?: string;
   location?: string;
+  workMode?: WorkMode;
+  seniority?: Seniority;
+  employmentType?: EmploymentType;
+  compensation?: Compensation;
+  postedAt?: string;
+  discoveredAt?: string;
+  liveState?: JobLiveState;
   decision: ApplyDecision;
+  recordedDecision?: ApplyDecision;
+  recordedReasons?: string[];
+  decisionActorKind?: JobDecisionActorKind;
+  decisionActorName?: string;
+  priority?: number;
+  components?: RankComponent[];
   reasons: string[];
   failedGates: string[];
   reconciliationStatus?: ReconciliationReport["status"];
@@ -1199,6 +1232,12 @@ export interface RunManifest {
   applyRouteIds?: ApplyCueId[];
   generatedFiles: GeneratedFileManifest[];
   sourceCodeWriteCount: number;
+  decisionAuthority?:
+    | "system_clear"
+    | "hybrid_system_external"
+    | "recorded_external"
+    | "awaiting_external"
+    | "backend_suggestion_test";
   notes: string[];
   atsDiagnostics?: ProgressAtsDiagnosticsSummary;
   cvQuality?: ProgressCvQualitySummary;

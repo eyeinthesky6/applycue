@@ -803,6 +803,12 @@ function renderFunnelHealth(snapshot: ProgressSnapshot): string {
       helper: health.message
     },
     {
+      label: "Decisions",
+      value: health.recordedDecisions ?? 0,
+      tone: (health.awaitingDecisions ?? 0) > 0 ? "watch" : "ready",
+      helper: `${health.awaitingDecisions ?? 0} awaiting review`
+    },
+    {
       label: "Kept",
       value: health.keptForRanking,
       tone: health.status === "high_volume" ? "watch" : "neutral",
@@ -841,7 +847,7 @@ function renderFunnelHealth(snapshot: ProgressSnapshot): string {
           <ul>${gateItems}</ul>
         </div>
         <div class="reason-panel">
-          <h3>If You Want More Results</h3>
+          <h3>Recommended Next Moves</h3>
           <ul>${actionItems}</ul>
         </div>
       </div>
@@ -1179,7 +1185,7 @@ function renderDecisionSummary(items: ProgressJobDecisionItem[]): string {
     watch: 0,
     skip: 0
   };
-  for (const item of items) counts[item.decision] += 1;
+  for (const item of items) counts[effectiveJobDecision(item)] += 1;
   const cards = [
     {
       label: "Ready / review",
@@ -1274,7 +1280,8 @@ function renderJobDecisions(items: ProgressJobDecisionItem[]): string {
 }
 
 function renderJobDecision(item: ProgressJobDecisionItem): string {
-  const reasonItems = item.reasons.filter((reason) => !reason.startsWith("Blocked:"));
+  const decision = effectiveJobDecision(item);
+  const reasonItems = (item.recordedReasons ?? item.reasons).filter((reason) => !reason.startsWith("Blocked:"));
   const reasonText = reasonItems.length > 0
     ? reasonItems.slice(0, 2).join(" ")
     : "No strong match reason recorded.";
@@ -1283,8 +1290,12 @@ function renderJobDecision(item: ProgressJobDecisionItem): string {
   const skipped = item.skippedReason ? `Skipped reason: ${item.skippedReason}` : "";
   const why = [blockers, skipped, reasonText].filter(Boolean).join(" ");
 
+  const provenance = item.recordedDecision
+    ? `<small>Recorded by ${escapeHtml(item.decisionActorName ?? item.decisionActorKind ?? "external judgement")}; backend suggested ${escapeHtml(humanizeIdentifier(item.decision))}</small>`
+    : "";
+
   return `<tr>
-    <td><span class="badge ${decisionBadgeClass(item.decision)}">${escapeHtml(humanizeIdentifier(item.decision))}</span></td>
+    <td><span class="badge ${decisionBadgeClass(decision)}">${escapeHtml(humanizeIdentifier(decision))}</span>${provenance}</td>
     <td>${escapeHtml(item.company)}</td>
     <td>${escapeHtml(item.title)} ${location}</td>
     <td>${escapeHtml(item.sourceName)}</td>
@@ -1395,7 +1406,7 @@ export function renderProgressDashboardHtml(snapshot: ProgressSnapshot): string 
   const actions = snapshot.nextActions.map((action) => `<li>${escapeHtml(action)}</li>`).join("");
   const notes = snapshot.notes.map((note) => `<li>${escapeHtml(note)}</li>`).join("");
   const preparedCount = snapshot.applications.prepared;
-  const watchCount = (snapshot.jobDecisions ?? []).filter((item) => item.decision === "watch").length;
+  const watchCount = (snapshot.jobDecisions ?? []).filter((item) => effectiveJobDecision(item) === "watch").length;
   const livePendingQuestions = snapshot.livePreflight?.status === "pause"
     ? snapshot.livePreflight.answerPromptCount
     : 0;
@@ -1824,7 +1835,7 @@ export function renderProgressChatSummaryMarkdown(snapshot: ProgressSnapshot): s
   const needsAnswerCount = pendingQuestionCount +
     snapshot.items.filter((item) => item.pauseReasons.length > 0 || item.submitRequiresApproval).length;
   const watchOrSkipped = (snapshot.jobDecisions ?? [])
-    .filter((item) => item.decision === "watch" || item.decision === "skip" || item.skippedReason)
+    .filter((item) => effectiveJobDecision(item) === "watch" || effectiveJobDecision(item) === "skip" || item.skippedReason)
     .slice(0, 10);
   const livePreflight = snapshot.livePreflight
     ? [
@@ -1858,6 +1869,7 @@ export function renderProgressChatSummaryMarkdown(snapshot: ProgressSnapshot): s
         `- Status: ${escapeMarkdownLine(snapshot.funnelHealth.status)}`,
         `- Summary: ${escapeMarkdownLine(snapshot.funnelHealth.message)}`,
         `- Daily target: ${snapshot.funnelHealth.preparedApplications}/${snapshot.funnelHealth.configuredDailyTarget}`,
+        `- Decisions: ${snapshot.funnelHealth.recordedDecisions ?? 0} recorded, ${snapshot.funnelHealth.awaitingDecisions ?? 0} awaiting review`,
         `- Jobs: ${snapshot.funnelHealth.discoveredJobs} discovered, ${snapshot.funnelHealth.keptForRanking} kept for ranking, ${snapshot.funnelHealth.watchOrSkippedJobs} watched/skipped`,
         ...snapshot.funnelHealth.dominantFilters.slice(0, 3).map((item) =>
           `- Filter: ${escapeMarkdownLine(item.label)} (${item.count})${item.examples[0] ? ` - ${escapeMarkdownLine(item.examples[0])}` : ""}`
@@ -2070,12 +2082,20 @@ function renderPreparedSummaryItem(item: ProgressApplicationItem, index: number)
 }
 
 function renderDecisionSummaryItem(item: ProgressJobDecisionItem): string {
-  const reasonItems = item.reasons.filter((reason) => !reason.startsWith("Blocked:"));
+  const decision = effectiveJobDecision(item);
+  const reasonItems = (item.recordedReasons ?? item.reasons).filter((reason) => !reason.startsWith("Blocked:"));
   const reasons = reasonItems.length > 0 ? reasonItems.slice(0, 2).join(" ") : "No strong match reason recorded.";
   const blockers = item.failedGates.length > 0 ? item.failedGates.slice(0, 2).join(" ") : "";
   const skipped = item.skippedReason ? `Skipped reason: ${item.skippedReason}` : "";
   const why = [blockers, skipped, reasons].filter(Boolean).join(" ");
-  return `- ${escapeMarkdownLine(item.company)} - ${escapeMarkdownLine(item.title)}: ${escapeMarkdownLine(humanizeIdentifier(item.decision))}. ${escapeMarkdownLine(why)} Next: ${escapeMarkdownLine(item.nextStep)}`;
+  const provenance = item.recordedDecision
+    ? ` Recorded by ${item.decisionActorName ?? item.decisionActorKind ?? "external judgement"}; backend suggested ${humanizeIdentifier(item.decision)}.`
+    : "";
+  return `- ${escapeMarkdownLine(item.company)} - ${escapeMarkdownLine(item.title)}: ${escapeMarkdownLine(humanizeIdentifier(decision))}.${escapeMarkdownLine(provenance)} ${escapeMarkdownLine(why)} Next: ${escapeMarkdownLine(item.nextStep)}`;
+}
+
+function effectiveJobDecision(item: ProgressJobDecisionItem): ProgressJobDecisionItem["decision"] {
+  return item.recordedDecision ?? item.decision;
 }
 
 function sourceQualityExampleLines(

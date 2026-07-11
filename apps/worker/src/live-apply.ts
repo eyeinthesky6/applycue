@@ -76,6 +76,7 @@ export async function runLiveBrowserApply(options: LiveBrowserApplyOptions = {})
   const workspaceRoot = options.workspaceRoot ?? process.cwd();
   const batch = options.batch ?? await runLocalOrSampleBatch({
     workspaceRoot,
+    requireRecordedJobDecisions: true,
     ...(options.applyCueHome ? { applyCueHome: options.applyCueHome } : {}),
     ...(options.profileKey ? { profileKey: options.profileKey } : {}),
     writeFiles: true
@@ -482,7 +483,7 @@ function validatePassedPreflight(
         id: "live-preflight-current",
         label: "Current Live Preflight",
         status: "fail",
-        detail: "No live preflight report exists. Run pnpm browser-live-preflight before filling a real portal."
+        detail: "No live preflight report exists. Run pnpm applycue:browser-live-preflight before filling a real portal."
       }
     };
   }

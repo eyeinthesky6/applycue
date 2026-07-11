@@ -1,44 +1,16 @@
-# CODEOWNERS — auto-requests maintainer review on sensitive paths.
-# Last matching pattern wins. See MAINTAINERS.md for the team + ladder.
-#
-# Scope principle: gate what CI can't catch (a bad change here passes the
-# tests silently) + the catastrophic updater + governance docs. Code that
-# test-all.mjs / Renovate / dependency-review already guard (scan.mjs,
-# generate-pdf.mjs, test-all.mjs, package.json) is intentionally NOT gated,
-# so routine contributor PRs aren't bottlenecked on a single owner. Broaden
-# this list once there is more than one code owner.
+# ApplyCue ownership for architecture, agent behavior, and release automation.
+# Extend this list when more maintainers join.
 
-# Repo docs & governance
-/README*.md            @eyeinthesky6
-/CONTRIBUTING.md       @eyeinthesky6
-/MAINTAINERS.md        @eyeinthesky6
-/ARCHITECTURE.md       @eyeinthesky6
-/.github/CODEOWNERS    @eyeinthesky6
-
-# Agent behavior & the multi-CLI contract (prompt layer — CI-blind)
-/CLAUDE.md             @eyeinthesky6
-/AGENTS.md             @eyeinthesky6
-/CODEX.md              @eyeinthesky6
-/OPENCODE.md           @eyeinthesky6
-/GEMINI.md             @eyeinthesky6
-
-# Scoring & the system/user data contract (CI-blind; silent-danger)
-/modes/_shared.md      @eyeinthesky6
-/DATA_CONTRACT.md      @eyeinthesky6
-
-# The self-updater (catastrophic if wrong — touches user installs)
-/update-system.mjs     @eyeinthesky6
-/updater-migration-tests.mjs  @eyeinthesky6
-
-# Plugin governance chokepoint (a bad change here ships unreviewed code to
-# every user — the registry pin, the gates, and the CI must stay single-owner).
-/plugins-registry.json         @eyeinthesky6
-/validate-plugin-registry.mjs  @eyeinthesky6
-/plugin-install.mjs            @eyeinthesky6
-/plugin-audit.mjs              @eyeinthesky6
-/plugins/_engine.mjs           @eyeinthesky6
-/plugins/_lock.mjs             @eyeinthesky6
-/plugins/_net.mjs              @eyeinthesky6
-/plugins/_registry.mjs         @eyeinthesky6
-/.github/workflows/            @eyeinthesky6
-/docs/PLUGIN_REVIEW.md         @eyeinthesky6
+/README.md                         @eyeinthesky6
+/AGENTS.md                         @eyeinthesky6
+/ARCHITECTURE.md                   @eyeinthesky6
+/DATA_CONTRACT.md                  @eyeinthesky6
+/CLAUDE.md                         @eyeinthesky6
+/CODEX.md                          @eyeinthesky6
+/OPENCODE.md                       @eyeinthesky6
+/GEMINI.md                         @eyeinthesky6
+/docs/ARCHITECTURE.md              @eyeinthesky6
+/skills/applycue/SKILL.md          @eyeinthesky6
+/packages/core/                    @eyeinthesky6
+/packages/engine/                  @eyeinthesky6
+/.github/workflows/                @eyeinthesky6

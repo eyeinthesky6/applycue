@@ -8,6 +8,7 @@ import {
   discoverJobsFromCompanyPages,
   discoverJobsFromAtsDirectory,
   discoverJobsFromJobBoards,
+  discoverJobHiveJobs,
   discoverJobSpyJobs,
   discoverJobsFromDirectory,
   discoverJobsFromFile,
@@ -27,12 +28,31 @@ import {
   detectScanHistoryReposts,
   filterJobsBySearchProfile,
   filterJobsByScanHistory,
+  mapWithConcurrency,
   parseAtsDirectorySources,
   readScanHistoryEntries,
   resolveJobSpyPythonCommand,
   type FetchJson,
-  type FetchText
+  type FetchText,
+  type JobHiveRunRequest
 } from "./index.js";
+
+describe("mapWithConcurrency", () => {
+  it("preserves input order while keeping work inside the configured bound", async () => {
+    let active = 0;
+    let maximumActive = 0;
+    const values = await mapWithConcurrency([1, 2, 3, 4, 5, 6], 3, async (value) => {
+      active += 1;
+      maximumActive = Math.max(maximumActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active -= 1;
+      return value * 2;
+    });
+
+    expect(maximumActive).toBe(3);
+    expect(values).toEqual([2, 4, 6, 8, 10, 12]);
+  });
+});
 
 describe("discoverJobsFromFile", () => {
   it("loads JSONL jobs and normalizes them", async () => {
@@ -244,12 +264,15 @@ describe("createSourcePlan", () => {
     expect(plan.suggestions.some((source) => source.provider === "workday")).toBe(true);
     expect(plan.suggestions.some((source) => source.provider === "personio")).toBe(true);
     expect(plan.suggestions.some((source) => source.provider === "rippling")).toBe(true);
-    expect(plan.suggestions.some((source) => source.provider === "ats_directory")).toBe(true);
-    expect(plan.suggestions.find((source) => source.provider === "ats_directory")?.options?.providers).toEqual([
-      "greenhouse",
-      "lever",
-      "ashby"
-    ]);
+    expect(plan.suggestions.some((source) => source.provider === "ats_directory")).toBe(false);
+    expect(plan.notes).toContain(
+      "JobHive is a review-only source suggestion for India profiles; it is never auto-approved. Direct company/ATS URLs remain the cleanest company source."
+    );
+    expect(plan.suggestions.find((source) => source.provider === "jobhive")?.options).toMatchObject({
+      providers: ["rippling", "recruitee", "pinpoint", "bamboohr"],
+      titleTerms: ["Head of Product"],
+      locations: ["India"]
+    });
     expect(plan.suggestions.some((source) => source.provider === "greenhouse" && source.query?.includes("Head of Product fintech"))).toBe(true);
     expect(plan.suggestions.find((source) => source.provider === "greenhouse")?.requiresBrowser).toBe(true);
     expect(plan.suggestions.some((source) => source.provider === "jobspy")).toBe(true);
@@ -1406,11 +1429,11 @@ describe("scan history", () => {
 });
 
 describe("discoverJobsFromCompanyPage", () => {
-  it("parses reverse ATS directory sources from approved search config", () => {
+  it("parses JobHive ATS directory sources from approved search config", () => {
     const sources = parseAtsDirectorySources([
       {
         id: "reverse-ats",
-        label: "Reverse ATS",
+        label: "JobHive ATS directory",
         provider: "ats_directory",
         kind: "ats",
         enabled: true,
@@ -1430,13 +1453,20 @@ describe("discoverJobsFromCompanyPage", () => {
     expect(sources[0]?.options?.providers).toEqual(["greenhouse"]);
   });
 
-  it("loads jobs through a reverse ATS directory scan", async () => {
+  it("loads jobs through a JobHive ATS directory scan and rejects unsafe rows", async () => {
     const requestedUrls: string[] = [];
+    const fetchText: FetchText = async (url) => {
+      requestedUrls.push(url);
+      expect(url).toBe("https://storage.stapply.ai/jobhive/v1/greenhouse/companies.csv");
+      return [
+        "name,slug,url",
+        '"Example, Inc.",example,https://job-boards.greenhouse.io/example',
+        "Unsafe,bad/slug,https://evil.example/jobs",
+        "Example Two,example-two,https://job-boards.greenhouse.io/example-two"
+      ].join("\n");
+    };
     const fetchJson: FetchJson = async (url) => {
       requestedUrls.push(url);
-      if (url === "https://raw.githubusercontent.com/Feashliaa/job-board-aggregator/main/data/greenhouse_companies.json") {
-        return ["example", "bad/slug", "example-two"];
-      }
       if (url === "https://boards-api.greenhouse.io/v1/boards/example/jobs?content=true") {
         return {
           jobs: [
@@ -1476,17 +1506,18 @@ describe("discoverJobsFromCompanyPage", () => {
           batchSize: 1
         }
       },
-      fetchJson
+      fetchJson,
+      fetchText
     );
 
     expect(requestedUrls).toEqual([
-      "https://raw.githubusercontent.com/Feashliaa/job-board-aggregator/main/data/greenhouse_companies.json",
+      "https://storage.stapply.ai/jobhive/v1/greenhouse/companies.csv",
       "https://boards-api.greenhouse.io/v1/boards/example/jobs?content=true",
       "https://boards-api.greenhouse.io/v1/boards/example-two/jobs?content=true"
     ]);
     expect(jobs).toHaveLength(2);
     expect(jobs[0]?.source.kind).toBe("ats");
-    expect(jobs[0]?.company).toBe("Example");
+    expect(jobs[0]?.company).toBe("Example, Inc.");
     expect(jobs[0]?.title).toBe("Head of Product");
   });
 
@@ -2057,6 +2088,51 @@ describe("discoverJobsFromCompanyPage", () => {
 });
 
 describe("discoverJobsFromJobBoards", () => {
+  it("keeps successful sources when another source fails", async () => {
+    const warnings: string[] = [];
+    const jobs = await discoverJobsFromJobBoards(
+      [
+        {
+          id: "working-remotive",
+          label: "Working Remotive",
+          provider: "remotive",
+          query: "product",
+          options: { limit: 1 }
+        },
+        {
+          id: "broken-source",
+          label: "Broken source",
+          provider: "remotive",
+          query: "broken",
+          options: { limit: 1 }
+        }
+      ],
+      {
+        concurrency: 1,
+        fetchJson: async (url) => {
+          if (url.includes("search=broken")) throw new Error("provider unavailable");
+          return {
+            jobs: [
+              {
+                id: 123,
+                url: "https://remotive.com/remote-jobs/product/lead-product-123",
+                title: "Lead Product Manager",
+                company_name: "Remote Co",
+                candidate_required_location: "Worldwide",
+                description: "Lead product work."
+              }
+            ]
+          };
+        },
+        onWarning: (message) => warnings.push(message)
+      }
+    );
+
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]?.company).toBe("Remote Co");
+    expect(warnings).toEqual(["Broken source: provider unavailable"]);
+  });
+
   it("uses explicit or user-local JobSpy Python without requiring env-file edits", async () => {
     const previousPython = process.env.APPLYCUE_PYTHON;
     const previousHome = process.env.APPLYCUE_HOME;
@@ -2149,6 +2225,100 @@ describe("discoverJobsFromJobBoards", () => {
     expect(jobs[0]?.workMode).toBe("remote");
     expect(jobs[0]?.employmentType).toBe("full_time");
     expect(jobs[0]?.compensation?.min).toBe(120000);
+  });
+
+  it("queries bounded JobHive ATS slices and normalizes only safe job rows", async () => {
+    const seenRequests: JobHiveRunRequest[] = [];
+    const jobs = await discoverJobHiveJobs(
+      {
+        id: "jobhive-product-india",
+        label: "JobHive product India",
+        provider: "jobhive",
+        query: "product",
+        enabled: true,
+        options: {
+          providers: ["rippling", "recruitee", "unsupported"],
+          titleTerms: ["program manager"],
+          location: "India",
+          limit: 20
+        }
+      },
+      async (request) => {
+        seenRequests.push(request);
+        return [
+          {
+            url: "https://ats.rippling.com/example/jobs/1",
+            apply_url: "https://ats.rippling.com/example/jobs/1",
+            title: "Senior Product Manager",
+            company: "Example India",
+            ats_type: "rippling",
+            location: "Bangalore, India",
+            is_remote: false,
+            salary_min: 3000000,
+            salary_max: 4500000,
+            salary_currency: "INR",
+            salary_period: "year",
+            employment_type: "full_time",
+            description: "Own the India product roadmap.",
+            posted_at: "2026-07-10T00:00:00Z"
+          },
+          {
+            url: "http://unsafe.example/job",
+            title: "Unsafe Product Role",
+            company: "Unsafe",
+            ats_type: "rippling"
+          }
+        ];
+      }
+    );
+
+    expect(seenRequests).toEqual([{
+      providers: ["rippling", "recruitee"],
+      title_terms: ["product", "program manager"],
+      locations: ["India"],
+      limit: 20
+    }]);
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]).toMatchObject({
+      company: "Example India",
+      title: "Senior Product Manager",
+      location: "Bangalore, India",
+      employmentType: "full_time",
+      postedAt: "2026-07-10T00:00:00.000Z"
+    });
+    expect(jobs[0]?.source.name).toContain("jobhive:rippling");
+    expect(jobs[0]?.compensation).toMatchObject({ min: 3000000, max: 4500000, currency: "INR" });
+  });
+
+  it("adds canonical senior product title aliases without broadening the role family", async () => {
+    const requests: JobHiveRunRequest[] = [];
+    await discoverJobHiveJobs(
+      {
+        label: "JobHive senior India",
+        provider: "jobhive",
+        query: "vp product",
+        options: {
+          providers: ["rippling"],
+          titleTerms: ["director product", "head of product"],
+          location: "India",
+          limit: 10
+        }
+      },
+      async (request) => {
+        requests.push(request);
+        return [];
+      }
+    );
+
+    expect(requests[0]?.title_terms).toEqual([
+      "vp product",
+      "director product",
+      "head of product",
+      "vice president product",
+      "director of product",
+      "product director",
+      "head of product management"
+    ]);
   });
 
   it("loads Remotive jobs through the public no-key API shape", async () => {

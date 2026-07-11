@@ -2,9 +2,13 @@
 
 Date: 2026-07-10
 
+Status: current release and claim gate.
+
+`product-roadmap.md` defines what MVP/0.1 means. This file provides the executable evidence gate for that version.
+
 ## Current Launch Shape
 
-ApplyCue is ready to launch as a local-first, agent-operated product.
+ApplyCue's current launch candidate is a local-first, agent-operated product. A specific commit is launch-ready only after every gate in this document passes.
 
 The first distribution path is:
 
@@ -29,6 +33,8 @@ The current user-facing promise is:
 Give the agent this repo link and your CV. The agent sets up ApplyCue locally, searches jobs, prepares truthful role-specific CVs, creates application routes, and pauses before sensitive actions.
 ```
 
+Setup accepts the user's original DOCX, text-based PDF, Markdown, or text CV. ApplyCue code extracts the source text and retains the original asset; Codex/Claude must not recreate the CV.
+
 ## Launch Channels
 
 | Channel | Status | Purpose |
@@ -40,6 +46,7 @@ Give the agent this repo link and your CV. The agent sets up ApplyCue locally, s
 | npm package or scaffolder | later | Only after a real package/install flow exists. |
 | Hosted SaaS | later | Only after local usage proves setup, matching, CV, and apply flows. |
 | Browser/social/email connectors owned by ApplyCue | later | Native agent connectors and browser control are enough for the first launch. |
+| Agent-host capability handshake | MVP gate | Discover what the current host exposes, ask for narrow access, and fall back cleanly when access is missing or declined. |
 
 ## Current Launch Gate
 
@@ -47,8 +54,11 @@ Before saying a commit is launch-ready, run:
 
 ```powershell
 pnpm applycue:check
+pnpm applycue:source-canary -- --include-jobspy
 pnpm applycue:uat -- --more-results --target-ranking-queue 200
 pnpm applycue:browser-uat -- --more-results --target-ranking-queue 200
+# review only unresolved ambiguous rows when the clear shortlist does not fill the target, then:
+pnpm applycue:record-decisions -- --input <reviewed-decisions.json> --prepare
 pnpm applycue:status
 ```
 
@@ -56,9 +66,18 @@ The gate passes when:
 
 - typecheck and tests pass
 - UAT writes dashboard, summary, manifest, CVs, routes, browser dry-run receipts, and the ranked decision queue
+- setup imports real DOCX and text-based PDF fixtures through code, retains the original file, and refuses empty/image-only PDF text without an explicit future OCR path
 - Browser UAT opens a safe local form, fills fields, uploads the generated DOCX, and pauses before submit
-- status reports `READY`
+- UAT/test drafts are labelled as test-only, status does not present them as agent-approved, and UAT/browser UAT leave the normal run manifest and decision authority unchanged
+- normal preparation produces the final shortlist up to the configured target and status reports `READY` from `system_clear`, `hybrid_system_external`, or `recorded_external` authority
+- a clean checkout using the documented Node 24 and pnpm 11.7.0 baseline can install, run checks, and reach status without relying on machine residue
+- a two-profile isolation fixture proves config, decisions, artifacts, receipts, and outcomes do not cross profiles
+- a consented representative real-portal flow has current preflight plus fill/upload/pause evidence; local fake-form UAT alone is not universal portal proof
+- one supported agent host has consented evidence for connector discovery, host-owned OAuth, narrow Gmail or Outlook read/search, import through the existing email scanner, and disconnect or revocation
+- one preferred logged-in job site has consented evidence for user-owned login, the exact allowed search/inspection actions, safe pause, and no credential storage
+- the same fixture still produces a useful public-source shortlist when email and browser access are unavailable or declined
 - no user data is committed
+- `SECURITY.md` names a verified durable private vulnerability-reporting path
 
 For a real multi-candidate operating day, also follow [Live usage runbook](live-usage-runbook.md). The live runbook is the source of truth for using one local install across multiple people without mixing profiles or generated artifacts.
 
@@ -73,6 +92,7 @@ Keep the launch message simple:
 - First run is review-first and does not auto-submit.
 - Wider search is explicit, for example `--more-results --target-ranking-queue 200`.
 - Email and browser account access are user-approved and agent-managed.
+- Connector claims name the exact host, connector, site, and actions that were tested; no universal job-site connector is claimed.
 
 ## What We Are Not Launching Yet
 
@@ -106,16 +126,11 @@ When npm distribution becomes real, add:
 
 Launch readiness depends on keeping user data out of the repo.
 
-The repo ignores and CI blocks common user paths, including:
+The repo ignores and CI blocks current in-repo user-data escape paths, including:
 
 - `.applycue/`
 - `assets/`
-- `data/`
-- `reports/`
-- `output/`
-- `jds/`
-- `writing-samples/`
-- local CV/profile files
+- `config/applycue.local.json`
 
 Real user files belong under:
 
@@ -125,17 +140,17 @@ Real user files belong under:
 
 ## Launch Backlog
 
-These are useful but not blockers for the current launch:
+These are useful after the MVP release gate and are tracked in `product-roadmap.md`:
 
-1. Build a real npm scaffolder package.
+1. Build the thin standalone V1 `applycue` CLI and installer.
 2. Add a short demo video showing agent setup through first UAT.
-3. Add a hosted landing page that says "drop this repo link into your agent."
+3. Add a small hosted landing page that says "drop this repo link into your agent" and points to the same canonical repository/skill instructions rather than duplicating them.
 4. Add a clean sample profile that uses fake data only.
 5. Add a release checklist issue template.
 6. Add connector-specific skills only when the permission model is clear.
 
 ## Current Decision
 
-Launch from GitHub with the agent skill.
+Launch from GitHub with the agent skill after the current launch gate passes.
 
 Do not spend launch time on SaaS, desktop app, or npm packaging until early users prove the local agent workflow is valuable and repeatable.

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -159,6 +159,9 @@ MBA from Example Institute
     expect(report.checks.find((check) => check.id === "chat-summary")?.status).toBe("pass");
     expect(report.checks.find((check) => check.id === "batch-volume")?.status).toBe("warn");
     expect(report.checks.find((check) => check.id === "batch-volume")?.detail).toBe("Prepared 1 of configured 3 per day.");
+    expect(report.paths.manifest).toContain(path.join("outputs", "uat", "outputs", "runs", "local-uat.json"));
+    expect(report.paths.summary).toContain(path.join("outputs", "uat", "outputs", "runs", "latest-summary.md"));
+    await expect(access(path.join(profileDir, "outputs", "runs", "local-first-build.json"))).rejects.toThrow();
     expect(await readFile(report.paths.report, "utf8")).toContain("\"id\": \"applycue-local-uat\"");
     expect(await readFile(report.paths.markdownReport, "utf8")).toContain("# ApplyCue UAT Report");
     expect(await readFile(report.paths.markdownReport, "utf8")).toContain("Closed Job Safety");
@@ -189,20 +192,24 @@ MBA from Example Institute
     expect(summary).toContain("UAT Fintech - Head of Product");
     expect(summary).toContain("outputs/browser-receipts/");
     expect(summary).toContain("(Paused)");
-    const cvDir = path.join(profileDir, "outputs", "cvs");
+    const cvDir = path.join(profileDir, "outputs", "uat", "outputs", "cvs");
     const cvFile = (await readdir(cvDir)).find((name) => name.endsWith("-cv-standard-ats-v1.md"));
     expect(cvFile).toBeTruthy();
     const renderedCv = await readFile(path.join(cvDir, cvFile!), "utf8");
     expect(renderedCv).toContain("Alpha Bank");
     expect(renderedCv).toContain("Beta Pay");
-    const atsDir = path.join(profileDir, "outputs", "ats-diagnostics");
+    const atsDir = path.join(profileDir, "outputs", "uat", "outputs", "ats-diagnostics");
     const atsFile = (await readdir(atsDir)).find((name) => name.endsWith("-ats-diagnostics.json"));
     expect(atsFile).toBeTruthy();
     expect(await readFile(path.join(atsDir, atsFile!), "utf8")).toContain("\"status\": \"warn\"");
-    const jdDir = path.join(profileDir, "outputs", "jds");
-    const jdFile = (await readdir(jdDir)).find((name) => name.endsWith(".md"));
-    expect(jdFile).toBeTruthy();
-    const renderedJd = await readFile(path.join(jdDir, jdFile!), "utf8");
+    const jdDir = path.join(profileDir, "outputs", "uat", "outputs", "jds");
+    const renderedJds = await Promise.all(
+      (await readdir(jdDir))
+        .filter((name) => name.endsWith(".md"))
+        .map((name) => readFile(path.join(jdDir, name), "utf8"))
+    );
+    const renderedJd = renderedJds.find((content) => content.includes("# UAT Fintech - Head of Product"));
+    expect(renderedJd).toBeTruthy();
     expect(renderedJd).toContain("# UAT Fintech - Head of Product");
     expect(renderedJd).toContain("Lead product strategy for fintech.");
   });

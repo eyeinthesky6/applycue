@@ -1,18 +1,28 @@
 import { spawn } from "node:child_process";
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type { SourceSuggestion } from "@applycue/core";
 import { approveSourceSuggestions, runLocalOrSampleBatch } from "@applycue/engine";
-import { getApplyCueHome, getApplyCueProfileConfigPath, getApplyCueProfileDir } from "@applycue/profile";
+import {
+  getApplyCueHome,
+  getApplyCueProfileConfigPath,
+  getApplyCueProfileDir,
+  readBaseCvText,
+  type ApplyCueConfig
+} from "@applycue/profile";
 
 export interface SetupApplyCueOptions {
   autoApproveSources?: boolean;
   applyCueHome?: string;
+  baseCvPath?: string;
   freshnessDays?: number;
   generatedSourceExpansion?: boolean;
   includeOlderPosts?: boolean;
   installTools?: boolean;
+  profileInputPath?: string;
   profileKey?: string;
+  runFirstBatch?: boolean;
   targetRankingQueue?: number;
   workspaceRoot?: string;
 }
@@ -21,12 +31,14 @@ export interface SetupApplyCueResult {
   approvedSourceCount: number;
   browserToolStatus: "ready" | "installed" | "skipped" | "failed";
   configPath: string;
-  dashboardPath: string;
+  dashboardPath?: string;
   jobSpyStatus: "ready" | "installed" | "skipped" | "failed";
+  missingProfileFields: string[];
   notes: string[];
   profileDir: string;
-  runManifestPath: string;
-  summaryPath: string;
+  runManifestPath?: string;
+  setupStatus: "needs_profile" | "ready";
+  summaryPath?: string;
 }
 
 export async function setupApplyCue(options: SetupApplyCueOptions = {}): Promise<SetupApplyCueResult> {
@@ -44,7 +56,32 @@ export async function setupApplyCue(options: SetupApplyCueOptions = {}): Promise
   await createUserStore(profileDir);
   if (!(await fileExists(configPath))) {
     await writeStarterConfig(configPath);
-    notes.push("Created starter profile config. The agent still needs the user's CV and target roles before a real batch.");
+    notes.push("Created starter profile config.");
+  }
+
+  if (options.profileInputPath) {
+    await mergeProfileInput(configPath, options.profileInputPath);
+    notes.push(`Imported approved setup fields from ${path.resolve(options.profileInputPath)}.`);
+  }
+  if (options.baseCvPath) {
+    const importedCvPath = await importBaseCv(configPath, profileDir, options.baseCvPath);
+    notes.push(`Imported the base CV into ${importedCvPath}.`);
+  }
+
+  const missingProfileFields = await findMissingSetupFields(configPath, profileDir);
+  if (missingProfileFields.length > 0) {
+    notes.push(`Setup still needs: ${missingProfileFields.join(", ")}.`);
+    notes.push("Deferred tool installation, source approval, and the first batch until the blocking profile fields are present.");
+    return {
+      approvedSourceCount: 0,
+      browserToolStatus: "skipped",
+      configPath,
+      jobSpyStatus: "skipped",
+      missingProfileFields,
+      notes,
+      profileDir,
+      setupStatus: "needs_profile"
+    };
   }
 
   const jobSpyStatus = await ensureJobSpy({
@@ -58,8 +95,23 @@ export async function setupApplyCue(options: SetupApplyCueOptions = {}): Promise
     workspaceRoot
   });
 
+  if (options.runFirstBatch === false) {
+    notes.push("Validated profile and local tools without running or refreshing the normal preparation batch.");
+    return {
+      approvedSourceCount: 0,
+      browserToolStatus,
+      configPath,
+      jobSpyStatus,
+      missingProfileFields,
+      notes,
+      profileDir,
+      setupStatus: "ready"
+    };
+  }
+
   const firstRun = await runLocalOrSampleBatch({
     workspaceRoot,
+    requireRecordedJobDecisions: true,
     applyCueHome,
     ...(typeof options.freshnessDays === "number" ? { freshnessDays: options.freshnessDays } : {}),
     ...(typeof options.generatedSourceExpansion === "boolean" ? { generatedSourceExpansion: options.generatedSourceExpansion } : {}),
@@ -73,15 +125,15 @@ export async function setupApplyCue(options: SetupApplyCueOptions = {}): Promise
     .filter((suggestion) => isSafeNoLoginProvider(suggestion.provider))
     .filter((suggestion) => !suggestion.requiresLogin && !suggestion.requiresBrowser)
     .map((suggestion) => suggestion.id);
-  const cleanStarterSourceIds = firstRun.sourcePlan.suggestions
-    .filter((suggestion) => isCleanStarterSource(suggestion))
-    .slice(0, 3)
-    .map((suggestion) => suggestion.id);
+  const cleanStarterSourceIds = selectCleanStarterSourceIds(firstRun.sourcePlan.suggestions, jobSpyStatus);
   const sourceIdsToApprove = options.autoApproveSources === true ? safeSourceIds : cleanStarterSourceIds;
 
   let approvedSourceCount = 0;
   if (options.autoApproveSources !== true) {
     notes.push("Using clean starter source approval only. Bulk source approval waits until the user asks for more results.");
+  }
+  if (options.autoApproveSources !== false && !isJobSpyReady(jobSpyStatus) && cleanStarterSourceIds.length > 0) {
+    notes.push("JobSpy is unavailable or skipped, so setup selected structured no-key starter source(s) instead.");
   }
   if (options.autoApproveSources === false) {
     notes.push("Skipped source approval by setup option.");
@@ -105,8 +157,9 @@ export async function setupApplyCue(options: SetupApplyCueOptions = {}): Promise
   }
 
   const finalRun = approvedSourceCount > 0
-    ? await runLocalOrSampleBatch({
+      ? await runLocalOrSampleBatch({
         workspaceRoot,
+        requireRecordedJobDecisions: true,
         applyCueHome,
         ...(typeof options.freshnessDays === "number" ? { freshnessDays: options.freshnessDays } : {}),
         ...(typeof options.generatedSourceExpansion === "boolean" ? { generatedSourceExpansion: options.generatedSourceExpansion } : {}),
@@ -123,11 +176,91 @@ export async function setupApplyCue(options: SetupApplyCueOptions = {}): Promise
     configPath,
     dashboardPath: path.join(finalRun.outputRoot, "outputs", "dashboard", "latest.html"),
     jobSpyStatus,
+    missingProfileFields,
     notes,
     profileDir,
     runManifestPath: path.join(finalRun.outputRoot, "outputs", "runs", `${finalRun.manifest.id}.json`),
+    setupStatus: "ready",
     summaryPath: path.join(finalRun.outputRoot, "outputs", "runs", "latest-summary.md")
   };
+}
+
+async function mergeProfileInput(configPath: string, inputPath: string): Promise<void> {
+  const resolvedInputPath = path.resolve(inputPath);
+  const input = parseConfigObject(await readFile(resolvedInputPath, "utf8"), `setup input ${resolvedInputPath}`);
+  const current = parseConfigObject(await readFile(configPath, "utf8"), `profile config ${configPath}`);
+  const merged: ApplyCueConfig = {
+    ...current,
+    ...input,
+    profile: { ...(current.profile ?? {}), ...(input.profile ?? {}) },
+    preferences: { ...(current.preferences ?? {}), ...(input.preferences ?? {}) },
+    matchSettings: { ...(current.matchSettings ?? {}), ...(input.matchSettings ?? {}) },
+    searchSettings: { ...(current.searchSettings ?? {}), ...(input.searchSettings ?? {}) },
+    sourceSettings: { ...(current.sourceSettings ?? {}), ...(input.sourceSettings ?? {}) },
+    applySettings: { ...(current.applySettings ?? {}), ...(input.applySettings ?? {}) },
+    sources: { ...(current.sources ?? {}), ...(input.sources ?? {}) }
+  };
+  await writeFile(configPath, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
+}
+
+function parseConfigObject(content: string, label: string): ApplyCueConfig {
+  let value: unknown;
+  try {
+    value = JSON.parse(content);
+  } catch {
+    throw new Error(`Invalid JSON in ${label}.`);
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must contain one ApplyCue config object.`);
+  }
+  return value as ApplyCueConfig;
+}
+
+async function importBaseCv(configPath: string, profileDir: string, sourcePath: string): Promise<string> {
+  const resolvedSourcePath = path.resolve(sourcePath);
+  if (!(await fileExists(resolvedSourcePath))) {
+    throw new Error(`Base CV file was not found: ${resolvedSourcePath}`);
+  }
+  const extension = path.extname(resolvedSourcePath).toLowerCase();
+  if (![".docx", ".pdf", ".md", ".markdown", ".txt"].includes(extension)) {
+    throw new Error("ApplyCue setup accepts DOCX, PDF, Markdown, or plain-text base CVs.");
+  }
+  await readBaseCvText(resolvedSourcePath);
+  const safeName = path.basename(resolvedSourcePath).replace(/[^a-zA-Z0-9._-]+/g, "-");
+  const targetPath = path.join(profileDir, "assets", "base-cvs", safeName);
+  if (path.resolve(resolvedSourcePath).toLowerCase() !== path.resolve(targetPath).toLowerCase()) {
+    await copyFile(resolvedSourcePath, targetPath);
+  }
+  const config = parseConfigObject(await readFile(configPath, "utf8"), `profile config ${configPath}`);
+  config.profile = {
+    ...(config.profile ?? {}),
+    baseCvPath: path.relative(profileDir, targetPath).replaceAll("\\", "/")
+  };
+  await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+  return targetPath;
+}
+
+async function findMissingSetupFields(configPath: string, profileDir: string): Promise<string[]> {
+  const config = parseConfigObject(await readFile(configPath, "utf8"), `profile config ${configPath}`);
+  const missing: string[] = [];
+  const hasName = typeof config.profile?.name === "string" && config.profile.name.trim().length > 0;
+  const hasContact = [config.profile?.email, config.profile?.phone]
+    .some((value) => typeof value === "string" && value.trim().length > 0);
+  if (!hasName || !hasContact) missing.push("user identity/contact");
+
+  const configuredBaseCvPaths = [
+    typeof config.profile?.baseCvPath === "string" ? config.profile.baseCvPath.trim() : "",
+    ...(config.baseCvs ?? []).map((item) => typeof item.path === "string" ? item.path.trim() : "")
+  ].filter(Boolean);
+  const hasBaseCv = (await Promise.all(
+    configuredBaseCvPaths.map((item) => fileExists(path.resolve(profileDir, item)))
+  )).some(Boolean);
+  if (!hasBaseCv) missing.push("base CV");
+
+  const hasTargetRoles = Array.isArray(config.preferences?.targetRoleTerms) &&
+    config.preferences.targetRoleTerms.some((item) => typeof item === "string" && item.trim().length > 0);
+  if (!hasTargetRoles) missing.push("target roles");
+  return missing;
 }
 
 async function ensureBrowserTool(input: {
@@ -164,22 +297,41 @@ async function canImportPlaywright(workspaceRoot: string): Promise<boolean> {
 
 function isSafeNoLoginProvider(provider: string | undefined): boolean {
   return provider === "jobspy" ||
-    provider === "ats_directory" ||
     provider === "remotive" ||
     provider === "remoteok" ||
     provider === "workingnomads" ||
     provider === "jobicy" ||
-    provider === "himalayas" ||
-    provider === "themuse";
+    provider === "himalayas";
 }
 
-function isCleanStarterSource(suggestion: {
-  kind?: string;
-  label?: string;
-  provider?: string;
-  requiresBrowser?: boolean;
-  requiresLogin?: boolean;
-}): boolean {
+type StarterSourceSuggestion = Pick<
+  SourceSuggestion,
+  "id" | "kind" | "label" | "provider" | "requiresBrowser" | "requiresLogin"
+>;
+
+export function selectCleanStarterSourceIds(
+  suggestions: StarterSourceSuggestion[],
+  jobSpyStatus: SetupApplyCueResult["jobSpyStatus"]
+): string[] {
+  const eligible = suggestions.filter((suggestion) =>
+    suggestion.kind === "job_board" && !suggestion.requiresBrowser && !suggestion.requiresLogin
+  );
+  const directFallbacks = ["remotive", "remoteok", "workingnomads", "jobicy", "himalayas"]
+    .flatMap((provider) => eligible.filter((suggestion) => suggestion.provider === provider).slice(0, 1));
+
+  if (!isJobSpyReady(jobSpyStatus)) {
+    return directFallbacks.slice(0, 2).map((suggestion) => suggestion.id);
+  }
+
+  const jobSpySources = eligible.filter((suggestion) => isCleanJobSpyStarter(suggestion)).slice(0, 2);
+  return [...jobSpySources, ...directFallbacks.slice(0, 1)].map((suggestion) => suggestion.id);
+}
+
+function isJobSpyReady(status: SetupApplyCueResult["jobSpyStatus"]): boolean {
+  return status === "ready" || status === "installed";
+}
+
+function isCleanJobSpyStarter(suggestion: StarterSourceSuggestion): boolean {
   if (suggestion.provider !== "jobspy" || suggestion.kind !== "job_board") return false;
   if (suggestion.requiresBrowser || suggestion.requiresLogin) return false;
   const label = suggestion.label?.toLowerCase() ?? "";
@@ -239,29 +391,43 @@ async function ensureJobSpy(input: {
   notes: string[];
 }): Promise<SetupApplyCueResult["jobSpyStatus"]> {
   const pythonPath = localJobSpyPython(input.applyCueHome);
-  if (await canImportJobSpy(pythonPath)) return "ready";
+  const jobSpyReady = await canImportJobSpy(pythonPath);
+  if (jobSpyReady && await canImportDuckDb(pythonPath)) return "ready";
   if (!input.installTools) {
-    input.notes.push("Skipped JobSpy tool install by setup option.");
-    return "skipped";
+    input.notes.push(jobSpyReady
+      ? "JobSpy is ready; skipped optional DuckDB install for JobHive by setup option."
+      : "Skipped JobSpy and JobHive tool install by setup option.");
+    return jobSpyReady ? "ready" : "skipped";
   }
 
-  const basePython = await findPythonForVenv();
-  if (!basePython) {
-    input.notes.push("Could not find Python 3.10-3.12 for JobSpy. Job board search can still run through no-key APIs such as Remotive.");
-    return "failed";
+  if (!jobSpyReady) {
+    const basePython = await findPythonForVenv();
+    if (!basePython) {
+      input.notes.push("Could not find Python 3.10-3.12 for JobSpy. Job board search can still run through no-key APIs such as Remotive.");
+      return "failed";
+    }
+
+    const venvDir = path.dirname(path.dirname(pythonPath));
+    await mkdir(path.dirname(venvDir), { recursive: true });
+    const venv = await runProcess(basePython, ["-m", "venv", venvDir]);
+    if (venv.code !== 0) {
+      input.notes.push(`Could not create JobSpy local Python environment: ${venv.stderr || venv.stdout}`);
+      return "failed";
+    }
+    const install = await runProcess(pythonPath, ["-m", "pip", "install", "--upgrade", "pip", "python-jobspy"], 300_000);
+    if (install.code !== 0) {
+      input.notes.push(`Could not install python-jobspy: ${install.stderr || install.stdout}`);
+      return "failed";
+    }
   }
 
-  const venvDir = path.dirname(path.dirname(pythonPath));
-  await mkdir(path.dirname(venvDir), { recursive: true });
-  const venv = await runProcess(basePython, ["-m", "venv", venvDir]);
-  if (venv.code !== 0) {
-    input.notes.push(`Could not create JobSpy local Python environment: ${venv.stderr || venv.stdout}`);
-    return "failed";
-  }
-  const install = await runProcess(pythonPath, ["-m", "pip", "install", "--upgrade", "pip", "python-jobspy"], 300_000);
-  if (install.code !== 0) {
-    input.notes.push(`Could not install python-jobspy: ${install.stderr || install.stdout}`);
-    return "failed";
+  if (!(await canImportDuckDb(pythonPath))) {
+    const installDuckDb = await runProcess(pythonPath, ["-m", "pip", "install", "--upgrade", "duckdb"], 300_000);
+    if (installDuckDb.code !== 0 || !(await canImportDuckDb(pythonPath))) {
+      input.notes.push(`JobSpy is ready, but optional JobHive DuckDB support could not be installed: ${installDuckDb.stderr || installDuckDb.stdout}`);
+    } else {
+      input.notes.push("Installed DuckDB in ApplyCue's local tool environment for optional JobHive searches.");
+    }
   }
   return (await canImportJobSpy(pythonPath)) ? "installed" : "failed";
 }
@@ -275,6 +441,12 @@ function localJobSpyPython(applyCueHome: string): string {
 async function canImportJobSpy(pythonPath: string): Promise<boolean> {
   if (!(await fileExists(pythonPath))) return false;
   const result = await runProcess(pythonPath, ["-c", "from jobspy import scrape_jobs; print('ok')"], 30_000);
+  return result.code === 0;
+}
+
+async function canImportDuckDb(pythonPath: string): Promise<boolean> {
+  if (!(await fileExists(pythonPath))) return false;
+  const result = await runProcess(pythonPath, ["-c", "import duckdb; print('ok')"], 30_000);
   return result.code === 0;
 }
 

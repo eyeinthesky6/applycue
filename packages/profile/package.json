@@ -12,7 +12,11 @@
     }
   },
   "dependencies": {
-    "@applycue/core": "workspace:*"
+    "@applycue/core": "workspace:*",
+    "mammoth": "1.12.0",
+    "pdfjs-dist": "6.1.200"
+  },
+  "devDependencies": {
+    "docx": "9.7.1"
   }
 }
-

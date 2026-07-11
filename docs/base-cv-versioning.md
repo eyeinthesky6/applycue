@@ -2,6 +2,8 @@
 
 Date: 2026-07-06
 
+Status: current focused contract reference.
+
 ## Decision
 
 ApplyCue treats a base CV as a versioned source document.

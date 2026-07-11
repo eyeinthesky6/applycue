@@ -2,6 +2,8 @@
 
 Date: 2026-07-05
 
+Status: research backlog only; listed tools are not dependencies or approved runtime owners.
+
 These are reference directions, not dependencies.
 
 ## Useful Patterns

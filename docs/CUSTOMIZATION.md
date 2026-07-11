@@ -1,76 +1,26 @@
-# Customization Guide
+# ApplyCue Customization Guide
 
-## Profile (config/profile.yml)
+Status: current navigation guide
 
-This is the single source of truth for your identity. All modes read from here.
+Normal users customize ApplyCue through chat. The agent updates approved profile/config data and regenerates artifacts; users should not edit source code, prompt modes, templates, or generated outputs for one application.
 
-Key sections:
-- **candidate**: Name, email, phone, location, LinkedIn, portfolio
-- **target_roles**: Your North Star roles and archetypes
-- **narrative**: Your headline, exit story, superpowers, proof points
-- **compensation**: Target range, minimum, currency
-- **location**: Country, timezone, visa status, on-site availability
+## Current Customization Owners
 
-## Target Roles (modes/_profile.md)
+| Need | Owner |
+| --- | --- |
+| Identity, target roles, locations, work mode, compensation, source policy, and apply policy | `~/.applycue/profiles/<profile>/applycue.json` through setup/config flows |
+| Base CVs and supporting files | `~/.applycue/profiles/<profile>/assets/` |
+| Approved candidate facts and proof | Profile facts and proof bank described in [`data-contracts.md`](data-contracts.md) |
+| Reusable application answers | `pnpm applycue:approve-answers` through the agent |
+| Approved job sources | Source-plan and `pnpm applycue:approve-sources` flows |
+| Reusable shortlist feedback | `record-tuning` followed by user-approved `apply-tuning` |
+| CV wording/layout policy | [`cv-tailoring-policy.md`](cv-tailoring-policy.md) and one `standard_ats_v1` renderer |
 
-The archetype table in `_profile.md` determines how offers are scored and CVs are framed. Edit the table to match YOUR career targets:
+Detailed configuration fields and examples live in [`configuration.md`](configuration.md). Setup questions live in [`setup-questionnaire.md`](setup-questionnaire.md). The agent runs commands; normal users stay in chat.
 
-```markdown
-| Archetype | Thematic axes | What they buy |
-|-----------|---------------|---------------|
-| **Your Role 1** | key skills | what they need |
-| **Your Role 2** | key skills | what they need |
-```
+## Do Not Customize Here
 
-Also update the "Adaptive Framing" table to map YOUR specific projects to each archetype.
-
-## Portals (portals.yml)
-
-Copy from `templates/portals.example.yml` and customize:
-
-1. **title_filter.positive**: Keywords matching your target roles
-2. **title_filter.negative**: Tech stacks or domains to exclude
-3. **search_queries**: WebSearch queries for job boards (Ashby, Greenhouse, Lever)
-4. **tracked_companies**: Companies to check directly
-
-## CV Template (templates/cv-template.html)
-
-The HTML template uses these design tokens:
-- **Fonts**: Space Grotesk (headings) + DM Sans (body) -- self-hosted in `fonts/`
-- **Colors**: Cyan primary (`hsl(187,74%,32%)`) + Purple accent (`hsl(270,70%,45%)`)
-- **Layout**: Single-column, ATS-optimized
-
-To customize fonts/colors, edit the CSS in the template. Update font files in `fonts/` if switching fonts.
-
-## Negotiation Scripts (modes/_shared.md)
-
-The negotiation section provides frameworks for salary discussions. Replace the example scripts with your own:
-- Target ranges
-- Geographic arbitrage strategy
-- Pushback responses
-
-## Hooks (Optional)
-
-Career-ops can integrate with external systems via Claude Code hooks. Example hooks:
-
-```json
-{
-  "hooks": {
-    "SessionStart": [{
-      "hooks": [{
-        "type": "command",
-        "command": "echo 'Career-ops session started'"
-      }]
-    }]
-  }
-}
-```
-
-Save hooks in `.claude/settings.json` (Claude Code). OpenCode does not support hooks. For equivalent functionality, use custom commands (`.opencode/commands/`) or agents (`.opencode/agents/`) — see https://opencode.ai/docs/commands/.
-
-## States (templates/states.yml)
-
-The canonical states rarely need changing. If you add new states, update:
-1. `templates/states.yml`
-2. `normalize-statuses.mjs` (alias mappings)
-3. `modes/_shared.md` (any references)
+- Do not put user-specific facts in `AGENTS.md`, skills, root modes, source code, or templates.
+- Do not hand-edit generated CVs, source plans, browser plans, routes, dashboards, or receipts.
+- Do not edit `.env` or add provider credentials without explicit user permission.
+- Do not restore removed career-ops files as an ApplyCue profile, customization layer, or fallback.

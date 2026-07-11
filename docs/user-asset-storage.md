@@ -2,6 +2,8 @@
 
 Date: 2026-07-06
 
+Status: canonical user-file storage policy.
+
 ## Decision
 
 User assets do not live in the source repo.

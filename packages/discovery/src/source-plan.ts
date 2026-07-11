@@ -52,6 +52,9 @@ export function createSourcePlan(profile: UserProfile, input: SourcePlanInput = 
     notes: [
       "Generated suggestions are review artifacts, not active scan config.",
       "The search profile is a reviewable filter plan for adapters and ranking; it is generated from user settings, not hardcoded markets.",
+      ...(suggestions.some((suggestion) => suggestion.provider === "jobhive")
+        ? ["JobHive is a review-only source suggestion for India profiles; it is never auto-approved. Direct company/ATS URLs remain the cleanest company source."]
+        : []),
       "Approve useful sources by adding them to user/agent editable config.",
       "Do not hand-edit this generated file; regenerate it from profile and preferences."
     ]
@@ -78,10 +81,27 @@ function buildSystemSuggestions(profile: UserProfile, generatedAt: string): Sour
     locations: boardLocations,
     role
   });
+  const jobHiveSuggestions = isIndiaSearchProfile(profile, boardLocations)
+    ? [createSuggestion({
+        generatedAt,
+        kind: "job_board",
+        label: "JobHive India ATS snapshot search",
+        priority: 0.88,
+        provider: "jobhive",
+        query: role,
+        reason: "Queries selected MIT-licensed JobHive ATS snapshots for India through DuckDB, then returns ApplyCue JobRecords. Review and approve this source explicitly; it does not rank or apply.",
+        options: {
+          providers: ["rippling", "recruitee", "pinpoint", "bamboohr"],
+          titleTerms: profile.preferences.targetRoleTerms.slice(0, 8),
+          locations: ["India"],
+          limit: 50
+        }
+      })]
+    : [];
   const suggestions: SourceSuggestion[] = [
-    buildAtsDirectorySuggestion(profile, generatedAt, role),
     ...atsSuggestions,
     ...jobSpySuggestions,
+    ...jobHiveSuggestions,
     createSuggestion({
       generatedAt,
       kind: "job_board",
@@ -89,7 +109,7 @@ function buildSystemSuggestions(profile: UserProfile, generatedAt: string): Sour
       priority: 0.73,
       provider: "themuse",
       query: role,
-      reason: "The Muse has a public no-key jobs API. ApplyCue filters the broad feed locally before ranking.",
+      reason: "The Muse publishes a jobs API, but official terms require app registration beyond testing. Keep this review-only until a user-owned registration is configured and a live canary passes.",
       options: {
         limit: 50,
         pageLimit: 3
@@ -122,7 +142,7 @@ function buildSystemSuggestions(profile: UserProfile, generatedAt: string): Sour
       priority: 0.9,
       provider: "user_email",
       query: buildEmailLeadQuery(role, industry, boardLocations),
-      reason: "Searches the user's own mailbox through native agent connectors such as Codex, Claude, Hermes, or similar after the first run; if no connector is available, use browser control only with user permission. Imports real job links into the queue and leaves all sending user-confirmed.",
+      reason: "After the first public-source run, the agent discovers whether its current host exposes a ready or connectable email-read capability. With user approval, host-owned OAuth and narrow job-related search feed real links into the queue; unavailable or declined access falls back to public sources, and all sending remains separately user-confirmed.",
       requiresBrowser: true,
       requiresLogin: true
     }),
@@ -174,22 +194,18 @@ function buildSystemSuggestions(profile: UserProfile, generatedAt: string): Sour
   return dedupeSuggestions(suggestions);
 }
 
-function buildAtsDirectorySuggestion(profile: UserProfile, generatedAt: string, role: string): SourceSuggestion {
-  return createSuggestion({
-    generatedAt,
-    kind: "ats",
-    label: "Reverse ATS directory scan",
-    priority: 0.93,
-    provider: "ats_directory",
-    query: role,
-    reason: "Scans public ATS company directories, then lets ApplyCue filter titles and locations before CV work. This expands beyond a fixed company list without requiring login.",
-    options: {
-      providers: ["greenhouse", "lever", "ashby"],
-      limitPerProvider: atsDirectoryLimit(profile),
-      batchSize: 8,
-      sample: "spread"
-    }
-  });
+function isIndiaSearchProfile(profile: UserProfile, locations: string[]): boolean {
+  return [
+    profile.currentCountry,
+    profile.currentLocation,
+    ...locations,
+    ...profile.preferences.preferredLocations,
+    ...profile.preferences.extraLocations,
+    ...profile.searchSettings.searchAreas,
+    ...profile.searchSettings.searchCountries,
+    ...profile.searchSettings.remoteRegions
+  ]
+    .some((value) => /\bindia\b/i.test(value ?? ""));
 }
 
 function buildSearchProfile(profile: UserProfile): SourcePlan["searchProfile"] {
@@ -621,12 +637,6 @@ function freshnessHours(profile: UserProfile): number {
   const days = profile.searchSettings.freshnessDays;
   const safeDays = typeof days === "number" && Number.isFinite(days) && days > 0 ? days : 30;
   return Math.max(24, Math.floor(safeDays * 24));
-}
-
-function atsDirectoryLimit(profile: UserProfile): number {
-  if (profile.matchSettings.range === "tight") return 10;
-  if (profile.matchSettings.range === "wide") return 50;
-  return 25;
 }
 
 function industryQueryLimit(profile: UserProfile): number {

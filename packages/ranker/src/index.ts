@@ -351,9 +351,11 @@ export function rankJob(job: JobRecord, profile: UserProfile): RankedJob {
   const components = scoreComponents(job, profile);
   const weighted = weightedPriority(components);
   const priority = gatePass ? capPriorityByRoleFit(weighted, components) : 0;
-  const canAutoApply =
-    profile.applySettings.mode !== "review" &&
-    priority >= profile.applySettings.minimumFitToApply;
+  // `mode` controls how an application is executed, not whether the fit is
+  // clear enough for ApplyCue to shortlist. Review mode must still be able to
+  // identify clear matches; the route and submit policy keep the final action
+  // under user control.
+  const canAutoApply = gatePass && priority >= profile.applySettings.minimumFitToApply;
   const reviewFloor = Math.max(0.5, profile.matchSettings.minimumFitFloor);
   const decision = canAutoApply
     ? "apply"

@@ -58,6 +58,20 @@ describe("progress dashboard", () => {
           reconciliationStatus: "blocked",
           skippedReason: "Unsupported requirement must not be claimed: healthcare compliance",
           nextStep: "Skipped until CV reconciliation passes."
+        },
+        {
+          jobId: "job-3",
+          company: "Promoted Fintech",
+          title: "Head of Product",
+          sourceName: "ATS",
+          decision: "watch",
+          recordedDecision: "apply",
+          recordedReasons: ["Codex found strong payments and product-leadership evidence."],
+          decisionActorKind: "agent",
+          decisionActorName: "codex",
+          reasons: ["Backend score was below today's threshold."],
+          failedGates: [],
+          nextStep: "Approved by recorded external judgement and prepared under configured policy."
         }
       ],
       livePreflight: {
@@ -288,6 +302,8 @@ describe("progress dashboard", () => {
     expect(html).toContain("Head of Product");
     expect(html).toContain("Decision Queue");
     expect(html).toContain("Noisy Source Co");
+    expect(html).toContain("Promoted Fintech");
+    expect(html).toContain("Recorded by codex; backend suggested Watch");
     expect(html).toContain("Skipped reason:");
     expect(html).toContain("Unsupported requirement must not be claimed");
     expect(html).toContain("outputs/cvs/example.docx");
@@ -346,6 +362,7 @@ describe("progress dashboard", () => {
     expect(summary).toContain("ATS diagnostics: outputs/ats-diagnostics/example.json");
     expect(summary).toContain("outputs/browser-receipts/example-receipt.json (Paused)");
     expect(summary).toContain("Skipped reason:");
+    expect(summary).not.toContain("Promoted Fintech - Head of Product: Watch");
     expect(summary).toContain("Review one compensation question");
   });
 

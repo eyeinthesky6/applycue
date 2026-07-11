@@ -1,10 +1,12 @@
 # Security Policy
 
+Status: current scope; durable private reporting contact must be verified before a formal launch-ready claim
+
 ## Reporting A Vulnerability
 
 Do not open a public issue for security vulnerabilities.
 
-For now, report security issues privately to the repository owner through the GitHub account that owns this repository. Add a dedicated security email before any public launch.
+Use GitHub private vulnerability reporting for this repository when it is enabled. If it is unavailable, do not publish exploit details in a public issue; the repository owner must provide a durable private contact before making a formal launch-ready claim.
 
 Include:
 
@@ -19,7 +21,7 @@ Security issues in the following are in scope:
 
 - scripts and CLI commands
 - browser automation and Playwright flows
-- generated HTML/PDF templates
+- generated CV/document rendering and previews
 - config and profile storage
 - plugin or connector execution
 - path traversal, command injection, SSRF, and secret exposure

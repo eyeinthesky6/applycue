@@ -5,9 +5,11 @@ import { join } from "node:path";
 import type { Compensation, EmploymentType, JobRecord, JobSource, WorkMode } from "@applycue/core";
 import { normalizeJob, type RawJobInput } from "@applycue/normalizer";
 import type { FetchJson, FetchJsonOptions } from "./ats.js";
+import { mapWithConcurrency } from "./concurrency.js";
 
 export type JobBoardProviderId =
   "jobspy" |
+  "jobhive" |
   "remotive" |
   "remoteok" |
   "workingnomads" |
@@ -32,7 +34,9 @@ export interface JobBoardSourceConfig {
 }
 
 export interface DiscoverJobBoardsOptions {
+  concurrency?: number;
   fetchJson?: FetchJson;
+  jobHiveRunner?: JobHiveRunner;
   jobSpyRunner?: JobSpyRunner;
   onWarning?: (message: string) => void;
 }
@@ -58,13 +62,37 @@ export interface JobSpyRunRequest {
 
 export type JobSpyRunner = (request: JobSpyRunRequest) => Promise<unknown[]>;
 
+export interface JobHiveRunRequest {
+  providers: string[];
+  title_terms: string[];
+  locations: string[];
+  limit: number;
+}
+
+export type JobHiveRunner = (request: JobHiveRunRequest) => Promise<unknown[]>;
+
 const DEFAULT_TIMEOUT_MS = 20_000;
+const DEFAULT_SOURCE_CONCURRENCY = 4;
 const HIMALAYAS_API_URL = "https://himalayas.app/jobs/api";
 const JOBICY_API_URL = "https://jobicy.com/api/v2/remote-jobs";
 const REMOTIVE_API_URL = "https://remotive.com/api/remote-jobs";
 const REMOTEOK_API_URL = "https://remoteok.com/api";
 const THEMUSE_API_URL = "https://www.themuse.com/api/public/jobs";
 const WORKING_NOMADS_API_URL = "https://www.workingnomads.com/api/exposed_jobs/";
+const JOBHIVE_PROVIDERS = new Set([
+  "greenhouse",
+  "lever",
+  "ashby",
+  "workable",
+  "smartrecruiters",
+  "bamboohr",
+  "breezy",
+  "recruitee",
+  "pinpoint",
+  "workday",
+  "personio",
+  "rippling"
+]);
 const JOBSPY_PYTHON = String.raw`
 import json
 import sys
@@ -81,6 +109,66 @@ try:
     jobs = scrape_jobs(**payload)
     jobs = jobs.where(jobs.notnull(), None)
     print(jobs.to_json(orient="records", date_format="iso"))
+except Exception as exc:
+    print(json.dumps({"error": str(exc)}), file=sys.stderr)
+    sys.exit(1)
+`;
+const JOBHIVE_PYTHON = String.raw`
+import json
+import re
+import sys
+
+try:
+    import duckdb
+except Exception as exc:
+    print(json.dumps({"error": "duckdb is not installed or could not be imported: " + str(exc)}), file=sys.stderr)
+    sys.exit(2)
+
+payload = json.load(sys.stdin)
+allowed = {
+    "greenhouse", "lever", "ashby", "workable", "smartrecruiters", "bamboohr",
+    "breezy", "recruitee", "pinpoint", "workday", "personio", "rippling"
+}
+providers = [value for value in payload.get("providers", []) if value in allowed]
+title_terms = [str(value).strip().lower() for value in payload.get("title_terms", []) if str(value).strip()]
+locations = [str(value).strip().lower() for value in payload.get("locations", []) if str(value).strip()]
+limit = max(1, min(100, int(payload.get("limit", 50))))
+
+def whole_term_pattern(term):
+    escaped = re.escape(term).replace("\\ ", "\\s+")
+    return rf"(?i)(^|[^a-z0-9]){escaped}([^a-z0-9]|$)"
+
+if not providers:
+    print(json.dumps({"error": "No supported JobHive ATS providers were supplied."}), file=sys.stderr)
+    sys.exit(1)
+
+rows = []
+try:
+    duckdb.execute("SET enable_progress_bar = false")
+    for provider in providers:
+        conditions = ["coalesce(apply_url, url) IS NOT NULL"]
+        params = []
+        if title_terms:
+            conditions.append("(" + " OR ".join(["regexp_matches(coalesce(title, ''), ?)"] * len(title_terms)) + ")")
+            params.extend([whole_term_pattern(term) for term in title_terms])
+        if locations:
+            conditions.append("(" + " OR ".join(["regexp_matches(coalesce(location, ''), ?)"] * len(locations)) + ")")
+            params.extend([whole_term_pattern(term) for term in locations])
+        url = f"https://storage.stapply.ai/jobhive/v1/{provider}/jobs.parquet"
+        sql = f"""
+            SELECT url, title, company, ats_type, location, is_remote,
+                   salary_min, salary_max, salary_currency, salary_period,
+                   employment_type, description, posted_at, apply_url
+            FROM read_parquet(?)
+            WHERE {' AND '.join(conditions)}
+            ORDER BY posted_at DESC NULLS LAST
+            LIMIT ?
+        """
+        cursor = duckdb.execute(sql, [url, *params, limit])
+        columns = [item[0] for item in cursor.description]
+        rows.extend(dict(zip(columns, row)) for row in cursor.fetchall())
+    rows.sort(key=lambda row: str(row.get("posted_at") or ""), reverse=True)
+    print(json.dumps(rows[:limit], default=str))
 except Exception as exc:
     print(json.dumps({"error": str(exc)}), file=sys.stderr)
     sys.exit(1)
@@ -114,25 +202,28 @@ export async function discoverJobsFromJobBoards(
   options: DiscoverJobBoardsOptions = {}
 ): Promise<JobRecord[]> {
   const fetchJson = options.fetchJson ?? defaultFetchJson;
+  const jobHiveRunner = options.jobHiveRunner ?? runJobHivePython;
   const jobSpyRunner = options.jobSpyRunner ?? runJobSpyPython;
-  const jobGroups = await Promise.all(
-    sources
-      .filter((source) => source.enabled !== false)
-      .map(async (source) => {
-        try {
-          validateCredentialPolicy(source);
-          if (source.provider === "jobspy") return await discoverJobSpyJobs(source, jobSpyRunner);
-          if (source.provider === "remotive") return await discoverRemotiveJobs(source, fetchJson);
-          if (source.provider === "remoteok") return await discoverRemoteOkJobs(source, fetchJson);
-          if (source.provider === "workingnomads") return await discoverWorkingNomadsJobs(source, fetchJson);
-          if (source.provider === "jobicy") return await discoverJobicyJobs(source, fetchJson);
-          if (source.provider === "himalayas") return await discoverHimalayasJobs(source, fetchJson);
-          return await discoverTheMuseJobs(source, fetchJson);
-        } catch (error) {
-          options.onWarning?.(`${source.label}: ${error instanceof Error ? error.message : String(error)}`);
-          return [];
-        }
-      })
+  const enabledSources = sources.filter((source) => source.enabled !== false);
+  const jobGroups = await mapWithConcurrency(
+    enabledSources,
+    options.concurrency ?? DEFAULT_SOURCE_CONCURRENCY,
+    async (source) => {
+      try {
+        validateCredentialPolicy(source);
+        if (source.provider === "jobspy") return await discoverJobSpyJobs(source, jobSpyRunner);
+        if (source.provider === "jobhive") return await discoverJobHiveJobs(source, jobHiveRunner);
+        if (source.provider === "remotive") return await discoverRemotiveJobs(source, fetchJson);
+        if (source.provider === "remoteok") return await discoverRemoteOkJobs(source, fetchJson);
+        if (source.provider === "workingnomads") return await discoverWorkingNomadsJobs(source, fetchJson);
+        if (source.provider === "jobicy") return await discoverJobicyJobs(source, fetchJson);
+        if (source.provider === "himalayas") return await discoverHimalayasJobs(source, fetchJson);
+        return await discoverTheMuseJobs(source, fetchJson);
+      } catch (error) {
+        options.onWarning?.(`${source.label}: ${error instanceof Error ? error.message : String(error)}`);
+        return [];
+      }
+    }
   );
   return uniqueJobsById(jobGroups.flat());
 }
@@ -141,6 +232,15 @@ export async function discoverJobSpyJobs(source: JobBoardSourceConfig, runner: J
   const request = toJobSpyRequest(source);
   const rows = await runner(request);
   return rows.map((row) => normalizeJob(toJobSpyRawJob(row, source)));
+}
+
+export async function discoverJobHiveJobs(source: JobBoardSourceConfig, runner: JobHiveRunner): Promise<JobRecord[]> {
+  const request = toJobHiveRequest(source);
+  const rows = await runner(request);
+  return rows.flatMap((row) => {
+    const raw = toJobHiveRawJob(row, source);
+    return raw ? [normalizeJob(raw)] : [];
+  });
 }
 
 export async function discoverRemotiveJobs(source: JobBoardSourceConfig, fetchJson: FetchJson = defaultFetchJson): Promise<JobRecord[]> {
@@ -248,6 +348,46 @@ function toJobSpyRequest(source: JobBoardSourceConfig): JobSpyRunRequest {
   return request;
 }
 
+function toJobHiveRequest(source: JobBoardSourceConfig): JobHiveRunRequest {
+  const options = source.options ?? {};
+  const configuredProviders = stringArray(options.providers).filter((provider) => JOBHIVE_PROVIDERS.has(provider));
+  const providers = configuredProviders.length > 0
+    ? configuredProviders
+    : ["rippling", "recruitee", "pinpoint", "bamboohr"];
+  const titleTerms = expandJobHiveTitleTerms(uniqueNonEmpty([
+    source.query,
+    ...stringArray(options.titleTerms)
+  ]));
+  const locations = uniqueNonEmpty([
+    stringValue(options.location),
+    ...stringArray(options.locations)
+  ]);
+  if (titleTerms.length === 0) throw new Error("missing query or options.titleTerms");
+  return {
+    providers,
+    title_terms: titleTerms,
+    locations,
+    limit: sourceLimit(source)
+  };
+}
+
+function expandJobHiveTitleTerms(terms: string[]): string[] {
+  const expanded = [...terms];
+  for (const term of terms) {
+    const normalized = term.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (normalized.startsWith("vp ")) {
+      expanded.push(`vice president ${normalized.slice(3)}`);
+    }
+    if (normalized === "director product") {
+      expanded.push("director of product", "product director");
+    }
+    if (normalized === "head of product") {
+      expanded.push("head of product management");
+    }
+  }
+  return uniqueNonEmpty(expanded);
+}
+
 function toJobSpyRawJob(row: unknown, source: JobBoardSourceConfig): RawJobInput {
   const item = asRecord(row);
   const site = stringValue(item.site) ?? source.provider;
@@ -276,6 +416,34 @@ function toJobSpyRawJob(row: unknown, source: JobBoardSourceConfig): RawJobInput
     ...(postedAt ? { postedAt } : {})
   };
   return raw;
+}
+
+function toJobHiveRawJob(row: unknown, source: JobBoardSourceConfig): RawJobInput | undefined {
+  const item = asRecord(row);
+  const url = stringValue(item.apply_url) ?? stringValue(item.url);
+  if (!url || !/^https:\/\//i.test(url)) return undefined;
+  const provider = stringValue(item.ats_type) ?? "unknown";
+  const location = stringValue(item.location);
+  const compensation = parseCompensation({
+    min: item.salary_min,
+    max: item.salary_max,
+    currency: item.salary_currency,
+    interval: item.salary_period
+  });
+  const employmentType = parseEmploymentType(stringValue(item.employment_type));
+  const postedAt = firstDateString(item, ["posted_at"]);
+  return {
+    source: createJobBoardSource(source, `jobhive:${provider}`, url),
+    company: stringValue(item.company) ?? "Unknown company",
+    title: stringValue(item.title) ?? "Untitled JobHive role",
+    url,
+    description: stringValue(item.description) ?? "",
+    workMode: item.is_remote === true ? "remote" : inferWorkMode(location),
+    ...(location ? { location } : {}),
+    ...(employmentType ? { employmentType } : {}),
+    ...(compensation ? { compensation } : {}),
+    ...(postedAt ? { postedAt } : {})
+  };
 }
 
 function buildRemotiveUrl(source: JobBoardSourceConfig): string {
@@ -472,9 +640,17 @@ function assertTheMuseUrl(rawUrl: string, label: string): string {
 
 async function runJobSpyPython(request: JobSpyRunRequest): Promise<unknown[]> {
   const pythonCommand = resolveJobSpyPythonCommand();
-  const result = await runProcess(pythonCommand, ["-c", JOBSPY_PYTHON], JSON.stringify(request));
+  const result = await runProcess(pythonCommand, ["-c", JOBSPY_PYTHON], JSON.stringify(request), "JobSpy", 180_000);
   const parsed = JSON.parse(result.stdout.trim() || "[]") as unknown;
   if (!Array.isArray(parsed)) throw new Error("JobSpy runner returned non-array JSON");
+  return parsed;
+}
+
+async function runJobHivePython(request: JobHiveRunRequest): Promise<unknown[]> {
+  const pythonCommand = resolveJobSpyPythonCommand();
+  const result = await runProcess(pythonCommand, ["-c", JOBHIVE_PYTHON], JSON.stringify(request), "JobHive", 180_000);
+  const parsed = JSON.parse(result.stdout.trim() || "[]") as unknown;
+  if (!Array.isArray(parsed)) throw new Error("JobHive runner returned non-array JSON");
   return parsed;
 }
 
@@ -490,11 +666,24 @@ export function resolveJobSpyPythonCommand(): string {
   return "python";
 }
 
-function runProcess(command: string, args: string[], stdin: string): Promise<{ stdout: string; stderr: string }> {
+function runProcess(
+  command: string,
+  args: string[],
+  stdin: string,
+  label: string,
+  timeoutMs: number
+): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+    let settled = false;
     let stdout = "";
     let stderr = "";
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill();
+      reject(new Error(`${label} runner timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", (chunk) => {
@@ -504,14 +693,20 @@ function runProcess(command: string, args: string[], stdin: string): Promise<{ s
       stderr += chunk;
     });
     child.on("error", (error) => {
-      reject(new Error(`could not start Python for JobSpy: ${error.message}`));
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      reject(new Error(`could not start Python for ${label}: ${error.message}`));
     });
     child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
       if (code === 0) {
         resolve({ stdout, stderr });
         return;
       }
-      reject(new Error(stderr.trim() || `JobSpy runner exited with code ${code ?? "unknown"}`));
+      reject(new Error(stderr.trim() || `${label} runner exited with code ${code ?? "unknown"}`));
     });
     child.stdin.end(stdin);
   });
@@ -560,6 +755,7 @@ function createJobBoardSource(source: JobBoardSourceConfig, site: string, url?: 
 function parseProvider(value: unknown): JobBoardProviderId | undefined {
   if (
     value === "jobspy" ||
+    value === "jobhive" ||
     value === "remotive" ||
     value === "remoteok" ||
     value === "workingnomads" ||
@@ -605,6 +801,10 @@ function sourcePageLimit(source: JobBoardSourceConfig, fallback: number): number
   const options = source.options ?? {};
   const pageLimit = numberValue(options.pageLimit) ?? numberValue(options.maxPages) ?? fallback;
   return Math.max(1, Math.min(25, Math.floor(pageLimit)));
+}
+
+function uniqueNonEmpty(values: Array<string | undefined>): string[] {
+  return [...new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))];
 }
 
 function isRecordWithUrl(value: unknown, field: string): boolean {

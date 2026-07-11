@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -15,7 +15,7 @@ describe("readApplyCueStatus", () => {
     expect(report.config.exists).toBe(false);
     expect(report.missing).toContain("profile config");
     expect(report.agentHandoff.headline).toContain("Setup has not started");
-    expect(report.agentHandoff.commandCenter).toEqual(["pnpm setup-applycue", "pnpm status"]);
+    expect(report.agentHandoff.commandCenter).toEqual(["pnpm applycue:setup", "pnpm applycue:status"]);
     expect(report.agentHandoff.needsAttention).toContain("Missing or not proven: profile config");
     expect(formatApplyCueStatus(report)).toContain("ApplyCue status: NEEDS SETUP");
   });
@@ -61,6 +61,7 @@ describe("readApplyCueStatus", () => {
         applicationIds: ["app-1", "app-2"],
         generatedFiles: [],
         sourceCodeWriteCount: 0,
+        decisionAuthority: "recorded_external",
         notes: [],
         sourceQuality: {
           inputJobs: 40,
@@ -101,6 +102,10 @@ describe("readApplyCueStatus", () => {
       }),
       "utf8"
     );
+    const newerNonManifestPath = path.join(runsDir, "latest-job-decisions.json");
+    await writeFile(newerNonManifestPath, JSON.stringify({ queueCount: 3, decisions: [] }), "utf8");
+    const future = new Date("2030-01-01T00:00:00.000Z");
+    await utimes(newerNonManifestPath, future, future);
     await writeFile(
       uatReportPath,
       JSON.stringify({
@@ -144,7 +149,7 @@ describe("readApplyCueStatus", () => {
     expect(report.status).toBe("ready");
     expect(report.nextAction).toBe("Review and confirm master form data, then run apply-route for a prepared application and follow its browser/email/DM/API/manual handoff under the user's policy.");
     expect(report.agentHandoff.headline).toBe("Ready for review: 2 application draft(s), 2 CV(s), UAT pass.");
-    expect(report.agentHandoff.commandCenter).toEqual(["pnpm form-data", "pnpm apply-route", "pnpm browser-live-preflight", "pnpm status"]);
+    expect(report.agentHandoff.commandCenter).toEqual(["pnpm applycue:form-data", "pnpm applycue:apply-route", "pnpm applycue:browser-live-preflight", "pnpm applycue:status"]);
     expect(report.agentHandoff.readyQueue).toEqual([
       "2 prepared application(s); open the summary for role details."
     ]);
@@ -154,16 +159,118 @@ describe("readApplyCueStatus", () => {
     expect(report.agentHandoff.evidence).toContain(`Dashboard: ${dashboardPath}`);
     expect(report.config.hasBaseCv).toBe(true);
     expect(report.latestRun?.jobs).toBe(3);
+    expect(report.latestRun?.decisionAuthority).toBe("recorded_external");
     expect(report.latestRun?.sourceQuality?.keptJobs).toBe(8);
     expect(report.latestUat?.status).toBe("pass");
     expect(report.summaryExcerpt[0]).toBe("# ApplyCue Run Summary");
     expect(formatted).toContain("ApplyCue status: READY");
     expect(formatted).toContain("Agent handoff:");
     expect(formatted).toContain("Agent command center:");
-    expect(formatted).toContain("- pnpm browser-live-preflight");
+    expect(formatted).toContain("- pnpm applycue:browser-live-preflight");
     expect(formatted).toContain("Ready: 2 prepared application(s); open the summary for role details.");
     expect(formatted).toContain("Source quality: 8 kept of 40 found.");
     expect(formatted).toContain("Review and confirm master form data");
+  });
+
+  it("does not present UAT suggestion-mode drafts as agent-approved work", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "applycue-status-test-authority-"));
+    const applyCueHome = path.join(workspace, "applycue-home");
+    const profileDir = path.join(applyCueHome, "profiles", "default");
+    const runsDir = path.join(profileDir, "outputs", "runs");
+    const dashboardPath = path.join(profileDir, "outputs", "dashboard", "latest.html");
+    const manifestPath = path.join(runsDir, "test-run.json");
+    await mkdir(path.dirname(dashboardPath), { recursive: true });
+    await mkdir(runsDir, { recursive: true });
+    await writeFile(path.join(profileDir, "applycue.json"), JSON.stringify({
+      profile: { name: "Test Candidate", email: "test@example.com", baseCvPath: "assets/base.md" },
+      preferences: { targetRoleTerms: ["product lead"] }
+    }), "utf8");
+    await writeFile(dashboardPath, "<html></html>", "utf8");
+    await writeFile(path.join(runsDir, "latest-summary.md"), "# ApplyCue Run Summary\n\n- Jobs prepared today: 2\n", "utf8");
+    await writeFile(manifestPath, JSON.stringify({
+      id: "test-run",
+      kind: "daily_batch",
+      startedAt: "2026-07-10T00:00:00.000Z",
+      completedAt: "2026-07-10T00:01:00.000Z",
+      profileId: "test-candidate",
+      jobIds: ["job-1", "job-2"],
+      cvVariantIds: ["cv-1", "cv-2"],
+      applicationIds: ["app-1", "app-2"],
+      generatedFiles: [],
+      sourceCodeWriteCount: 0,
+      decisionAuthority: "backend_suggestion_test",
+      notes: []
+    }), "utf8");
+    await writeFile(path.join(runsDir, "uat-report.json"), JSON.stringify({
+      id: "applycue-local-uat",
+      status: "pass",
+      generatedAt: "2026-07-10T00:02:00.000Z",
+      checks: [],
+      counts: { applications: 2, browserPlans: 2, browserReceipts: 2, cvs: 2, jobs: 2, reconciliationBlocked: 0, reconciliationNeedsConfirmation: 0, reconciliationPassed: 2 },
+      paths: { dashboard: dashboardPath, decisionQueue: path.join(runsDir, "latest-job-decisions.json"), manifest: manifestPath, markdownReport: path.join(runsDir, "uat-report.md"), profile: profileDir, report: path.join(runsDir, "uat-report.json"), summary: path.join(runsDir, "latest-summary.md") },
+      summary: "UAT passed."
+    }), "utf8");
+
+    const report = await readApplyCueStatus({ applyCueHome, env: {} });
+    expect(report.status).toBe("needs_run");
+    expect(report.missing).toContain("agent-approved preparation run");
+    expect(report.agentHandoff.readyQueue).toEqual([]);
+    expect(report.nextAction).toContain("record apply/review/watch/skip decisions");
+    expect(formatApplyCueStatus(report)).toContain("UAT/test or older unproven suggestions only");
+  });
+
+  it("keeps a partially reviewed supplied queue in agent judgement instead of asking for more sources", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "applycue-status-awaiting-decisions-"));
+    const applyCueHome = path.join(workspace, "applycue-home");
+    const profileDir = path.join(applyCueHome, "profiles", "default");
+    const runsDir = path.join(profileDir, "outputs", "runs");
+    const dashboardPath = path.join(profileDir, "outputs", "dashboard", "latest.html");
+    const manifestPath = path.join(runsDir, "awaiting-run.json");
+    await mkdir(path.dirname(dashboardPath), { recursive: true });
+    await mkdir(runsDir, { recursive: true });
+    await writeFile(path.join(profileDir, "applycue.json"), JSON.stringify({
+      profile: { name: "Awaiting Candidate", email: "awaiting@example.com", baseCvPath: "assets/base.md" },
+      preferences: { targetRoleTerms: ["product lead"] }
+    }), "utf8");
+    await writeFile(dashboardPath, "<html></html>", "utf8");
+    await writeFile(path.join(runsDir, "latest-summary.md"), "# ApplyCue Run Summary\n", "utf8");
+    await writeFile(manifestPath, JSON.stringify({
+      id: "awaiting-run",
+      kind: "daily_batch",
+      startedAt: "2026-07-11T00:00:00.000Z",
+      completedAt: "2026-07-11T00:01:00.000Z",
+      profileId: "awaiting-candidate",
+      jobIds: ["job-1", "job-2", "job-3"],
+      cvVariantIds: ["cv-1"],
+      applicationIds: ["app-1"],
+      generatedFiles: [],
+      sourceCodeWriteCount: 0,
+      decisionAuthority: "recorded_external",
+      notes: [],
+      funnelHealth: {
+        status: "awaiting_decisions",
+        message: "3 jobs await review.",
+        configuredDailyTarget: 2,
+        preparedApplications: 1,
+        discoveredJobs: 40,
+        keptForRanking: 3,
+        rankedJobs: 3,
+        recordedDecisions: 1,
+        awaitingDecisions: 2,
+        watchOrSkippedJobs: 0,
+        dominantFilters: [],
+        dominantGateBlocks: [],
+        suggestedActions: ["Review the decision queue."]
+      }
+    }), "utf8");
+
+    const report = await readApplyCueStatus({ applyCueHome, env: {} });
+    expect(report.status).toBe("needs_decisions");
+    expect(report.missing).toContain("recorded candidate decisions");
+    expect(report.agentHandoff.headline).toContain("2 ranked job(s) await");
+    expect(report.agentHandoff.commandCenter[0]).toContain("applycue:record-decisions");
+    expect(report.nextAction).toContain("enriched decision queue");
+    expect(formatApplyCueStatus(report)).toContain("Decision queue: 1 recorded, 2 awaiting review.");
   });
 
   it("extracts prepared queue, watch items, and next actions from the chat summary", async () => {
@@ -232,6 +339,7 @@ describe("readApplyCueStatus", () => {
         applicationIds: ["app-1", "app-2"],
         generatedFiles: [],
         sourceCodeWriteCount: 0,
+        decisionAuthority: "recorded_external",
         notes: []
       }),
       "utf8"
@@ -281,7 +389,7 @@ describe("readApplyCueStatus", () => {
       "Review generated CVs before enabling submit.",
       "Run browser preflight on approved applications."
     ]);
-    expect(report.agentHandoff.commandCenter).toEqual(["pnpm form-data", "pnpm apply-route", "pnpm browser-live-preflight", "pnpm status"]);
+    expect(report.agentHandoff.commandCenter).toEqual(["pnpm applycue:form-data", "pnpm applycue:apply-route", "pnpm applycue:browser-live-preflight", "pnpm applycue:status"]);
     expect(formatted).toContain("Ready: Fintech Co - VP Product");
     expect(formatted).toContain("Needs attention: Legacy Co - Business Development Manager");
     expect(formatted).toContain("Next: Run browser preflight on approved applications.");
@@ -342,6 +450,7 @@ describe("readApplyCueStatus", () => {
           }
         ],
         sourceCodeWriteCount: 0,
+        decisionAuthority: "recorded_external",
         notes: []
       }),
       "utf8"
@@ -394,7 +503,7 @@ describe("readApplyCueStatus", () => {
             kind: "sensitive_required_field",
             canSaveAsReusable: true,
             requiresExplicitUserApproval: true,
-            suggestedDryRunCommand: "pnpm approve-answers -- --dry-run --field \"notice_period\" --value \"<approved answer>\"",
+            suggestedDryRunCommand: "pnpm applycue:approve-answers -- --dry-run --field \"notice_period\" --value \"<approved answer>\"",
             note: "Ask the user once."
           },
           {
@@ -433,7 +542,7 @@ describe("readApplyCueStatus", () => {
       "What is your notice period?",
       "One required field on the page had no visible label; inspect it before answering."
     ]);
-    expect(report.latestLivePreflight?.approvalCommand).toContain("pnpm approve-answers -- --from-live");
+    expect(report.latestLivePreflight?.approvalCommand).toContain("pnpm applycue:approve-answers -- --from-live");
     expect(report.latestLivePreflight?.approvalCommand).toContain("--set notice_period=");
     expect(report.nextAction).toContain("Ask the 2 live preflight answer prompt");
     expect(report.nextAction).toContain("--from-live");
@@ -441,10 +550,10 @@ describe("readApplyCueStatus", () => {
     expect(report.agentHandoff.nextSteps[0]).toContain("Ask the 2 live preflight answer prompt");
     expect(report.agentHandoff.nextSteps[0]).toContain("--from-live");
     expect(report.agentHandoff.commandCenter).toEqual([
-      'pnpm approve-answers -- --from-live --set notice_period="<approved answer>" --dry-run',
-      'pnpm approve-answers -- --from-live --set notice_period="<approved answer>"',
-      "pnpm browser-live-preflight",
-      "pnpm status"
+      'pnpm applycue:approve-answers -- --from-live --set notice_period="<approved answer>" --dry-run',
+      'pnpm applycue:approve-answers -- --from-live --set notice_period="<approved answer>"',
+      "pnpm applycue:browser-live-preflight",
+      "pnpm applycue:status"
     ]);
     expect(report.agentHandoff.needsAttention[0]).toBe(
       "Live preflight paused for Easyship - Senior Product Manager: 2 answer prompt(s) need review before filling the form."
@@ -455,8 +564,8 @@ describe("readApplyCueStatus", () => {
     expect(formatted).toContain("Live answer prompts: 2 question(s), 1 reusable with approval, 1 one-off.");
     expect(formatted).toContain("- Ask: What is your notice period?");
     expect(formatted).toContain("- Ask: One required field on the page had no visible label; inspect it before answering.");
-    expect(formatted).toContain("Approval command: pnpm approve-answers -- --from-live");
-    expect(formatted).toContain('pnpm approve-answers -- --from-live --set notice_period="<approved answer>" --dry-run');
+    expect(formatted).toContain("Approval command: pnpm applycue:approve-answers -- --from-live");
+    expect(formatted).toContain('pnpm applycue:approve-answers -- --from-live --set notice_period="<approved answer>" --dry-run');
     expect(formatted).toContain(`Answer review page: ${liveAnswerPromptsHtmlPath}`);
     expect(formatted).toContain(`Answer approval template: ${liveAnswerApprovalTemplatePath}`);
     expect(formatted).toContain("Ask the 2 live preflight answer prompt");
@@ -519,6 +628,7 @@ describe("readApplyCueStatus", () => {
           }
         ],
         sourceCodeWriteCount: 0,
+        decisionAuthority: "recorded_external",
         notes: []
       }),
       "utf8"
@@ -585,14 +695,14 @@ describe("readApplyCueStatus", () => {
 
     expect(report.latestLivePreflight?.isCurrent).toBe(true);
     expect(report.agentHandoff.commandCenter).toEqual([
-      "pnpm form-data",
-      "pnpm browser-live-apply",
-      "pnpm browser-live-preflight",
-      "pnpm status"
+      "pnpm applycue:form-data",
+      "pnpm applycue:browser-live-apply",
+      "pnpm applycue:browser-live-preflight",
+      "pnpm applycue:status"
     ]);
     expect(report.agentHandoff.nextSteps[0]).toBe("Confirm master form data if needed, then run controlled live apply to fill/upload in review mode and pause before final submit.");
     expect(report.nextAction).toBe("Confirm master form data if needed, then run controlled live apply to fill/upload in review mode and pause before final submit.");
-    expect(formatted).toContain("- pnpm browser-live-apply");
+    expect(formatted).toContain("- pnpm applycue:browser-live-apply");
   });
 
   it("does not route stale live preflight prompts when the prepared browser plan changed", async () => {
@@ -661,6 +771,7 @@ describe("readApplyCueStatus", () => {
           }
         ],
         sourceCodeWriteCount: 0,
+        decisionAuthority: "recorded_external",
         notes: []
       }),
       "utf8"
@@ -736,7 +847,7 @@ describe("readApplyCueStatus", () => {
     const formatted = formatApplyCueStatus(report);
 
     expect(report.latestLivePreflight?.isCurrent).toBe(false);
-    expect(report.agentHandoff.commandCenter).toEqual(["pnpm form-data", "pnpm apply-route", "pnpm browser-live-preflight", "pnpm status"]);
+    expect(report.agentHandoff.commandCenter).toEqual(["pnpm applycue:form-data", "pnpm applycue:apply-route", "pnpm applycue:browser-live-preflight", "pnpm applycue:status"]);
     expect(report.agentHandoff.nextSteps).toEqual(["Review generated CVs before enabling submit."]);
     expect(report.agentHandoff.needsAttention).toEqual([]);
     expect(report.nextAction).toBe("Review and confirm master form data, then run apply-route for a prepared application and follow its browser/email/DM/API/manual handoff under the user's policy.");

@@ -7,13 +7,6 @@ body:
       value: |
         > ⚠️ **Privacy first.** ApplyCue runs locally. **Never** paste your CV, scan results, pipeline data, job listings, or other personal info — issues are **public forever**. Keep your data on your machine; share only sanitized snippets.
   - type: checkboxes
-    id: coc
-    attributes:
-      label: Code of Conduct
-      options:
-        - label: I agree to follow the [Code of Conduct](https://github.com/eyeinthesky6/applycue/blob/main/CODE_OF_CONDUCT.md)
-          required: true
-  - type: checkboxes
     id: search
     attributes:
       label: Existing issues
@@ -39,12 +32,12 @@ body:
     attributes:
       label: Area
       options:
-        - Evaluation / Scoring
-        - PDF Generation
-        - Portal Scanner
-        - Dashboard TUI
-        - Batch Processing
-        - Language / i18n
+        - Discovery and sources
+        - Job decisions and matching
+        - CV generation and truth checks
+        - Application routes and browser safety
+        - Profile, state, and outcomes
+        - Agent workflow
         - Documentation
         - Other
     validations:

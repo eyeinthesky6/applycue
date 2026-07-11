@@ -4,6 +4,8 @@ Date: 2026-07-06
 
 Updated: 2026-07-08
 
+Status: supporting discovery decision. `ARCHITECTURE.md` and `prebuilt-providers-and-libraries.md` own the consolidated current direction.
+
 ## Decision
 
 ApplyCue discovery should build in layers:

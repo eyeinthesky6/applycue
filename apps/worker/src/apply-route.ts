@@ -65,6 +65,7 @@ export async function runApplyRouteExecution(
   const workspaceRoot = options.workspaceRoot ?? process.cwd();
   const batch = options.batch ?? await runLocalOrSampleBatch({
     workspaceRoot,
+    requireRecordedJobDecisions: true,
     ...(options.applyCueHome ? { applyCueHome: options.applyCueHome } : {}),
     ...(options.profileKey ? { profileKey: options.profileKey } : {}),
     writeFiles: true

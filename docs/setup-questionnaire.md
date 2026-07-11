@@ -2,11 +2,21 @@
 
 Date: 2026-07-05
 
+Status: current question reference. The agent asks only material missing facts and writes approved answers through product flows.
+
 The agent should ask the minimum needed to start the pipeline, write stable answers into config, and ask the rest only when needed.
 
 Do not turn setup into a long form. ApplyCue should start running quickly.
 
 ## Required To Start
+
+The command-level minimum for a real first batch is:
+
+- name plus email or phone;
+- base CV;
+- at least one target role.
+
+The agent writes those approved values through `applycue:setup -- --input <file> --base-cv <file>`. The questions below improve safety and shortlist quality, but the agent may collect non-blocking answers incrementally rather than forcing a long form before setup.
 
 Ask these first:
 
@@ -124,6 +134,26 @@ Fraud signals:
 
 Default for unlisted portals should be practical: search and prefill are okay for normal company/application pages; pause on fraud signals, sensitive fields, configured ask-before portals, or final submit policy.
 
+## Connector And Preferred Job-Site Onboarding
+
+Do not start setup by asking the user to connect every account. First inspect the connector and browser tools exposed by the current agent host. Ask only when the capability is available or connectable and has immediate value.
+
+After the first useful public-source run, ask:
+
+```text
+I can improve the next batch in two optional ways:
+1. Search recent job alerts and recruiter messages through an available Gmail/Outlook connector.
+2. Use your existing Chrome login on one or two job sites you already prefer.
+
+Which, if either, would you like to enable?
+```
+
+For email, explain that the first permission is narrow read/search for recent job-related messages. Do not imply send permission. Use the agent host's own OAuth screen and continue with public sources if the user declines.
+
+For job sites, ask for the user's preferred one or two sites instead of assuming LinkedIn, Indeed, Naukri, or another board. The user logs in directly in the real browser. Store the approved site as a `sources.loggedInBrowserSources` entry, but do not store credentials. Treat search/inspection, fill/upload, messaging, and final submit as separate permissions.
+
+See `docs/connector-capability-policy.md` for the host discovery states, prompt rules, and current job-site connector decision.
+
 ## Session Start Reminder
 
 At the start of each session or daily run, the agent should check pending questions.
@@ -161,4 +191,5 @@ I need your location/country and notice period before I can apply safely.
 - mode
 - match range
 - trusted, ask-before, and blocked sources
+- approved email-source intent and preferred logged-in job sites, but no connector tokens or browser credentials
 - pending questions

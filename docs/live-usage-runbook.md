@@ -1,6 +1,8 @@
 # Live Usage Runbook
 
-Date: 2026-07-11
+Date: 2026-07-10
+
+Status: current real-profile operating guide.
 
 This runbook is for the first real multi-candidate UAT. The goal is to use ApplyCue as an agent-operated CV-to-shortlist system first, then apply only when the user explicitly asks.
 
@@ -25,7 +27,8 @@ CV + preferences
   -> profile setup
   -> clean job discovery
   -> dedupe/noise filtering
-  -> ranked queue
+  -> evidence-rich ranked queue
+  -> Codex/Claude review receipt
   -> truthful role-specific CVs
   -> reusable form data preview
   -> local dashboard/summary
@@ -39,15 +42,19 @@ Run the current operator's profile first:
 
 ```powershell
 pnpm applycue:status -- --profile default
-pnpm applycue:first-build -- --profile default --more-results --target-ranking-queue 200
-pnpm applycue:form-data -- --profile default --more-results --target-ranking-queue 200
+pnpm applycue:first-build -- --profile default
+pnpm applycue:record-decisions -- --profile default --input <reviewed-decisions.json> --prepare
+pnpm applycue:form-data -- --profile default
 pnpm applycue:status -- --profile default
 ```
 
 Expected result:
 
-- status is `READY`
-- latest ranked queue is large enough for review, usually 200+ when available
+- the first status after discovery is `NEEDS DECISIONS` when ranked jobs exist but none are approved yet
+- after the agent reviews the queue and runs the atomic decision/preparation command, status can progress to `READY` once UAT evidence is current
+- the engine has classified the full batch, only unresolved ambiguous rows received Codex/Claude judgement, and the prepared queue contains the best roles up to `applicationsPerDay`
+- latest ranked queue reports the actual available volume; the requested target is a cap, not a guaranteed minimum
+- each queue row includes the source URL/date, bounded JD excerpt, rank reasoning, hard gates, and a full normalized JD path
 - master form data preview is current
 - dashboard and summary paths are written under `%USERPROFILE%\.applycue\profiles\default\outputs\`
 
@@ -97,10 +104,11 @@ Do not force a long setup form. Ask only for missing blockers and continue with 
 Use this sequence for each new profile:
 
 ```powershell
-pnpm applycue:setup -- --profile <profile> --skip-source-approval
+pnpm applycue:setup -- --profile <profile> --input <approved-setup.json> --base-cv <candidate-cv.docx-or-pdf-or-text> --skip-source-approval
 pnpm applycue:status -- --profile <profile>
-pnpm applycue:first-build -- --profile <profile> --more-results --target-ranking-queue 200
-pnpm applycue:form-data -- --profile <profile> --more-results --target-ranking-queue 200
+pnpm applycue:first-build -- --profile <profile>
+pnpm applycue:record-decisions -- --profile <profile> --input <reviewed-decisions.json> --prepare
+pnpm applycue:form-data -- --profile <profile>
 pnpm applycue:status -- --profile <profile>
 ```
 
@@ -116,6 +124,10 @@ Use browser UAT only when checking the application-fill leg for that candidate:
 pnpm applycue:browser-uat -- --profile <profile> --more-results --target-ranking-queue 200
 ```
 
+Before asking for mailbox or job-site access, inspect the current agent host's tools. If an email connector is ready or connectable, ask only for narrow recent job-related read/search access and use the host's OAuth flow. Ask which one or two job sites the candidate already prefers before using their real Chrome session. The user logs in directly; search/inspection permission does not grant submit or messaging permission.
+
+If either capability is unavailable or declined, continue the batch through public sources. Follow `docs/connector-capability-policy.md`; do not request credentials in chat or install an unreviewed community connector.
+
 ## Search Quality Review
 
 After each first build, inspect:
@@ -125,6 +137,8 @@ outputs\runs\latest-summary.md
 outputs\runs\latest-job-decisions.json
 outputs\dashboard\latest.html
 ```
+
+Do not ask the user or agent to rank every job. ApplyCue classifies the full batch and automatically resolves clear rows. Codex/Claude reviews only ambiguous `review` rows needed to fill or correct the shortlist and asks the user only when a missing candidate fact could materially change a decision. When decisions are needed, write one reviewed decision JSON file under the active profile or an OS temporary directory and use `record-decisions --prepare`. Never put this user-specific import file in the repo. The command performs the canonical receipt write and safe downstream generation; it never submits, sends, confirms form data, or widens search.
 
 Tell the user in plain language:
 
@@ -136,7 +150,7 @@ Tell the user in plain language:
 - top role clusters
 - whether results look too narrow, too broad, or good enough for review
 
-If results are too small, widen in this order:
+Review the existing decision queue before calling supply too small. If the queue has pending decisions, status is `NEEDS DECISIONS`, not low volume. Only after the queue is reviewed and the prepared shortlist is genuinely short should the agent propose widening in this order:
 
 ```text
 source -> title -> industry -> location -> recency -> batch strictness
@@ -164,8 +178,8 @@ Commands:
 
 ```powershell
 pnpm applycue:apply-route -- --profile <profile> --route-id <route-id>
-pnpm applycue:browser-live-preflight -- --profile <profile> --route-id <route-id>
-pnpm applycue:browser-live-apply -- --profile <profile> --route-id <route-id>
+pnpm applycue:browser-live-preflight -- --profile <profile> --plan-id <browser-plan-id>
+pnpm applycue:browser-live-apply -- --profile <profile> --plan-id <browser-plan-id>
 ```
 
 Never reuse a stale live preflight for a real submit. Rerun preflight on the current page before applying.
@@ -189,7 +203,7 @@ For each candidate, keep these paths in the session notes:
 
 Stop and ask the user before continuing if:
 
-- contact details are missing
+- contact details are missing before application preparation or submission; search-only review may continue without them
 - the CV does not identify the user's role level or target roles
 - location/work authorization makes the batch ambiguous
 - results are mostly irrelevant

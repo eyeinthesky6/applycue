@@ -11,6 +11,7 @@
   "dependencies": {
     "@applycue/browser-agent": "workspace:*",
     "@applycue/core": "workspace:*",
+    "@applycue/discovery": "workspace:*",
     "@applycue/engine": "workspace:*",
     "@applycue/profile": "workspace:*",
     "@applycue/ranker": "workspace:*",

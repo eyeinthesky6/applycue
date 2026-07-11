@@ -79,6 +79,7 @@ When unsure, stop with one plain question in chat. Do not invent a new workflow 
 | pasted JD, job URL, apply to this role | `single-role` | Ingest the role, verify fit/liveness, generate CV/application artifacts if relevant. |
 | add sources, approve sources, more results | `sources` | Approve reusable sources only with user intent; use transient widening for one-off more-results runs. |
 | tune search, noisy results, wrong titles, agent analysis | `tuning` | Record user feedback or agent batch analysis as tuning signals; do not silently rewrite active config. |
+| review ranked jobs, choose what to pursue | `decisions` | Review the generated queue, keep hard gates authoritative, and record one evidence-backed decision batch. |
 | apply approved jobs, fill forms, submit | `apply` | Read the generated apply route first. Execute API, browser, email, DM, or manual-review route under policy. |
 | answer form questions, save reusable answer | `answers` | Save only user-approved reusable answers into editable config. |
 | got confirmation, reply, interview, rejection, offer | `outcomes` | Record outcome event, refresh dashboard/summary, update learning signals. |
@@ -96,6 +97,7 @@ Use these as implementation details:
 ```powershell
 pnpm applycue:setup
 pnpm applycue:status
+pnpm applycue:source-canary
 pnpm applycue:first-build
 pnpm applycue:first-build -- --more-results
 pnpm applycue:first-build -- --more-results --target-ranking-queue 200
@@ -111,6 +113,8 @@ pnpm applycue:approve-answers -- --from-live --set field=value --dry-run
 pnpm applycue:approve-answers -- --from-live --set field=value
 pnpm applycue:browser-live-apply
 pnpm applycue:record-outcome -- --application <id> --type <type>
+pnpm applycue:record-decision -- --job <id> --decision <apply|review|watch|skip> --actor <codex|claude|user|name> --reason <why> --evidence <ref>
+pnpm applycue:record-decisions -- --input <reviewed-decisions.json> --prepare
 pnpm applycue:record-tuning -- --origin agent_analysis --target title_variant --action promote --value <term> --reason <why>
 pnpm applycue:record-tuning -- --origin user_feedback --target role_term --action block --value <term> --reason <why> --approved-by-user
 pnpm applycue:apply-tuning -- --dry-run --ids <signal-id>
@@ -120,6 +124,93 @@ pnpm applycue:check
 ```
 
 Do not ask the user to run these commands. The agent runs them and reports the result.
+
+## Agent-Led Setup Input
+
+For a new profile, the agent collects the minimum blocking inputs in chat: the user's name plus email or phone, a base CV, and at least one target role. The agent writes the approved answers as the existing `ApplyCueConfig` JSON shape in an OS temporary file, then runs:
+
+```json
+{
+  "profile": { "name": "Approved name", "email": "approved@example.com" },
+  "preferences": { "targetRoleTerms": ["head of product"], "preferredLocations": ["India"] },
+  "applySettings": { "mode": "review", "applicationsPerDay": 5 }
+}
+```
+
+```powershell
+pnpm applycue:setup -- --input <approved-setup.json> --base-cv <candidate-cv.docx-or-pdf-or-text>
+```
+
+The setup command merges approved fields into the profile config, copies the original CV under the active profile's `assets/base-cvs/`, checks that ApplyCue code can read it, checks required fields, and only then installs optional tools, approves bounded starter sources, and runs the first safe batch. If blocking fields are absent, setup reports them and does not write a misleading empty first-run manifest.
+
+MVP setup accepts DOCX, text-based PDF, Markdown, and plain-text CV input. ApplyCue code extracts source text; the agent must not recreate the CV or ask the user to convert it. An image-only PDF fails with an OCR-needed message. Keep the original file as the authoritative asset and never place the setup packet or CV in the source repo.
+
+## Candidate-Side Judgement
+
+For the current launch path, use the native intelligence in Codex, Claude, or another user-chosen coding agent. The canonical ApplyCue skill supplies the workflow and safety rules; the native agent reads the generated ApplyCue artifacts, reasons about fuzzy fit, and uses its native research, email, browser, social, or other connected tools only when the user has allowed that access.
+
+For each ambiguous candidate-side judgement:
+
+1. Read the normalized JD, base CV/profile facts, proof bank, preferences, hard-gate results, and backend ordering reasons.
+2. Respect clear hard-gate and threshold decisions; inspect only `review` rows or a clear decision whose evidence looks wrong.
+3. Decide `apply`, `review`, `watch`, or `skip` from the candidate's interests and evidence, with short reasons and evidence references.
+4. Ask the user only when a missing fact could materially change the decision.
+5. Keep deterministic hard gates, CV truth reconciliation, source trust, and user permissions authoritative.
+
+ApplyCue can scan hundreds of jobs cheaply. The engine resolves clear hard-gate failures, clear low-fit rows, and clear matches. Codex/Claude reads only the ambiguous `review` rows needed to fill or correct the configured shortlist, unless an audit signal suggests a clear system decision is wrong. The final shortlist combines clear system matches and recorded ambiguity decisions, capped by `applicationsPerDay`.
+
+For one-off review, record the final judgement through the product contract:
+
+```powershell
+pnpm applycue:record-decision -- --job <id> --decision <apply|review|watch|skip> --actor <codex|claude|user|name> --reason <why> --evidence <ref>
+```
+
+For a normal batch, read each queue item's `jobDescriptionPath` plus its description excerpt, source/date metadata, gate results, backend priority/components, and profile evidence. Write one reviewed JSON file:
+
+```json
+{
+  "actorName": "codex",
+  "actorKind": "agent",
+  "decisions": [
+    {
+      "jobId": "job-id",
+      "decision": "apply",
+      "reasons": ["The approved profile evidence covers the must-have requirements."],
+      "evidenceRefs": ["outputs/jds/job-id.md", "profile:proof-item-id"]
+    }
+  ]
+}
+```
+
+Write this transient import file under the active profile or an OS temporary directory, never in the source repo. `data/local/job-decisions.jsonl` remains the canonical durable receipt store.
+
+Then record the reviewed batch and automatically run all non-user preparation work:
+
+```powershell
+pnpm applycue:record-decisions -- --input <reviewed-decisions.json> --prepare
+```
+
+The batch write is atomic, rejects duplicate job IDs and hard-gate overrides, and skips an unchanged retry. `--prepare` refreshes discovery and generates CVs, diagnostics, drafts, routes, the dashboard, and the summary; it does not fill a portal, submit, send, widen source scope, confirm user facts, or answer new questions.
+
+The first `first-build` writes the full ranked/audit queue. Normal preparation automatically includes clear system `apply` jobs and recorded `apply` decisions for ambiguous rows, capped by `applicationsPerDay`. A recorded `review`, `watch`, or `skip` overrides a system match. Unresolved `review` rows do not prepare. Current hard gates remain authoritative even if an older receipt said `apply`. UAT uses explicit `backend_suggestion_test` authority to test mechanics.
+
+ApplyCue does not require a model API key for this current workflow. A hosted model API may later productize the same evidence-bound judgement behind an ApplyCue-owned contract, after a privacy, quality, cost, and rollback trial. Training or fine-tuning an ApplyCue model is a later research option only after enough consented corrections and held-out evaluation evidence exist; it is not a launch dependency.
+
+## Connector Capability Discovery
+
+Before asking the user to connect email, social, a job site, or another account, inspect the tools actually exposed by the current Codex, Claude, Hermes, or other agent host. Do not assume that a connector exists because another host supports it.
+
+Map the available tools to the needed capability: `email_read`, `email_draft`, `email_send`, `logged_in_browser`, `public_web`, or `local_files`. Treat each as `ready`, `needs_connection`, `unavailable`, `denied`, or `unhealthy` for the current session. Match the tool's described actions, not its name.
+
+Ask for one connection only when it has immediate value. Explain what data will be used, what action will be performed, what will not happen, and the fallback. Use the host's normal install/enable/OAuth flow; never ask for a password, OTP, cookie, OAuth token, or client secret in chat. Do not install a third-party plugin or MCP server without explicit user approval after showing its publisher and requested access.
+
+For email, request narrow recent job-alert/recruiter/application-confirmation search first. Reading, drafting, and sending are separate permissions; final send always needs explicit confirmation.
+
+For logged-in job sites, ask which one or two sites the user already prefers. Use public adapters first. Use the user's real Chrome session only with approval, let the user log in directly, and keep search/inspection permission separate from application or submit permission. A community MCP listing is not proof that a job site officially supports candidate search or apply.
+
+If access is declined or unavailable, continue with public ATS, JobSpy, approved company pages, manual URLs, or manual review. Connector absence must not block the core pipeline.
+
+The host-specific discovery methods, prompt examples, current job-site findings, and MVP proof gate are in `docs/connector-capability-policy.md`.
 
 ## Apply Route Rules
 
@@ -207,7 +298,7 @@ The first run must stay clean:
 - do not silently include older historical postings
 - do not bulk-approve generated sources
 - if the batch is small, explain the count and offer simple more-results options
-- after the first run, if no inbox/email-alert source is approved, ask whether to add Gmail/Outlook job-alert search; prefer native Codex, Claude, Hermes, or similar connected email tools and do not enable mailbox access silently
+- after the first run, if no inbox/email-alert source is approved, first discover whether the current host has a ready or connectable email-read tool; only then ask whether to add narrow job-alert/recruiter search, and do not enable mailbox access silently
 
 When the user asks for more results, widen in this order:
 
@@ -223,7 +314,7 @@ If the user asks for a wider queue, use `--more-results --target-ranking-queue <
 
 Inbox leads are high signal because the user has already subscribed to job boards, LinkedIn alerts, recruiters, newsletters, and saved searches. Use broad recent mailbox search strings, then import only real job evidence into ApplyCue.
 
-The agent may use Gmail/Outlook only through native Codex, Claude, Hermes, or similar connected email tools first. If those are unavailable, browser control may be used only with user permission. ApplyCue stores imported jobs and connector references only; it does not store mailbox tokens and does not send email. Final send always needs explicit user confirmation.
+The agent may use Gmail/Outlook only after discovering a ready or connectable email-read tool in the current Codex, Claude, Hermes, or similar host and receiving user approval. If native access is unavailable, browser control may be used only with user permission. ApplyCue stores imported jobs and safe connector references only; it does not store mailbox tokens and does not send email. Final send always needs explicit user confirmation.
 
 Reject or manual-review email leads that ask for fees, deposits, paid registration, training fees, private IDs, bank/salary documents before a verified interview/offer, or candidate/profile database registration before naming the company and role. Do not block all consultants or recruiters, especially in India, because many real leads come through agencies.
 
@@ -243,7 +334,7 @@ The scanner extracts real company, role title, apply URL/JD URL, location if vis
 
 ## Truth And CV Rules
 
-Generated CVs must come from the base CV, approved profile facts, proof bank, approved application answers, and the JD. The agent may reframe, reorder, and emphasize. It must not invent companies, dates, metrics, titles, tools, credentials, work authorization, location, or achievements.
+Generated CVs are created by ApplyCue's CV engine from the base CV, approved profile facts, proof bank, approved application answers, and the JD. The agent may provide an approved ambiguity decision or correction, but it must not hand-write the final CV. The engine may reframe, reorder, and emphasize. It must not invent companies, dates, metrics, titles, tools, credentials, work authorization, location, or achievements.
 
 Major changes such as role pivot, industry pivot, city, seniority, or new claims must be saved as approved facts or a new base CV version first, then regenerated.
 
@@ -261,6 +352,7 @@ Before filling a real application page:
 ## Useful Docs
 
 - `docs/agent-first-installation-and-usage.md`
+- `docs/connector-capability-policy.md`
 - `docs/end-to-end-user-flow.md`
 - `docs/agent-development-guide.md`
 - `docs/configuration.md`

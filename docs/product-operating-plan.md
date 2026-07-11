@@ -2,6 +2,10 @@
 
 Date: 2026-07-06
 
+Status: historical implementation plan and future backlog. Use `product-roadmap.md` for MVP/V1/V2 scope, `ARCHITECTURE.md` for ownership, and `launch-readiness.md` for release decisions.
+
+Terminology note: historical `V1`, `MVP`, and distribution labels below do not override the canonical version plan.
+
 ## Short Answer
 
 We are ready to build.
@@ -11,7 +15,7 @@ The missing work is execution structure, not product direction.
 Build first:
 
 ```text
-source intake -> hard gates -> agent shortlist -> reconciliation -> standard_ats_v1 CV -> apply plan -> dashboard
+source intake -> hard gates + clear shortlist -> ambiguity review when needed -> reconciliation -> standard_ats_v1 CV -> apply plan -> dashboard
 ```
 
 Do not start with SaaS, social connectors, multiple templates, advanced ML, or a generic job-search engine.

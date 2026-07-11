@@ -4,6 +4,7 @@ import { createApplicationDraft, createApplyRoute, createBrowserApplyPlan } from
 import type {
   ApplicationDraft,
   ApplicationRecord,
+  ApplyDecision,
   ApplyRoute,
   AtsDiagnosticReport,
   BrowserApplyPlan,
@@ -28,6 +29,7 @@ import type {
   ProgressSourceScorecardSummary,
   ProgressSourceQualitySummary,
   RankedJob,
+  RecordedJobDecision,
   ReconciliationReport,
   RunManifest,
   ScanHistoryEntry,
@@ -59,12 +61,15 @@ import {
   getVerifiedLiveState,
   appendScanHistoryEntries,
   parseAtsDirectorySources,
+  parseAtsCompanySources,
   parseJobBoardSources,
   readScanHistoryEntries,
   type ApprovedSource,
   type AtsDirectorySourceConfig,
   type AtsCompanySourceConfig,
   type FetchJson,
+  type FetchText,
+  type JobHiveRunner,
   type JobLivenessVerifier,
   type JobBoardSourceConfig,
   type JobSpyRunner
@@ -136,6 +141,8 @@ export interface RunBatchOptions extends RunSampleBatchOptions {
   outcomeEvents?: OutcomeEvent[];
   outcomeEventsPath?: string;
   profile: UserProfile;
+  recordedJobDecisions?: RecordedJobDecision[];
+  requireRecordedJobDecisions?: boolean;
   runId: string;
   scanHistoryEntries?: ScanHistoryEntry[];
   scanHistory?: ProgressScanHistorySummary;
@@ -155,16 +162,22 @@ export interface RunBatchOptions extends RunSampleBatchOptions {
 export interface RunLocalBatchOptions extends RunSampleBatchOptions {
   applyCueHome?: string;
   atsDirectoryFetchJson?: FetchJson;
+  atsDirectoryFetchText?: FetchText;
   companyPageFetchJson?: FetchJson;
+  companyPageFetchText?: FetchText;
   configPath?: string;
   generatedSourceExpansion?: boolean;
   includeOlderPosts?: boolean;
   freshnessDays?: number;
   jobBoardFetchJson?: FetchJson;
+  jobHiveRunner?: JobHiveRunner;
   jobSpyRunner?: JobSpyRunner;
   jobsPath?: string;
   livenessVerifier?: JobLivenessVerifier;
+  outputRoot?: string;
   profileKey?: string;
+  requireRecordedJobDecisions?: boolean;
+  runId?: string;
   scanHistoryPath?: string;
   targetRankingQueue?: number;
 }
@@ -215,6 +228,56 @@ export interface RecordTuningSignalResult {
   tuningSignalsPath: string;
 }
 
+export interface RecordJobDecisionOptions {
+  actorKind?: RecordedJobDecision["actorKind"];
+  actorName: string;
+  applyCueHome?: string;
+  configPath?: string;
+  decidedAt?: string;
+  decision: ApplyDecision;
+  evidenceRefs?: string[];
+  id?: string;
+  jobId: string;
+  profileKey?: string;
+  reasons: string[];
+  workspaceRoot?: string;
+}
+
+export interface RecordJobDecisionInput {
+  decidedAt?: string;
+  decision: ApplyDecision;
+  evidenceRefs?: string[];
+  id?: string;
+  jobId: string;
+  reasons: string[];
+}
+
+export interface RecordJobDecisionsOptions {
+  actorKind?: RecordedJobDecision["actorKind"];
+  actorName: string;
+  applyCueHome?: string;
+  configPath?: string;
+  decisions: RecordJobDecisionInput[];
+  profileKey?: string;
+  workspaceRoot?: string;
+}
+
+export interface RecordJobDecisionsResult {
+  configPath: string;
+  decisions: RecordedJobDecision[];
+  decisionsPath: string;
+  recordedCount: number;
+  skippedCount: number;
+  sourceQueuePath: string;
+}
+
+export interface RecordJobDecisionResult {
+  configPath: string;
+  decision: RecordedJobDecision;
+  decisionsPath: string;
+  sourceQueuePath: string;
+}
+
 interface SkippedReconciliation {
   issueMessages: string[];
   jobId: string;
@@ -255,7 +318,7 @@ export async function runLocalOrSampleBatch(options: RunLocalBatchOptions = {}):
       ? path.resolve(loaded.configDir, configuredJobsPath)
       : "";
   const localJobs = jobsPath && (await fileExists(jobsPath)) ? await discoverJobsFromPath(jobsPath) : [];
-  const companyPages = parseCompanyPageSources(loaded.config.sources?.companyPages);
+  const companyPages = parseAtsCompanySources(loaded.config.sources?.companyPages);
   const atsDirectorySources = parseAtsDirectorySources(loaded.config.sources?.searches);
   const approvedSourceInput: {
     companyPages: AtsCompanySourceConfig[];
@@ -288,10 +351,12 @@ export async function runLocalOrSampleBatch(options: RunLocalBatchOptions = {}):
   });
   const atsDirectoryJobs = await discoverJobsFromAtsDirectories(atsDirectorySources, {
     ...(options.atsDirectoryFetchJson ?? options.companyPageFetchJson ? { fetchJson: options.atsDirectoryFetchJson ?? options.companyPageFetchJson } : {}),
+    ...(options.atsDirectoryFetchText ?? options.companyPageFetchText ? { fetchText: options.atsDirectoryFetchText ?? options.companyPageFetchText } : {}),
     onWarning: (message) => sourceWarnings.push(message)
   });
   const jobBoardJobs = await discoverJobsFromJobBoards(jobBoardSources, {
     ...(options.jobBoardFetchJson ? { fetchJson: options.jobBoardFetchJson } : {}),
+    ...(options.jobHiveRunner ? { jobHiveRunner: options.jobHiveRunner } : {}),
     ...(options.jobSpyRunner ? { jobSpyRunner: options.jobSpyRunner } : {}),
     onWarning: (message) => sourceWarnings.push(message)
   });
@@ -312,6 +377,7 @@ export async function runLocalOrSampleBatch(options: RunLocalBatchOptions = {}):
     expansionAttempted = true;
     expansionJobs = await discoverJobsFromJobBoards(expansionSources, {
       ...(options.jobBoardFetchJson ? { fetchJson: options.jobBoardFetchJson } : {}),
+      ...(options.jobHiveRunner ? { jobHiveRunner: options.jobHiveRunner } : {}),
       ...(options.jobSpyRunner ? { jobSpyRunner: options.jobSpyRunner } : {}),
       onWarning: (message) => sourceWarnings.push(`Expansion source warning: ${message}`)
     });
@@ -345,13 +411,17 @@ export async function runLocalOrSampleBatch(options: RunLocalBatchOptions = {}):
   };
   const outcomeEventsPath = path.join(loaded.configDir, "data", "local", "outcomes.jsonl");
   const outcomeEvents = await readOutcomeEventsIfExists(outcomeEventsPath);
+  const recordedJobDecisionsPath = path.join(loaded.configDir, "data", "local", "job-decisions.jsonl");
+  const recordedJobDecisions = await readRecordedJobDecisionsIfExists(recordedJobDecisionsPath);
   const jobs = scanHistory.jobs;
   return runBatch({
     workspaceRoot,
-    outputRoot: loaded.configDir,
+    outputRoot: options.outputRoot ?? loaded.configDir,
     profile: loaded.profile,
+    recordedJobDecisions,
+    requireRecordedJobDecisions: options.requireRecordedJobDecisions ?? false,
     jobs,
-    runId: "local-first-build",
+    runId: options.runId ?? "local-first-build",
     kind: "daily_batch",
     outcomeEvents,
     outcomeEventsPath,
@@ -377,7 +447,7 @@ export async function runLocalOrSampleBatch(options: RunLocalBatchOptions = {}):
           : `Local job import path configured but no supported job rows found yet: ${path.relative(workspaceRoot, jobsPath)}`
         : "No manual local job file configured; using approved source connectors only.",
       `Loaded ${companyPageJobs.length} job(s) from ${companyPages.filter((source) => source.enabled !== false).length} company/ATS source(s).`,
-      `Loaded ${atsDirectoryJobs.length} job(s) from ${atsDirectorySources.filter((source) => source.enabled !== false).length} reverse ATS source(s).`,
+      `Loaded ${atsDirectoryJobs.length} job(s) from ${atsDirectorySources.filter((source) => source.enabled !== false).length} ATS directory source(s).`,
       `Loaded ${jobBoardJobs.length} job(s) from ${jobBoardSources.filter((source) => source.enabled !== false).length} job-board source(s).`,
       ...(expansionAttempted
         ? [
@@ -402,6 +472,9 @@ export async function runLocalOrSampleBatch(options: RunLocalBatchOptions = {}):
           ? `Scan history kept all ${scanHistory.summary.keptJobs} post-filter job(s); review mode does not hide previously prepared jobs.`
           : `Scan history kept all ${scanHistory.summary.keptJobs} post-filter job(s).`,
       `Generated ${sourcePlan.suggestions.length} source suggestion(s) for review.`,
+      options.requireRecordedJobDecisions
+        ? `Preparation accepts clear system matches and requires recorded external-agent/user decisions only for ambiguity; loaded ${recordedJobDecisions.length} decision receipt(s).`
+        : "Test/development mode may prepare from backend suggestions without a recorded external decision.",
       ...sourceWarnings.map((warning) => `Source warning: ${warning}`),
       "No browser submit was attempted.",
       "All CV variants use standard_ats_v1."
@@ -477,6 +550,111 @@ export async function recordTuningSignal(options: RecordTuningSignalOptions): Pr
   };
 }
 
+export async function recordJobDecision(options: RecordJobDecisionOptions): Promise<RecordJobDecisionResult> {
+  const result = await recordJobDecisions({
+    ...(options.actorKind ? { actorKind: options.actorKind } : {}),
+    actorName: options.actorName,
+    ...(options.applyCueHome ? { applyCueHome: options.applyCueHome } : {}),
+    ...(options.configPath ? { configPath: options.configPath } : {}),
+    decisions: [{
+      ...(options.decidedAt ? { decidedAt: options.decidedAt } : {}),
+      decision: options.decision,
+      ...(options.evidenceRefs ? { evidenceRefs: options.evidenceRefs } : {}),
+      ...(options.id ? { id: options.id } : {}),
+      jobId: options.jobId,
+      reasons: options.reasons
+    }],
+    ...(options.profileKey ? { profileKey: options.profileKey } : {}),
+    ...(options.workspaceRoot ? { workspaceRoot: options.workspaceRoot } : {})
+  });
+  const decision = result.decisions[0];
+  if (!decision) throw new Error("ApplyCue did not resolve the requested job decision.");
+  return {
+    configPath: result.configPath,
+    decision,
+    decisionsPath: result.decisionsPath,
+    sourceQueuePath: result.sourceQueuePath
+  };
+}
+
+export async function recordJobDecisions(options: RecordJobDecisionsOptions): Promise<RecordJobDecisionsResult> {
+  const workspaceRoot = options.workspaceRoot ?? process.cwd();
+  const configPath = await resolveConfigPath(options, workspaceRoot);
+  if (!configPath || !(await fileExists(configPath))) {
+    throw new Error("ApplyCue profile config was not found. Run setup before recording a job decision.");
+  }
+  const loaded = await loadApplyCueConfig(configPath);
+  const sourceQueuePath = path.join(loaded.configDir, "outputs", "runs", "latest-job-decisions.json");
+  if (!(await fileExists(sourceQueuePath))) {
+    throw new Error("The ranked job decision queue was not found. Run first-build before recording a job decision.");
+  }
+
+  const queue = parseJobDecisionQueueArtifact(JSON.parse(await readFile(sourceQueuePath, "utf8")) as unknown);
+  const actorName = options.actorName.trim();
+  if (!actorName) throw new Error("A recorded job decision needs an actor name such as codex, claude, or user.");
+  if (options.decisions.length === 0) throw new Error("A decision batch needs at least one job decision.");
+  const duplicateJobIds = options.decisions
+    .map((item) => item.jobId)
+    .filter((jobId, index, all) => all.indexOf(jobId) !== index);
+  if (duplicateJobIds.length > 0) {
+    throw new Error(`A decision batch cannot contain the same job twice: ${[...new Set(duplicateJobIds)].join(", ")}`);
+  }
+
+  const queueEvidenceRef = "outputs/runs/latest-job-decisions.json";
+  const decisionsDir = path.join(loaded.configDir, "data", "local");
+  const decisionsPath = path.join(decisionsDir, "job-decisions.jsonl");
+  const existing = await readRecordedJobDecisionsIfExists(decisionsPath);
+  const latestByJobId = new Map<string, RecordedJobDecision>();
+  for (const decision of existing) latestByJobId.set(decision.jobId, decision);
+
+  const resolved: RecordedJobDecision[] = [];
+  const toAppend: RecordedJobDecision[] = [];
+  for (const input of options.decisions) {
+    const suggested = queue.find((item) => item.jobId === input.jobId);
+    if (!suggested) throw new Error(`Job ${input.jobId} was not found in the latest ranked decision queue.`);
+    if (input.decision === "apply" && suggested.failedGates.length > 0) {
+      throw new Error(`Cannot record apply for ${input.jobId}; hard gates failed: ${suggested.failedGates.join(" | ")}`);
+    }
+    const reasons = input.reasons.map((reason) => reason.trim()).filter(Boolean);
+    if (reasons.length === 0) throw new Error(`Recorded job decision ${input.jobId} needs at least one reason.`);
+    const evidenceRefs = [...new Set([queueEvidenceRef, ...(input.evidenceRefs ?? [])].map((item) => item.trim()).filter(Boolean))];
+    const decidedAt = input.decidedAt ?? new Date().toISOString();
+    const decision: RecordedJobDecision = {
+      id: input.id ?? createJobDecisionId(input.jobId, input.decision, actorName, decidedAt),
+      jobId: input.jobId,
+      decision: input.decision,
+      reasons,
+      evidenceRefs,
+      actorKind: options.actorKind ?? "agent",
+      actorName,
+      decidedAt,
+      backendDecision: suggested.decision,
+      backendFailedGates: suggested.failedGates
+    };
+    const prior = latestByJobId.get(input.jobId);
+    if (prior && equivalentRecordedJobDecision(prior, decision)) {
+      resolved.push(prior);
+      continue;
+    }
+    resolved.push(decision);
+    toAppend.push(decision);
+    latestByJobId.set(input.jobId, decision);
+  }
+
+  if (toAppend.length > 0) {
+    await mkdir(decisionsDir, { recursive: true });
+    await appendFile(decisionsPath, toJsonLines(toAppend), "utf8");
+  }
+  return {
+    configPath: loaded.configPath,
+    decisions: resolved,
+    decisionsPath,
+    recordedCount: toAppend.length,
+    skippedCount: resolved.length - toAppend.length,
+    sourceQueuePath
+  };
+}
+
 function buildApprovedSources(input: {
   companyPages: AtsCompanySourceConfig[];
   localJobsPath?: string;
@@ -549,47 +727,6 @@ function parseJobSourceKind(value: unknown): ApprovedSource["kind"] | undefined 
     return value;
   }
   return undefined;
-}
-
-function parseCompanyPageSources(value: unknown): AtsCompanySourceConfig[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item): AtsCompanySourceConfig[] => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
-    const record = item as Record<string, unknown>;
-    const company = stringValue(record.company) ?? stringValue(record.name);
-    if (!company) return [];
-    const provider = parseAtsProvider(record.provider);
-    const source: AtsCompanySourceConfig = { company };
-    const id = stringValue(record.id);
-    const careersUrl = stringValue(record.careersUrl) ?? stringValue(record.careers_url);
-    const apiUrl = stringValue(record.apiUrl) ?? stringValue(record.api);
-    const boardToken = stringValue(record.boardToken) ?? stringValue(record.board_token);
-    if (id) source.id = id;
-    if (provider) source.provider = provider;
-    if (careersUrl) source.careersUrl = careersUrl;
-    if (apiUrl) source.apiUrl = apiUrl;
-    if (boardToken) source.boardToken = boardToken;
-    if (typeof record.enabled === "boolean") source.enabled = record.enabled;
-    return [source];
-  });
-}
-
-function parseAtsProvider(value: unknown): AtsCompanySourceConfig["provider"] | undefined {
-  if (
-    value !== "greenhouse" &&
-    value !== "lever" &&
-    value !== "ashby" &&
-    value !== "workable" &&
-    value !== "smartrecruiters" &&
-    value !== "bamboohr" &&
-    value !== "breezy" &&
-    value !== "recruitee" &&
-    value !== "pinpoint" &&
-    value !== "workday" &&
-    value !== "personio" &&
-    value !== "rippling"
-  ) return undefined;
-  return value;
 }
 
 function uniqueJobsById(jobs: JobRecord[]): JobRecord[] {
@@ -964,9 +1101,15 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
   const batchLimit = Math.max(1, Math.floor(profile.applySettings.applicationsPerDay || 1));
   const applyReadyJobs = ranked.filter((rankedJob) => rankedJob.decision === "apply");
   const reviewFillJobs = ranked.filter((rankedJob) => rankedJob.decision === "review");
-  const candidateJobs = [...applyReadyJobs, ...reviewFillJobs];
+  const candidateJobs = options.requireRecordedJobDecisions
+    ? selectApprovedCandidateJobs(ranked, options.recordedJobDecisions ?? [])
+    : [...applyReadyJobs, ...reviewFillJobs];
   const { cvResults, skippedReconciliations } = generatePassedCvResults(candidateJobs, profile, batchLimit);
-  const jobDecisions = buildProgressJobDecisionItems(ranked, skippedReconciliations);
+  const jobDecisions = buildProgressJobDecisionItems(
+    ranked,
+    skippedReconciliations,
+    options.recordedJobDecisions ?? []
+  );
   const cvMarkdowns = cvResults.map((result) => ({
     cvVariantId: result.variant.id,
     markdown: result.markdown
@@ -1041,6 +1184,8 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
     jobDecisions,
     profile,
     rankedJobs: ranked,
+    recordedJobDecisions: options.recordedJobDecisions ?? [],
+    requireRecordedJobDecisions: options.requireRecordedJobDecisions === true,
     sourceScorecards,
     ...(options.sourceQuality ? { sourceQuality: options.sourceQuality } : {})
   });
@@ -1113,6 +1258,12 @@ export async function runBatch(options: RunBatchOptions): Promise<SampleBatchRes
     applyRouteIds: applyRoutes.map((route) => route.id),
     generatedFiles: files,
     sourceCodeWriteCount: 0,
+    decisionAuthority: resolveDecisionAuthority({
+      candidateJobs,
+      rankedJobs: ranked,
+      recordedJobDecisions: options.recordedJobDecisions ?? [],
+      requireRecordedJobDecisions: options.requireRecordedJobDecisions === true
+    }),
     notes: [
       ...(options.notes ?? []),
       ...(liveness ? formatLivenessVerificationNotes(liveness) : []),
@@ -1288,6 +1439,8 @@ function buildFunnelHealthSummary(input: {
   jobDecisions: ProgressJobDecisionItem[];
   profile: UserProfile;
   rankedJobs: RankedJob[];
+  recordedJobDecisions: RecordedJobDecision[];
+  requireRecordedJobDecisions: boolean;
   sourceQuality?: ProgressSourceQualitySummary;
   sourceScorecards?: ProgressSourceScorecardSummary;
   hasApprovedInboxSource?: boolean;
@@ -1297,8 +1450,22 @@ function buildFunnelHealthSummary(input: {
   const discoveredJobs = input.sourceQuality?.inputJobs ?? input.sourceScorecards?.fetchedJobs ?? input.rankedJobs.length;
   const keptForRanking = input.sourceQuality?.keptJobs ?? input.sourceScorecards?.keptJobs ?? input.rankedJobs.length;
   const rankedJobs = input.rankedJobs.length;
+  const decisionRequiredJobIds = new Set(
+    input.jobDecisions
+      .filter((item) => item.failedGates.length === 0 && item.decision === "review")
+      .map((item) => item.jobId)
+  );
+  const recordedJobIds = new Set(
+    input.recordedJobDecisions
+      .filter((item) => decisionRequiredJobIds.has(item.jobId))
+      .map((item) => item.jobId)
+  );
+  const recordedDecisions = recordedJobIds.size;
+  const awaitingDecisions = input.requireRecordedJobDecisions
+    ? Math.max(0, decisionRequiredJobIds.size - recordedDecisions)
+    : 0;
   const watchOrSkippedJobs = input.jobDecisions.filter((item) =>
-    item.decision === "watch" || item.decision === "skip" || Boolean(item.skippedReason)
+    effectiveJobDecision(item) === "watch" || effectiveJobDecision(item) === "skip" || Boolean(item.skippedReason)
   ).length;
   const dominantFilters = buildFilterPressure(input.sourceQuality).slice(0, 3);
   const dominantGateBlocks = buildGatePressure(input.jobDecisions).slice(0, 5);
@@ -1309,6 +1476,7 @@ function buildFunnelHealthSummary(input: {
     discoveredJobs,
     keptForRanking,
     preparedApplications,
+    awaitingDecisions,
     profile: input.profile,
     rankedJobs,
     hasApprovedInboxSource: input.hasApprovedInboxSource === true
@@ -1316,14 +1484,18 @@ function buildFunnelHealthSummary(input: {
   const keptRate = discoveredJobs > 0 ? keptForRanking / discoveredJobs : 1;
   const tooNoisy = discoveredJobs >= Math.max(100, configuredDailyTarget * 30) && keptRate < 0.08;
   const tooManyKept = keptForRanking >= Math.max(100, configuredDailyTarget * 25);
-  const status: ProgressFunnelHealthSummary["status"] = preparedApplications < configuredDailyTarget
-    ? "low_volume"
+  const status: ProgressFunnelHealthSummary["status"] = awaitingDecisions > 0 && preparedApplications < configuredDailyTarget
+    ? "awaiting_decisions"
+    : preparedApplications < configuredDailyTarget
+      ? "low_volume"
     : tooNoisy
       ? "noisy_sources"
       : tooManyKept
         ? "high_volume"
         : "healthy";
-  const message = status === "low_volume"
+  const message = status === "awaiting_decisions"
+    ? `${awaitingDecisions} ranked job(s) await Codex, Claude, or user review; source supply is sufficient, so do not widen it yet.`
+    : status === "low_volume"
     ? `Clean run prepared ${preparedApplications} of ${configuredDailyTarget}; widen only if the user asks for more results.`
     : status === "noisy_sources"
       ? `Fetched ${discoveredJobs} jobs but only ${keptForRanking} survived source filters; source queries are broad or noisy.`
@@ -1339,6 +1511,8 @@ function buildFunnelHealthSummary(input: {
     discoveredJobs,
     keptForRanking,
     rankedJobs,
+    recordedDecisions,
+    awaitingDecisions,
     watchOrSkippedJobs,
     dominantFilters,
     dominantGateBlocks,
@@ -1387,6 +1561,7 @@ function failedGateId(value: string): string {
 }
 
 function buildFunnelSuggestedActions(input: {
+  awaitingDecisions: number;
   configuredDailyTarget: number;
   discoveredJobs: number;
   dominantFilters: ProgressFunnelPressureItem[];
@@ -1402,6 +1577,14 @@ function buildFunnelSuggestedActions(input: {
   const topFilter = input.dominantFilters[0];
   const topGate = input.dominantGateBlocks[0];
   const keptRate = input.discoveredJobs > 0 ? input.keptForRanking / input.discoveredJobs : 1;
+
+  if (input.awaitingDecisions > 0) {
+    return [
+      `Review the ${input.awaitingDecisions} ranked job(s) in outputs/runs/latest-job-decisions.json; each item links to its full normalized JD.`,
+      "Record the reviewed batch with applycue:record-decisions --prepare so CVs, diagnostics, drafts, and routes are generated in the same step.",
+      "Keep source scope unchanged until the current decision queue has been reviewed."
+    ];
+  }
 
   if (shortBy > 0) {
     if (topGate) actions.push(shortVolumeActionForGate(topGate.id, shortBy, input.profile));
@@ -1426,7 +1609,7 @@ function buildFunnelSuggestedActions(input: {
     input.profile.applySettings.allowedSourceKinds.includes("email_alert") &&
     (input.discoveredJobs > 0 || input.preparedApplications > 0)
   ) {
-    actions.push("After this first run, ask the user whether to add Gmail/Outlook job-alert emails as a source; prefer native agent connectors such as Codex, Claude, Hermes, or similar, and use browser control only with user permission.");
+    actions.push("After this first run, discover whether the current agent host exposes a ready or connectable email-read capability. If it does, ask whether to search recent job alerts and recruiter emails; use host-owned OAuth only after approval, never request credentials in chat, and continue with public sources if access is unavailable or declined.");
   }
 
   if (actions.length === 0) {
@@ -1767,20 +1950,13 @@ function buildGeneratedFileManifests(
     sourceIds: [report.id, report.cvContentPlanId],
     createdAt
   }));
-  const jobsById = new Map(jobs.map((job) => [job.id, job]));
-  const jdFiles = applications.flatMap((application): GeneratedFileManifest[] => {
-    const job = jobsById.get(application.jobId);
-    if (!job) return [];
-    return [
-      {
-        id: `${application.id}-job-description-file`,
-        kind: "job_description_markdown",
-        path: jobDescriptionFilePath(job.id),
-        sourceIds: [application.id, job.id],
-        createdAt
-      }
-    ];
-  });
+  const jdFiles = jobs.map((job): GeneratedFileManifest => ({
+    id: `${runId}-${artifactFileSlug(job.id)}-job-description-file`,
+    kind: "job_description_markdown",
+    path: jobDescriptionFilePath(job.id),
+    sourceIds: [job.id],
+    createdAt
+  }));
   const browserPlanFiles = browserPlans.map((plan): GeneratedFileManifest => ({
     id: `${plan.id}-json-file`,
     kind: "browser_plan_json",
@@ -2005,11 +2181,15 @@ function buildProgressApplicationItems(input: {
 
 function buildProgressJobDecisionItems(
   ranked: RankedJob[],
-  skippedReconciliations: SkippedReconciliation[] = []
+  skippedReconciliations: SkippedReconciliation[] = [],
+  recordedJobDecisions: RecordedJobDecision[] = []
 ): ProgressJobDecisionItem[] {
   const skippedByJobId = new Map(skippedReconciliations.map((item) => [item.jobId, item]));
+  const latestRecordedByJobId = new Map<string, RecordedJobDecision>();
+  for (const decision of recordedJobDecisions) latestRecordedByJobId.set(decision.jobId, decision);
   return ranked.map((rankedJob) => {
     const skipped = skippedByJobId.get(rankedJob.job.id);
+    const recorded = latestRecordedByJobId.get(rankedJob.job.id);
     const skippedReason = skipped ? skipped.issueMessages[0] ?? "CV reconciliation did not pass." : undefined;
     const failedGates = rankedJob.gates
       .filter((gate) => !gate.passed)
@@ -2022,12 +2202,30 @@ function buildProgressJobDecisionItems(
       company: rankedJob.job.company,
       title: rankedJob.job.title,
       sourceName: rankedJob.job.source.name,
+      url: rankedJob.job.url,
+      jobDescriptionPath: jobDescriptionFilePath(rankedJob.job.id),
+      descriptionExcerpt: createDescriptionExcerpt(rankedJob.job.description),
+      workMode: rankedJob.job.workMode,
+      discoveredAt: rankedJob.job.discoveredAt,
+      liveState: rankedJob.job.liveState,
       decision: rankedJob.decision,
+      priority: rankedJob.priority,
+      components: rankedJob.components,
       reasons: rankedJob.reasons,
       failedGates,
-      nextStep: createJobDecisionNextStep(rankedJob, failedGates, skipped)
+      nextStep: createJobDecisionNextStep(rankedJob, failedGates, skipped, recorded)
     };
     if (rankedJob.job.location) item.location = rankedJob.job.location;
+    if (rankedJob.job.seniority) item.seniority = rankedJob.job.seniority;
+    if (rankedJob.job.employmentType) item.employmentType = rankedJob.job.employmentType;
+    if (rankedJob.job.compensation) item.compensation = rankedJob.job.compensation;
+    if (rankedJob.job.postedAt) item.postedAt = rankedJob.job.postedAt;
+    if (recorded) {
+      item.recordedDecision = recorded.decision;
+      item.recordedReasons = recorded.reasons;
+      item.decisionActorKind = recorded.actorKind;
+      item.decisionActorName = recorded.actorName;
+    }
     if (skipped) {
       item.reconciliationStatus = skipped.status;
       item.skippedReason = skippedReason ?? "CV reconciliation did not pass.";
@@ -2036,10 +2234,17 @@ function buildProgressJobDecisionItems(
   });
 }
 
+function createDescriptionExcerpt(description: string, maxLength = 1800): string {
+  const normalized = description.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
 function createJobDecisionNextStep(
   rankedJob: RankedJob,
   failedGates: string[],
-  skipped?: SkippedReconciliation
+  skipped?: SkippedReconciliation,
+  recorded?: RecordedJobDecision
 ): string {
   if (skipped?.status === "needs_user_confirmation") {
     return "Paused until the user confirms the CV positioning.";
@@ -2048,11 +2253,19 @@ function createJobDecisionNextStep(
     return "Skipped until the generated CV meets completeness checks.";
   }
   if (skipped) return "Skipped until CV reconciliation passes.";
+  if (recorded?.decision === "apply") return "Approved by recorded external judgement and prepared under configured policy.";
+  if (recorded?.decision === "review") return "Held for further external-agent or user review.";
+  if (recorded?.decision === "watch") return "Kept for a later batch by recorded external judgement.";
+  if (recorded?.decision === "skip") return "Skipped by recorded external judgement.";
   if (rankedJob.decision === "apply") return "Ready for application under configured policy.";
   if (rankedJob.decision === "review") return "Review and prepare before submit.";
   if (rankedJob.decision === "watch") return "Keep for later; not strong enough for today's batch.";
   if (failedGates.length > 0) return "Skipped until the blocker is resolved.";
   return "Skipped because the match is too weak for this batch.";
+}
+
+function effectiveJobDecision(item: ProgressJobDecisionItem): ApplyDecision {
+  return item.recordedDecision ?? item.decision;
 }
 
 function findGeneratedFilePath(
@@ -2146,19 +2359,14 @@ async function writeRunOutputs(
       )
     )
   );
-  const jobsById = new Map(result.jobs.map((job) => [job.id, job]));
   await Promise.all(
-    result.applications.flatMap((application) => {
-      const job = jobsById.get(application.jobId);
-      if (!job) return [];
-      return [
-        writeFile(
-          path.join(outputRoot, jobDescriptionFilePath(job.id)),
-          renderJobDescriptionMarkdown(job),
-          "utf8"
-        )
-      ];
-    })
+    result.jobs.map((job) =>
+      writeFile(
+        path.join(outputRoot, jobDescriptionFilePath(job.id)),
+        renderJobDescriptionMarkdown(job),
+        "utf8"
+      )
+    )
   );
   await Promise.all(
     result.browserPlans.map((plan) =>
@@ -2250,7 +2458,7 @@ function buildProgressNextActions(result: Omit<SampleBatchResult, "drafts" | "ou
     ...(result.manifest.funnelHealth?.suggestedActions ?? []),
     "Review generated CVs and reconciliation reports before enabling submit."
   ];
-  if (result.applications.length < configuredDailyTarget) {
+  if (result.applications.length < configuredDailyTarget && result.manifest.funnelHealth?.status !== "awaiting_decisions") {
     const hasShortGuidance = actions.some((action) => action.toLowerCase().includes("daily target short"));
     if (!hasShortGuidance) {
       actions.unshift(
@@ -2263,6 +2471,17 @@ function buildProgressNextActions(result: Omit<SampleBatchResult, "drafts" | "ou
 
 function toJsonLines(values: unknown[]): string {
   return `${values.map((value) => JSON.stringify(value)).join("\n")}\n`;
+}
+
+function equivalentRecordedJobDecision(left: RecordedJobDecision, right: RecordedJobDecision): boolean {
+  return left.jobId === right.jobId &&
+    left.decision === right.decision &&
+    left.actorKind === right.actorKind &&
+    left.actorName === right.actorName &&
+    left.backendDecision === right.backendDecision &&
+    JSON.stringify(left.backendFailedGates) === JSON.stringify(right.backendFailedGates) &&
+    JSON.stringify(left.reasons) === JSON.stringify(right.reasons) &&
+    JSON.stringify(left.evidenceRefs) === JSON.stringify(right.evidenceRefs);
 }
 
 async function fileExists(filePath: string): Promise<boolean> {
@@ -2279,6 +2498,76 @@ async function readOutcomeEventsIfExists(filePath: string): Promise<OutcomeEvent
   return parseOutcomeEventsJsonLines(await readFile(filePath, "utf8"));
 }
 
+async function readRecordedJobDecisionsIfExists(filePath: string): Promise<RecordedJobDecision[]> {
+  if (!(await fileExists(filePath))) return [];
+  const rows = (await readFile(filePath, "utf8")).split(/\r?\n/).map((row) => row.trim()).filter(Boolean);
+  return rows.map((row, index) => {
+    let value: unknown;
+    try {
+      value = JSON.parse(row);
+    } catch {
+      throw new Error(`Invalid JSON in recorded job decisions at line ${index + 1}.`);
+    }
+    if (!isRecordedJobDecision(value)) {
+      throw new Error(`Invalid recorded job decision contract at line ${index + 1}.`);
+    }
+    return value;
+  });
+}
+
+function selectApprovedCandidateJobs(ranked: RankedJob[], decisions: RecordedJobDecision[]): RankedJob[] {
+  const latestByJobId = new Map<string, RecordedJobDecision>();
+  for (const decision of decisions) latestByJobId.set(decision.jobId, decision);
+  return ranked.filter((rankedJob) => {
+    const recorded = latestByJobId.get(rankedJob.job.id);
+    if (!rankedJob.gates.every((gate) => gate.passed)) return false;
+    if (recorded) return recorded.decision === "apply";
+    return rankedJob.decision === "apply";
+  });
+}
+
+function resolveDecisionAuthority(input: {
+  candidateJobs: RankedJob[];
+  rankedJobs: RankedJob[];
+  recordedJobDecisions: RecordedJobDecision[];
+  requireRecordedJobDecisions: boolean;
+}): NonNullable<RunManifest["decisionAuthority"]> {
+  if (!input.requireRecordedJobDecisions) return "backend_suggestion_test";
+
+  const latestByJobId = new Map<string, RecordedJobDecision>();
+  for (const decision of input.recordedJobDecisions) latestByJobId.set(decision.jobId, decision);
+  const preparedFromSystem = input.candidateJobs.some((item) => item.decision === "apply");
+  const preparedFromRecorded = input.candidateJobs.some((item) =>
+    latestByJobId.get(item.job.id)?.decision === "apply" && item.decision !== "apply"
+  );
+
+  if (preparedFromSystem && preparedFromRecorded) return "hybrid_system_external";
+  if (preparedFromRecorded) return "recorded_external";
+  if (preparedFromSystem) return "system_clear";
+
+  const unresolvedAmbiguity = input.rankedJobs.some((item) =>
+    item.decision === "review" &&
+    item.gates.every((gate) => gate.passed) &&
+    !latestByJobId.has(item.job.id)
+  );
+  return unresolvedAmbiguity ? "awaiting_external" : "system_clear";
+}
+
+function isRecordedJobDecision(value: unknown): value is RecordedJobDecision {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Partial<RecordedJobDecision>;
+  return typeof item.id === "string" &&
+    typeof item.jobId === "string" &&
+    ["apply", "review", "watch", "skip"].includes(item.decision ?? "") &&
+    Array.isArray(item.reasons) && item.reasons.every((reason) => typeof reason === "string") &&
+    Array.isArray(item.evidenceRefs) && item.evidenceRefs.every((ref) => typeof ref === "string") &&
+    ["agent", "user"].includes(item.actorKind ?? "") &&
+    typeof item.actorName === "string" &&
+    typeof item.decidedAt === "string" &&
+    ["apply", "review", "watch", "skip"].includes(item.backendDecision ?? "") &&
+    Array.isArray(item.backendFailedGates) && item.backendFailedGates.every((gate) => typeof gate === "string");
+}
+
 function createOutcomeEventId(applicationId: string, type: OutcomeEvent["type"], occurredAt: string): string {
   return [
     "outcome",
@@ -2286,6 +2575,37 @@ function createOutcomeEventId(applicationId: string, type: OutcomeEvent["type"],
     type,
     slugPart(occurredAt)
   ].join("-");
+}
+
+function createJobDecisionId(jobId: string, decision: ApplyDecision, actorName: string, decidedAt: string): string {
+  return ["job-decision", jobId, decision, actorName, decidedAt].map(slugPart).filter(Boolean).join("-");
+}
+
+function isProgressJobDecisionItem(value: unknown): value is ProgressJobDecisionItem {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Partial<ProgressJobDecisionItem>;
+  return typeof item.jobId === "string" &&
+    typeof item.company === "string" &&
+    typeof item.title === "string" &&
+    typeof item.sourceName === "string" &&
+    ["apply", "review", "watch", "skip"].includes(item.decision ?? "") &&
+    Array.isArray(item.reasons) &&
+    item.reasons.every((reason) => typeof reason === "string") &&
+    Array.isArray(item.failedGates) &&
+    item.failedGates.every((gate) => typeof gate === "string") &&
+    typeof item.nextStep === "string";
+}
+
+function parseJobDecisionQueueArtifact(value: unknown): ProgressJobDecisionItem[] {
+  const decisions = Array.isArray(value)
+    ? value
+    : value && typeof value === "object" && Array.isArray((value as { decisions?: unknown }).decisions)
+      ? (value as { decisions: unknown[] }).decisions
+      : undefined;
+  if (!decisions || !decisions.every(isProgressJobDecisionItem)) {
+    throw new Error("The ranked job decision queue is invalid; expected the generated queue artifact with a decisions array.");
+  }
+  return decisions;
 }
 
 function defaultTuningSignalStatus(options: RecordTuningSignalOptions): TuningSignalStatus {

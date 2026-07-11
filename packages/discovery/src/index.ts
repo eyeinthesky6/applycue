@@ -6,6 +6,7 @@ import { normalizeJob, type RawJobInput } from "@applycue/normalizer";
 
 export * from "./ats.js";
 export * from "./ats-directory.js";
+export * from "./concurrency.js";
 export * from "./job-boards.js";
 export * from "./liveness.js";
 export * from "./scan-history.js";

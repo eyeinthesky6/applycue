@@ -44,9 +44,14 @@ export interface UatReport {
 
 export async function runApplyCueUat(options: SetupApplyCueOptions = {}): Promise<UatReport> {
   const workspaceRoot = options.workspaceRoot ?? process.cwd();
-  const setup = await setupApplyCue(options);
+  const setup = await setupApplyCue({ ...options, runFirstBatch: false });
+  const uatOutputRoot = path.join(setup.profileDir, "outputs", "uat");
   const batch = await runLocalOrSampleBatch({
     workspaceRoot,
+    outputRoot: uatOutputRoot,
+    requireRecordedJobDecisions: false,
+    runId: "local-uat",
+    scanHistoryPath: path.join(uatOutputRoot, "data", "local", "scan-history.jsonl"),
     ...(options.applyCueHome ? { applyCueHome: options.applyCueHome } : {}),
     ...(typeof options.freshnessDays === "number" ? { freshnessDays: options.freshnessDays } : {}),
     ...(typeof options.generatedSourceExpansion === "boolean" ? { generatedSourceExpansion: options.generatedSourceExpansion } : {}),
@@ -58,8 +63,8 @@ export async function runApplyCueUat(options: SetupApplyCueOptions = {}): Promis
   const dashboardPath = path.join(batch.outputRoot, "outputs", "dashboard", "latest.html");
   const manifestPath = path.join(batch.outputRoot, "outputs", "runs", `${batch.manifest.id}.json`);
   const decisionQueuePath = path.join(batch.outputRoot, "outputs", "runs", "latest-job-decisions.json");
-  const reportPath = path.join(batch.outputRoot, "outputs", "runs", "uat-report.json");
-  const markdownReportPath = path.join(batch.outputRoot, "outputs", "runs", "uat-report.md");
+  const reportPath = path.join(setup.profileDir, "outputs", "runs", "uat-report.json");
+  const markdownReportPath = path.join(setup.profileDir, "outputs", "runs", "uat-report.md");
   const summaryPath = path.join(batch.outputRoot, "outputs", "runs", "latest-summary.md");
   const browserDryRuns = await writeBrowserDryRunReceipts(batch);
   await writeRunViewsWithBrowserReceipts(batch, browserDryRuns, dashboardPath, summaryPath);
@@ -137,6 +142,14 @@ async function buildChecks(
       label: "Job Supply",
       status: batch.jobs.length > 0 ? "pass" : "fail",
       detail: `${batch.jobs.length} job(s) discovered.`
+    },
+    {
+      id: "decision-authority",
+      label: "Test Decision Authority",
+      status: batch.manifest.decisionAuthority === "backend_suggestion_test" ? "pass" : "fail",
+      detail: batch.manifest.decisionAuthority === "backend_suggestion_test"
+        ? "UAT drafts are explicitly marked as backend-suggestion test artifacts, not agent-approved work."
+        : `Unexpected UAT decision authority: ${batch.manifest.decisionAuthority ?? "missing"}.`
     },
     {
       id: "closed-job-safety",

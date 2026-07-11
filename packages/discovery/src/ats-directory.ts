@@ -4,7 +4,8 @@ import {
   type AtsCompanySourceConfig,
   type AtsProviderId,
   type FetchJson,
-  type FetchJsonOptions
+  type FetchJsonOptions,
+  type FetchText
 } from "./ats.js";
 
 export type AtsDirectoryProviderId = "ats_directory";
@@ -20,53 +21,41 @@ export interface AtsDirectorySourceConfig {
 
 export interface DiscoverAtsDirectoriesOptions {
   fetchJson?: FetchJson;
+  fetchText?: FetchText;
   onWarning?: (message: string) => void;
 }
 
 const DEFAULT_TIMEOUT_MS = 20_000;
-const DATASET_BASE = "https://raw.githubusercontent.com/Feashliaa/job-board-aggregator/main/data";
+const JOBHIVE_DATASET_BASE = "https://storage.stapply.ai/jobhive/v1";
 const SLUG_RE = /^[A-Za-z0-9._-]+$/;
-type DirectoryAtsProviderId = Extract<AtsProviderId, "greenhouse" | "lever" | "ashby">;
+type DirectoryAtsProviderId = AtsProviderId;
 const DEFAULT_DIRECTORY_PROVIDERS: DirectoryAtsProviderId[] = ["greenhouse", "lever", "ashby"];
 
-const DIRECTORY_SOURCES: Record<DirectoryAtsProviderId, {
-  datasetUrl: string;
-  toCompanySource: (slug: string, source: AtsDirectorySourceConfig) => AtsCompanySourceConfig | undefined;
-}> = {
-  greenhouse: {
-    datasetUrl: `${DATASET_BASE}/greenhouse_companies.json`,
-    toCompanySource: (slug, source) =>
-      companySourceOnHost({
-        careersUrl: `https://job-boards.greenhouse.io/${slug}`,
-        expectedHost: "job-boards.greenhouse.io",
-        provider: "greenhouse",
-        slug,
-        source
-      })
-  },
-  lever: {
-    datasetUrl: `${DATASET_BASE}/lever_companies.json`,
-    toCompanySource: (slug, source) =>
-      companySourceOnHost({
-        careersUrl: `https://jobs.lever.co/${slug}`,
-        expectedHost: "jobs.lever.co",
-        provider: "lever",
-        slug,
-        source
-      })
-  },
-  ashby: {
-    datasetUrl: `${DATASET_BASE}/ashby_companies.json`,
-    toCompanySource: (slug, source) =>
-      companySourceOnHost({
-        careersUrl: `https://jobs.ashbyhq.com/${slug}`,
-        expectedHost: "jobs.ashbyhq.com",
-        provider: "ashby",
-        slug,
-        source
-      })
-  }
-};
+const DIRECTORY_SOURCES = Object.fromEntries(
+  ([
+    "greenhouse",
+    "lever",
+    "ashby",
+    "workable",
+    "smartrecruiters",
+    "bamboohr",
+    "breezy",
+    "recruitee",
+    "pinpoint",
+    "workday",
+    "personio",
+    "rippling"
+  ] satisfies DirectoryAtsProviderId[]).map((provider) => [
+    provider,
+    { datasetUrl: `${JOBHIVE_DATASET_BASE}/${provider}/companies.csv` }
+  ])
+) as Record<DirectoryAtsProviderId, { datasetUrl: string }>;
+
+interface DirectoryCompany {
+  name: string;
+  slug: string;
+  url: string;
+}
 
 export function parseAtsDirectorySources(value: unknown): AtsDirectorySourceConfig[] {
   if (!Array.isArray(value)) return [];
@@ -74,7 +63,7 @@ export function parseAtsDirectorySources(value: unknown): AtsDirectorySourceConf
     if (!item || typeof item !== "object" || Array.isArray(item)) return [];
     const record = item as Record<string, unknown>;
     if (record.provider !== "ats_directory") return [];
-    const label = stringValue(record.label) ?? stringValue(record.name) ?? stringValue(record.id) ?? "Reverse ATS directory";
+    const label = stringValue(record.label) ?? stringValue(record.name) ?? stringValue(record.id) ?? "JobHive ATS directory";
     const source: AtsDirectorySourceConfig = { label, provider: "ats_directory" };
     const id = stringValue(record.id);
     const query = stringValue(record.query);
@@ -92,12 +81,13 @@ export async function discoverJobsFromAtsDirectories(
   options: DiscoverAtsDirectoriesOptions = {}
 ): Promise<JobRecord[]> {
   const fetchJson = options.fetchJson ?? defaultFetchJson;
+  const fetchText = options.fetchText ?? defaultFetchText;
   const jobGroups = await Promise.all(
     sources
       .filter((source) => source.enabled !== false)
       .map(async (source) => {
         try {
-          return await discoverJobsFromAtsDirectory(source, fetchJson);
+          return await discoverJobsFromAtsDirectory(source, fetchJson, fetchText);
         } catch (error) {
           options.onWarning?.(`${source.label}: ${error instanceof Error ? error.message : String(error)}`);
           return [];
@@ -109,7 +99,8 @@ export async function discoverJobsFromAtsDirectories(
 
 export async function discoverJobsFromAtsDirectory(
   source: AtsDirectorySourceConfig,
-  fetchJson: FetchJson = defaultFetchJson
+  fetchJson: FetchJson = defaultFetchJson,
+  fetchText: FetchText = defaultFetchText
 ): Promise<JobRecord[]> {
   const providers = directoryProviders(source);
   const limit = limitPerProvider(source);
@@ -118,13 +109,13 @@ export async function discoverJobsFromAtsDirectory(
 
   for (const provider of providers) {
     const directory = DIRECTORY_SOURCES[provider];
-    const payload = await fetchJson(directory.datasetUrl, { timeoutMs: 30_000 });
-    const slugs = asArray(payload).map((entry) => stringValue(entry)).filter((entry): entry is string => Boolean(entry));
-    const selectedSlugs = sampleSlugs(slugs, limit, sampleStrategy(source));
-    const companySources = selectedSlugs
-      .map((slug) => directory.toCompanySource(slug, source))
+    const payload = await fetchText(directory.datasetUrl, { timeoutMs: 30_000 });
+    const entries = parseDirectoryCsv(payload);
+    const selectedEntries = sampleDirectoryEntries(entries, limit, sampleStrategy(source));
+    const companySources = selectedEntries
+      .map((entry) => toCompanySource(entry, provider, source))
       .filter((entry): entry is AtsCompanySourceConfig => Boolean(entry));
-    jobs.push(...await discoverCompanySourcesInBatches(companySources, fetchJson, batchSize));
+    jobs.push(...await discoverCompanySourcesInBatches(companySources, fetchJson, fetchText, batchSize));
   }
 
   return uniqueJobsById(jobs);
@@ -133,6 +124,7 @@ export async function discoverJobsFromAtsDirectory(
 async function discoverCompanySourcesInBatches(
   sources: AtsCompanySourceConfig[],
   fetchJson: FetchJson,
+  fetchText: FetchText,
   batchSize: number
 ): Promise<JobRecord[]> {
   const jobs: JobRecord[] = [];
@@ -141,7 +133,7 @@ async function discoverCompanySourcesInBatches(
     const groups = await Promise.all(
       batch.map(async (source) => {
         try {
-          return await discoverJobsFromCompanyPage(source, fetchJson);
+          return await discoverJobsFromCompanyPage(source, fetchJson, fetchText);
         } catch {
           return [];
         }
@@ -152,29 +144,43 @@ async function discoverCompanySourcesInBatches(
   return jobs;
 }
 
-function companySourceOnHost(input: {
-  careersUrl: string;
-  expectedHost: string;
-  provider: AtsProviderId;
-  slug: string;
-  source: AtsDirectorySourceConfig;
-}): AtsCompanySourceConfig | undefined {
-  if (!SLUG_RE.test(input.slug)) return undefined;
-  let hostname = "";
+function toCompanySource(
+  entry: DirectoryCompany,
+  provider: DirectoryAtsProviderId,
+  source: AtsDirectorySourceConfig
+): AtsCompanySourceConfig | undefined {
+  if (!SLUG_RE.test(entry.slug)) return undefined;
+  let url: URL;
   try {
-    hostname = new URL(input.careersUrl).hostname;
+    url = new URL(entry.url);
   } catch {
     return undefined;
   }
-  if (hostname !== input.expectedHost) return undefined;
+  if (url.protocol !== "https:" || !isExpectedAtsHost(provider, url.hostname)) return undefined;
   const companySource: AtsCompanySourceConfig = {
-    company: slugToCompanyName(input.slug),
-    provider: input.provider,
-    careersUrl: input.careersUrl,
+    company: entry.name || slugToCompanyName(entry.slug),
+    provider,
+    careersUrl: url.href,
     enabled: true
   };
-  if (input.source.id) companySource.id = `${input.source.id}-${input.provider}-${slugify(input.slug)}`;
+  if (source.id) companySource.id = `${source.id}-${provider}-${slugify(entry.slug)}`;
   return companySource;
+}
+
+function isExpectedAtsHost(provider: DirectoryAtsProviderId, hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  if (provider === "greenhouse") return host === "job-boards.greenhouse.io" || host === "boards.greenhouse.io";
+  if (provider === "lever") return host === "jobs.lever.co";
+  if (provider === "ashby") return host === "jobs.ashbyhq.com";
+  if (provider === "workable") return host === "apply.workable.com";
+  if (provider === "smartrecruiters") return host.endsWith(".smartrecruiters.com");
+  if (provider === "bamboohr") return host.endsWith(".bamboohr.com");
+  if (provider === "breezy") return host.endsWith(".breezy.hr");
+  if (provider === "recruitee") return host.endsWith(".recruitee.com");
+  if (provider === "pinpoint") return host.endsWith(".pinpointhq.com");
+  if (provider === "workday") return host.endsWith(".myworkdayjobs.com");
+  if (provider === "personio") return host.includes(".jobs.personio.");
+  return host === "ats.rippling.com";
 }
 
 function directoryProviders(source: AtsDirectorySourceConfig): DirectoryAtsProviderId[] {
@@ -185,8 +191,7 @@ function directoryProviders(source: AtsDirectorySourceConfig): DirectoryAtsProvi
 }
 
 function parseAtsProvider(value?: string): DirectoryAtsProviderId | undefined {
-  if (value === "greenhouse" || value === "lever" || value === "ashby") return value;
-  return undefined;
+  return value && value in DIRECTORY_SOURCES ? value as DirectoryAtsProviderId : undefined;
 }
 
 function limitPerProvider(source: AtsDirectorySourceConfig): number {
@@ -203,14 +208,68 @@ function sampleStrategy(source: AtsDirectorySourceConfig): "prefix" | "spread" {
   return source.options?.sample === "prefix" ? "prefix" : "spread";
 }
 
-function sampleSlugs(slugs: string[], limit: number, strategy: "prefix" | "spread"): string[] {
-  const safeSlugs = unique(slugs.filter((slug) => SLUG_RE.test(slug)));
-  if (safeSlugs.length <= limit || strategy === "prefix") return safeSlugs.slice(0, limit);
-  const selected: string[] = [];
+function sampleDirectoryEntries(
+  entries: DirectoryCompany[],
+  limit: number,
+  strategy: "prefix" | "spread"
+): DirectoryCompany[] {
+  const bySlug = new Map(entries.filter((entry) => SLUG_RE.test(entry.slug)).map((entry) => [entry.slug, entry]));
+  const safeEntries = [...bySlug.values()];
+  if (safeEntries.length <= limit || strategy === "prefix") return safeEntries.slice(0, limit);
+  const selected: DirectoryCompany[] = [];
   for (let index = 0; index < limit; index += 1) {
-    selected.push(safeSlugs[Math.floor((index * safeSlugs.length) / limit)] ?? safeSlugs[index] ?? "");
+    const entry = safeEntries[Math.floor((index * safeEntries.length) / limit)] ?? safeEntries[index];
+    if (entry) selected.push(entry);
   }
-  return unique(selected.filter(Boolean));
+  return [...new Map(selected.map((entry) => [entry.slug, entry])).values()];
+}
+
+function parseDirectoryCsv(value: string): DirectoryCompany[] {
+  const rows = parseCsvRows(value);
+  const header = rows.shift()?.map((column) => column.trim().toLowerCase()) ?? [];
+  const nameIndex = header.indexOf("name");
+  const slugIndex = header.indexOf("slug");
+  const urlIndex = header.indexOf("url");
+  if (nameIndex < 0 || slugIndex < 0 || urlIndex < 0) throw new Error("JobHive company CSV is missing name, slug, or url");
+  return rows.flatMap((row): DirectoryCompany[] => {
+    const name = row[nameIndex]?.trim() ?? "";
+    const slug = row[slugIndex]?.trim() ?? "";
+    const url = row[urlIndex]?.trim() ?? "";
+    return slug && url ? [{ name, slug, url }] : [];
+  });
+}
+
+function parseCsvRows(value: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let quoted = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index] ?? "";
+    const next = value[index + 1] ?? "";
+    if (char === '"') {
+      if (quoted && next === '"') {
+        field += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (char === "," && !quoted) {
+      row.push(field);
+      field = "";
+    } else if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && next === "\n") index += 1;
+      row.push(field);
+      if (row.some((cell) => cell.length > 0)) rows.push(row);
+      row = [];
+      field = "";
+    } else {
+      field += char;
+    }
+  }
+  row.push(field);
+  if (row.some((cell) => cell.length > 0)) rows.push(row);
+  return rows;
 }
 
 async function defaultFetchJson(url: string, options: FetchJsonOptions = {}): Promise<unknown> {
@@ -231,6 +290,24 @@ async function defaultFetchJson(url: string, options: FetchJsonOptions = {}): Pr
   }
 }
 
+async function defaultFetchText(url: string, options: FetchJsonOptions = {}): Promise<string> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      headers: {
+        accept: "text/csv, text/plain;q=0.9",
+        ...(options.headers ?? {})
+      },
+      signal: controller.signal
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status} while fetching ${url}`);
+    return response.text();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function parseOptions(value: unknown): Record<string, unknown> | undefined {
   const record = asRecord(value);
   return Object.keys(record).length > 0 ? record : undefined;
@@ -238,10 +315,6 @@ function parseOptions(value: unknown): Record<string, unknown> | undefined {
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
-function asArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
 }
 
 function stringArray(value: unknown): string[] {

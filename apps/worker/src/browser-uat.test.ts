@@ -1,8 +1,9 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { BrowserApplyPlan } from "@applycue/core";
+import type { SampleBatchResult } from "@applycue/engine";
 import type { PlaywrightLikeLocator, PlaywrightLikePage } from "@applycue/browser-agent";
 import { runBrowserApplyUat } from "./browser-uat.js";
 
@@ -13,6 +14,33 @@ afterEach(async () => {
 });
 
 describe("browser apply UAT", () => {
+  it("isolates an auto-generated browser UAT batch from normal profile outputs", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "applycue-browser-uat-isolation-"));
+    tempDirs.push(root);
+    const applyCueHome = path.join(root, "applycue-home");
+    const profileDir = path.join(applyCueHome, "profiles", "default");
+    let capturedOutputRoot = "";
+
+    const report = await runBrowserApplyUat({
+      applyCueHome,
+      playwright: fakePlaywright([]),
+      runBatch: (async (options) => {
+        capturedOutputRoot = options?.outputRoot ?? "";
+        await mkdir(path.join(capturedOutputRoot, "outputs", "cvs"), { recursive: true });
+        await writeFile(path.join(capturedOutputRoot, "outputs", "cvs", "cv.docx"), "PK fake docx", "utf8");
+        return {
+          browserPlans: [samplePlan()],
+          outputRoot: capturedOutputRoot
+        } as SampleBatchResult;
+      }) as typeof import("@applycue/engine").runLocalOrSampleBatch
+    });
+
+    expect(report.status).toBe("pass");
+    expect(capturedOutputRoot).toBe(path.join(profileDir, "outputs", "browser-uat", "batch"));
+    expect(report.paths.report).toBe(path.join(profileDir, "outputs", "browser-uat", "browser-uat-report.json"));
+    await expect(access(path.join(profileDir, "outputs", "runs", "local-first-build.json"))).rejects.toThrow();
+  });
+
   it("skips cleanly when Playwright is not installed", async () => {
     const outputRoot = await tempOutputRoot();
     const report = await runBrowserApplyUat({

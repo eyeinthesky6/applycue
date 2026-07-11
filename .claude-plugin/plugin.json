@@ -1,7 +1,7 @@
 {
   "name": "ApplyCue",
-  "version": "1.6.0",
-  "description": "AI job search command center — evaluate offers, generate CVs, scan portals, track applications",
+  "version": "0.1.0",
+  "description": "ApplyCue local CV-to-offer workflow for Claude Code",
   "author": {
     "name": "eyeinthesky6",
     "url": "https://applycue.local"

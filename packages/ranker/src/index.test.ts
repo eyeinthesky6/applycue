@@ -46,6 +46,24 @@ describe("fuseRankedLists", () => {
 });
 
 describe("rankJobs", () => {
+  it("still identifies clear shortlist matches when application execution is in review mode", () => {
+    const profile = productProfileForOrdering({
+      applySettings: {
+        mode: "review",
+        minimumFitToApply: 0.7
+      }
+    });
+    const job = productJobForOrdering({
+      id: "clear-review-mode-match",
+      description: "Lead fintech product strategy, roadmap, payments growth, and product management."
+    });
+
+    const ranked = rankJob(job, profile);
+
+    expect(ranked.priority).toBeGreaterThanOrEqual(profile.applySettings.minimumFitToApply);
+    expect(ranked.decision).toBe("apply");
+  });
+
   it("keeps apply-ready jobs ahead of review jobs before applying fused ordering", () => {
     const profile = productProfileForOrdering({
       applySettings: {

@@ -2,6 +2,8 @@
 
 Date: 2026-07-05
 
+Status: current configuration reference. Typed source definitions remain in `packages/core`.
+
 ApplyCue should be configured through files that the skill and agent can edit safely.
 
 Initial shape:
@@ -72,7 +74,7 @@ Agents can use this format when they extract a job from a browser tab. That keep
 
 Use `sources.companyPages` for public ATS/company job feeds.
 
-If `sources.companyPages` is empty, ApplyCue is not scanning company career pages in that run. It may still use job-board sources such as JobSpy, Remotive, or The Muse, plus approved ATS-directory sources. To scan company pages, approve concrete public careers or ATS URLs here; do not paste broad `site:...` search queries into `companyPages`.
+If `sources.companyPages` is empty, ApplyCue is not scanning company career pages in that run. It may still use approved job-board sources such as JobSpy, Remotive, RemoteOK, Working Nomads, Jobicy, or Himalayas, plus explicitly configured ATS-directory compatibility sources. To scan company pages, approve concrete public careers or ATS URLs here; do not paste broad `site:...` search queries into `companyPages`.
 
 Company website scanning means actual jobs posted on a company's own public careers page or the ATS page behind it. The agent may use search/browser tools to find that URL, but the executable source must be the concrete careers or ATS URL, such as `https://jobs.lever.co/<company>` or `https://job-boards.greenhouse.io/<company>`. Broad search queries remain leads until a real board URL is confirmed.
 
@@ -178,51 +180,52 @@ Supported first providers:
 
 If `provider` is omitted, ApplyCue will try to infer it from `careersUrl`.
 
-## Reverse ATS Directory Sources
+## JobHive ATS Sources
 
-Use `sources.searches` with `provider: "ats_directory"` when the user has target roles but has not curated a company list yet.
+ApplyCue has two separate JobHive lanes:
 
-This is the ApplyCue version of base-workflow-style broad ATS discovery:
+- `provider: "jobhive"` belongs in `sources.jobBoards`. It queries selected per-ATS Parquet snapshots through DuckDB using title and location predicates and normalizes only the returned rows.
+- `provider: "ats_directory"` belongs in `sources.searches`. It reads small per-ATS JobHive company CSVs, validates the listed careers URLs, samples a bounded company set, and then calls ApplyCue's direct ATS adapters.
 
-```text
-public ATS company directory -> public ATS API -> JobRecord -> source-quality filter -> hard gates/shortlist
-```
-
-Example:
+For an India product search, prefer the first lane because it filters before fetching results:
 
 ```json
 {
-  "sources": {
-    "searches": [
-      {
-        "id": "reverse-ats-product",
-        "origin": "system_generated",
-        "status": "active",
-        "kind": "ats",
-        "label": "Reverse ATS directory scan",
-        "enabled": true,
-        "provider": "ats_directory",
-        "query": "vp product",
-        "options": {
-          "providers": ["greenhouse", "lever", "ashby"],
-          "limitPerProvider": 25,
-          "batchSize": 8,
-          "sample": "spread"
-        }
-      }
-    ]
+  "id": "jobhive-india-product",
+  "kind": "job_board",
+  "label": "JobHive India product search",
+  "provider": "jobhive",
+  "query": "product",
+  "enabled": true,
+  "options": {
+    "providers": ["rippling", "recruitee", "pinpoint", "bamboohr"],
+    "titleTerms": ["product", "head of product", "director of product", "vp product"],
+    "locations": ["India"],
+    "limit": 50
   }
 }
 ```
 
-Rules:
+Generated India source plans may suggest this entry, but setup does not auto-approve it. The agent must show and approve the new source scope first. DuckDB is installed in ApplyCue's local discovery-tool environment when tool installation is allowed; no API key or env-file edit is required.
 
-- no login or API key is needed
-- Workday company sources can be approved directly when the careers URL is a public `myworkdayjobs.com` board
-- Rippling company sources can be approved directly when the careers URL is a public `ats.rippling.com/<slug>/jobs` board
-- source-quality filtering must run before shortlist preparation because this is a broad source
-- increase `limitPerProvider` only when the user wants wider discovery
-- keep source approval in editable config; do not hand-edit `source-plan.generated.json`
+The directory canary is deliberately explicit because it can make many employer requests:
+
+```powershell
+pnpm applycue:source-canary -- --include-ats-directory
+```
+
+Direct company sources remain the cleanest path:
+
+```text
+agent public-web research
+  -> concrete company careers or ATS URL
+  -> user approval
+  -> sources.companyPages
+  -> direct public ATS API
+  -> JobRecord and normal ApplyCue gates
+```
+
+Workday and Rippling company sources can be approved directly when their public careers URLs match the supported hosts. Generated `site:` queries remain research leads until the agent confirms the real company board URL.
 
 ## Generated Source Plan
 
@@ -328,11 +331,9 @@ Approved suggestions are routed into simple config buckets:
 
 Approval means "this is allowed source config." It does not mean every adapter is built yet. The engine should scan only the buckets supported by the current discovery layer and leave the rest ready for later adapters.
 
-Currently executable `sources.searches` providers:
+`sources.loggedInBrowserSources` records user-approved source intent, not proof that a connector or login is currently healthy. The external agent must rediscover the current host capability before each relevant session. Keep capability state in memory. Persist only a safe opaque `credentialRef` when the host supplies one; never persist a password, OTP, token, cookie, client secret, or copied browser profile. Search/inspection approval does not grant fill, send, message, or submit permission. See `docs/connector-capability-policy.md`.
 
-- `ats_directory`
-
-Provider-specific public ATS search suggestions such as Greenhouse, Lever, Workday, and SmartRecruiters are research leads unless they include a concrete company board URL. Approving those suggestions routes them to browser/search source config for the agent. To make them executable, confirm the actual careers/ATS URL and add it to `sources.companyPages`, or use the executable `ats_directory` source.
+There is no normal generated `sources.searches` provider. Provider-specific public ATS search suggestions such as Greenhouse, Lever, Workday, and SmartRecruiters are research leads unless they include a concrete company board URL. Approving those suggestions routes them to browser/search source config for the agent. To make them executable, confirm the actual careers/ATS URL and add it to `sources.companyPages`.
 
 ## Job Board Sources
 
@@ -392,7 +393,7 @@ Supported no-key job-board providers:
 - `himalayas`
 - `themuse`
 
-`themuse` reads the public The Muse jobs API and should be capped with `options.limit` and `options.pageLimit` so broad supply still flows through ApplyCue's source-quality filter before shortlist preparation.
+`themuse` reads The Muse's published jobs API and should be capped with `options.limit` and `options.pageLimit`. The Muse's official documentation requires app registration beyond testing, and the 2026-07-10 ApplyCue live canary failed with a connection reset. Keep this provider explicit and disabled unless the user owns the registration, accepts the terms, and a current canary passes.
 
 For key-required providers such as Adzuna or USAJOBS, config should store only a user-owned credential reference, not the secret:
 
@@ -501,7 +502,9 @@ Normal users should not manually install JobSpy. The ApplyCue setup command or a
 
 The user's own mailbox is a source of job leads, but ApplyCue must not own email sending or store mailbox credentials.
 
-Inbox leads are high signal because the user has already subscribed to portals, recruiters, newsletters, and saved searches. The mailbox search query can therefore be broad. The first public-board/company run should complete first, then the agent should ask whether to add Gmail/Outlook job alerts as a source. Prefer native Codex, Claude, Hermes, or similar connected email tools. Do not enable mailbox access silently.
+Inbox leads are high signal because the user has already subscribed to portals, recruiters, newsletters, and saved searches. The mailbox search query can therefore be broad. The first public-board/company run should complete first. The agent should then discover whether its current host has a ready or connectable email-read tool and ask whether to add narrow Gmail/Outlook job alerts only when that path exists. Do not enable mailbox access silently.
+
+Before naming Gmail or Outlook, inspect what the current host actually exposes. If an email tool is ready or connectable, explain the narrow job-related read/search scope and start the host's OAuth flow only after approval. If no email connector exists, say so and continue with public sources; do not ask the user to paste mailbox credentials or install an unreviewed community connector.
 
 Recommended flow:
 
@@ -525,7 +528,7 @@ Mailbox scam filtering:
 - do not block every consultant or recruiter email; many real jobs come through recruiters
 - if unclear, import as manual review instead of generating a CV/application packet
 
-For a local personal setup, prefer the agent host's native Gmail/Outlook connector, such as Codex, Claude, Hermes, or similar integrated mail tools. Use the user's logged-in browser session only when native connector access is unavailable and the user approves that session. A third-party connector platform is optional and should use the smallest possible OAuth scope, visible audit logs, and user revocation. ApplyCue should store only a connector reference or imported job records, never mailbox tokens.
+For a local personal setup, prefer a native Gmail/Outlook connector that the current host has actually discovered as ready or connectable. Use the user's logged-in browser session only when native connector access is unavailable and the user approves that session. A third-party connector platform is optional and should use the smallest possible OAuth scope, visible audit logs, and user revocation. ApplyCue should store only a safe connector reference or imported job records, never mailbox tokens.
 
 Email scan accepts raw connector exports shaped as a single message, a JSON array, JSONL, or an envelope with `messages`, `emails`, `results`, `items`, or `data`. Each message should include the fields the connector can provide:
 
@@ -730,6 +733,8 @@ ApplyCue stores the normal job-search parameters an agent needs:
 - applications per day
 - mode: review, daily, or push
 - match range: tight, normal, or wide
+
+`applySettings.mode` controls execution cadence and permission. `review` means prepared applications still stop for review; it does not disable clear rule-based shortlisting. `minimumFitToApply` is the clear-match threshold after hard gates. Rows below that threshold but above the review floor remain ambiguous and can be escalated to Codex/Claude or the user.
 
 ## Preference Enforcement
 

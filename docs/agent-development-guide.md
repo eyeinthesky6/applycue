@@ -2,6 +2,8 @@
 
 Date: 2026-07-06
 
+Status: current code-change guide.
+
 ## Read This First
 
 ApplyCue is a CV-to-offer agent.
@@ -11,12 +13,13 @@ It builds on the current local workflow and turns it into an agent-led product w
 Before changing code, read:
 
 1. `AGENTS.md`
-2. `docs/agent-development-guide.md`
-3. `docs/user-asset-storage.md`
-4. `docs/cv-tailoring-policy.md`
-5. `docs/cv-engine-architecture.md`
-6. `docs/configuration.md`
-7. `docs/build-roadmap.md`
+2. `docs/ARCHITECTURE.md`
+3. `docs/agent-development-guide.md`
+4. `docs/user-asset-storage.md`
+5. `docs/cv-tailoring-policy.md`
+6. `docs/cv-engine-architecture.md`
+7. `docs/configuration.md`
+8. `docs/build-roadmap.md`
 
 If the task touches product behavior, also read:
 
@@ -370,11 +373,13 @@ pnpm applycue:approve-sources -- --ids <suggestion-id>
 
 This reads the generated plan and writes accepted sources into the editable profile config. It must not modify the generated source-plan file.
 
-Public ATS query suggestions are leads for browser/search work unless they include a concrete company board URL. Do not treat a `site:...` query as an executable source adapter. Confirm a real careers/ATS URL before adding `sources.companyPages`, or approve executable no-login providers such as `ats_directory`, JobSpy, Remotive, The Muse, or remote-board adapters.
+Public ATS query suggestions are leads for browser/search work unless they include a concrete company board URL. Do not treat a `site:...` query as an executable source adapter. Confirm a real careers/ATS URL before adding `sources.companyPages`, or approve executable no-login job-board providers such as JobSpy, JobHive, Remotive, RemoteOK, Working Nomads, Jobicy, or Himalayas. The Muse stays explicit because its official API requires registration beyond testing and its latest live canary failed.
+
+JobHive suggestions are review-only and currently generated only for India search profiles. Do not auto-approve `jobhive` or `ats_directory`. The filtered snapshot provider must keep DuckDB and JobHive-native rows inside the discovery adapter; the directory must keep its company and batch limits. Both emit `JobRecord` and own no ranking, truth, policy, or application action.
 
 Email and inbox leads are agent-tool work. The source plan can produce `email_alert` suggestions, but ApplyCue does not log into mail and does not send emails. The agent should use native Codex, Claude, Hermes, or similar connected email tools first to search recent job alerts/recruiter mails, save the raw connector result locally, run the ApplyCue email scanner, and then run the normal filter/dedupe/CV/apply-packet flow. If native connector access is unavailable, use the user's browser session only with permission. Email apply routes write drafts only; final send always needs explicit user confirmation in the connected tool or browser.
 
-After the first clean search/apply run, if no approved inbox source exists, the agent should ask the user whether to add Gmail/Outlook job-alert search. This is a prompt, not a blocker. Use broad mailbox strings because job-alert mail is already user-filtered by subscriptions and saved searches. Prefer native agent connectors over browser control.
+After the first clean search/apply run, if no approved inbox source exists, the agent should first discover whether the current host exposes a ready or connectable email-read capability. Only then should it ask the user whether to add narrow Gmail/Outlook job-alert search. This is a prompt, not a blocker. Use broad mailbox strings because job-alert mail is already user-filtered by subscriptions and saved searches. Prefer a discovered native connector over browser control and follow `docs/connector-capability-policy.md`.
 
 Use the scanner after saving raw connector results:
 
@@ -403,7 +408,7 @@ packages/ranker
 docs/research-math-and-oss.md
 ```
 
-Hard gates first. Agent judgment handles fuzzy role fit. Backend ordering signals are routing hints, not user-facing judgment and not a claim that the system knows the user's real chances.
+Hard gates first. The engine may own clear threshold decisions; agent judgment handles ambiguous role fit. Ordering signals are routing hints, not a claim that ApplyCue knows the user's interview or offer probability.
 
 Wrong role family, disallowed source kind, current company, explicit blocked company, blocked portal, fraud signal, impossible work authorization, blocked work mode, clear out-of-range experience, known compensation below floor, explicit no-sponsorship when sponsorship is required, explicit non-standard shift conflict, explicit travel above limit, and explicit timezone conflict are hard blockers. Ambiguous seniority, title grade, role shape, domain fit, location fit, company-level differences, and missing compensation/travel/sponsorship/timezone data should be routed to agent review or reusable user config, not solved with new math.
 
@@ -416,6 +421,8 @@ Senior title variants may match when both pieces are true: the title has an acce
 Shortlist feedback stays in chat for now. Do not add dashboard buttons or a second interaction surface just to collect tuning. If the shortlist has too much noise, the user can tell the agent, or the agent can propose a few reusable labels such as `bad fit`, `band too high`, `band too low`, `salary too low`, `wrong industry`, `wrong geography`, `culture`, `duplicate`, or `scam/risky`. Save approved feedback as tuning or outcome feedback; do not add a one-job source-code rule.
 
 Do not add embeddings, cross-encoders, learning-to-rank, or broad search-engine features unless a later product decision proves they help the agent get the user interviews better than agent evaluation plus simple guardrails.
+
+The same rule applies to model providers. Native Codex/Claude judgement is the current runtime. The inherited root evaluators have been removed. Do not import a model SDK into `apps/` or `packages/` or add a model key requirement. If the user explicitly authorizes a future model trial, follow `docs/ai-judgment-trial-plan.md`: reuse the recorded-decision contract, use de-identified fixtures first, keep output in shadow mode, and preserve hard-gate and native-agent fallback authority.
 
 ### CV Tailoring
 
@@ -447,7 +454,7 @@ docs/end-to-end-user-flow.md
 
 Prepared applications write apply route JSON under `outputs/apply-routes/`. Agents should start there, not from an improvised browser or connector path. The route decides whether the next action is API, browser, email draft, DM draft, or manual review. Use `pnpm applycue:apply-route -- --route-id <route-id>` as the route-aware dispatcher. If the route is wrong, fix the reusable source, policy, or config input and regenerate instead of hand-editing one route.
 
-Email and DM routes are draft/handoff routes only. ApplyCue may write the draft body and attachment list, but it must not send email, send DMs, or store mail-provider credentials. Actual sending is agent-managed through native Codex, Claude, Hermes, or similar connected accounts when available. Use browser control only when no connector is available and the user approves that session. Final send always needs explicit user confirmation.
+Email and DM routes are draft/handoff routes only. ApplyCue may write the draft body and attachment list, but it must not send email, send DMs, or store mail-provider credentials. Actual sending is agent-managed only through a current, discovered Codex, Claude, Hermes, or similar account capability. Use browser control only when no connector is available and the user approves that session. Final send always needs explicit user confirmation.
 
 Never submit when reconciliation, source trust, or user policy fails.
 
@@ -593,6 +600,7 @@ This is where discovery, shortlisting, CV generation, drafts, manifests, dashboa
 - Run `pnpm applycue:first-build` when changing the local pipeline.
 - Keep generated outputs reproducible from config, assets, jobs, and code.
 - Keep backend ordering signals hidden unless explicitly asked.
+- Keep native-agent judgement separate from backend ordering and preserve actor/evidence provenance through the implemented recorded-decision path.
 - Treat configured ask-before portals, blocked/scam portals, sensitive fields, and unsupported CV claims as pause conditions. Do not pause normal company career pages only because the domain is unfamiliar.
 
 ## Do Not
@@ -608,6 +616,7 @@ This is where discovery, shortlisting, CV generation, drafts, manifests, dashboa
 - Do not bypass generated apply routes for one job.
 - Do not submit applications outside configured policy.
 - Do not edit env files or secrets without explicit permission.
+- Do not make a model provider, API key, or local inference server a required runtime dependency without a separately approved architecture decision and passing trial evidence.
 - Do not expose score obsession as the product UI.
 - Do not import another job-search repo as a second engine without a documented adoption decision.
 

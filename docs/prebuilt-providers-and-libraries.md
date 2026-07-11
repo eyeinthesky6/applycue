@@ -2,6 +2,8 @@
 
 Date: 2026-07-06
 
+Status: current adapter inventory plus adoption research. A listed tool is not implemented unless the code path and tests prove it.
+
 ## Decision
 
 Do not build a broad job-board scraper from scratch.
@@ -33,11 +35,12 @@ The generated `searchProfile` is now part of discovery quality control. It filte
 Use this order:
 
 1. Official/public APIs where available.
-2. Reverse public ATS directory scans when the user has not curated company lists yet.
-3. JobSpy bridge for broad job-board search.
-4. Crawl4AI for public pages with no useful API.
-5. Browser-visible extraction for pages that need a real browser session.
-6. Paid/cloud APIs only when the user approves keys, cost, and data sharing.
+2. Agent-researched and user-approved company/ATS URLs.
+3. JobSpy as a bounded broad-board bridge with per-board evidence.
+4. Optional pinned and validated ATS-directory seed data, never mutable runtime authority.
+5. Crawlee or another permissive deterministic crawler only for repeated public pages with no useful API.
+6. Browser-visible extraction through the external agent for pages that need a real session.
+7. Paid/cloud APIs only when the user approves keys, cost, and data sharing.
 
 Manual import remains a fallback, not the main lane.
 
@@ -73,7 +76,7 @@ Use these first for a single local user:
 
 | Provider | Credential | Fit |
 | --- | --- | --- |
-| JobSpy | none for local library use | Best first broad board bridge. The ApplyCue setup flow installs `python-jobspy` in the user's local ApplyCue venv. JobSpy lookback should be at least the active ApplyCue freshness window. Generated source packs can create separate searches for each approved market. |
+| JobSpy | none for local library use | Useful replaceable broad-board bridge, not the only discovery engine. The ApplyCue setup flow installs `python-jobspy` in the user's local ApplyCue venv. Benchmark yield and failure rate per board. |
 | Greenhouse | none for public boards | Good company/ATS source. |
 | Lever | none for public postings | Good company/ATS source. |
 | Ashby | none for public posting API | Good company/ATS source, often includes compensation. |
@@ -86,12 +89,12 @@ Use these first for a single local user:
 | Workday | none for public tenant CXS endpoint | Good company/ATS source when a company uses `<tenant>.<wd-instance>.myworkdayjobs.com/<site>`; public CXS search returns active postings without credentials. |
 | Personio | none for public tenant XML feed | Good company/ATS source when a company uses `<tenant>.jobs.personio.(de|com)`; public XML returns active postings without credentials. |
 | Rippling | none for public tenant board API | Good company/ATS source when a company uses `ats.rippling.com/<slug>/jobs`; public board API returns active postings without credentials. |
-| Reverse ATS directory | none for public directory/API use | Good base-workflow-inspired broad ATS discovery over Greenhouse, Lever, and Ashby without a fixed company list. |
+| JobHive snapshots and ATS directory | no login/key; MIT | Review-only India snapshot source plus bounded company-directory seed. ApplyCue retains normalization, filtering, ranking, truth, and permissions. |
 | Remotive | none for public endpoint | Good remote-job source; obey attribution and low request frequency terms. |
-| The Muse | none for public jobs API | Good supplemental no-key job-board source. Keep capped and filtered before shortlist preparation because it is broad. |
+| The Muse | no key for testing; official registration required beyond testing | Explicit trial only. Keep out of automatic starter approval until user-owned registration and a live canary pass. |
 | Adzuna | user-owned app id/key | Good later broad API. Official default limits are enough for a single user if scheduled carefully. |
 | USAJOBS | user-owned API key | Only useful for US federal/public-sector targets. |
-| User mailbox | native agent connector first; browser fallback with permission | Good source for job alerts, recruiter messages, and apply links. Codex, Claude, Hermes, or similar connected email tools should search/draft when available. ApplyCue should import extracted leads as local jobs; it must not store mailbox credentials or send email itself. |
+| User mailbox | discovered native agent connector first; browser fallback with permission | Good source for job alerts, recruiter messages, and apply links. The agent should inspect its current host, request narrow access, and use Codex, Claude, Hermes, or similar email tools only when ready or user-connected. ApplyCue imports extracted leads as local jobs; it must not store mailbox credentials or send email itself. |
 
 Do not start with paid scraping APIs. Add them later only when the user explicitly approves account setup, cost, and data sharing.
 
@@ -105,7 +108,11 @@ Company career pages are handled separately from broad job-board search. Use `so
 
 ## JobSpy
 
-Decision: use JobSpy as the first broad job-board discovery bridge.
+Decision: keep JobSpy as a bounded, replaceable broad job-board discovery bridge. Do not make it the sole supply path or assume every supported board is equally reliable.
+
+Starter setup now selects at most two clean JobSpy searches plus one direct structured no-key fallback. If JobSpy is skipped or unavailable, setup selects up to two direct no-key feeds instead. This is supply resilience, not silent search widening; all results still pass the saved search profile and hard gates.
+
+`pnpm applycue:source-canary` checks direct configured feeds without running ranking or application preparation. JobSpy is opt-in for this command and defaults to one approved query so a health check does not become a broad scrape.
 
 Why:
 
@@ -299,29 +306,29 @@ Prefer official APIs where they fit the user's target market.
 | Personio | company/ATS discovery | Implemented in ApplyCue. Public tenant XML feed under `<tenant>.jobs.personio.(de|com)/xml`, no secrets. |
 | Rippling | company/ATS discovery | Implemented in ApplyCue. Public tenant board API under `api.rippling.com/platform/api/ats/v1/board/<slug>/jobs`, no secrets. |
 | Remotive | remote job discovery | Public API, no key in basic docs. Respect their terms: link back and do not redistribute into third-party boards. |
-| The Muse | broad jobs/company listings | Implemented in ApplyCue. Public jobs API under `www.themuse.com/api/public/jobs`, no secrets. Keep request pages capped. |
+| The Muse | broad jobs/company listings | Adapter implemented under `www.themuse.com/api/public/jobs`, but official registration is required beyond testing and the 2026-07-10 live canary failed. Keep explicit and capped; do not auto-approve. |
 | Adzuna | broad jobs and labour-market data | REST API. Requires user-owned `app_id` and `app_key`; default limits are single-user friendly if scheduled carefully. Useful for salary/vacancy intelligence too. |
 | USAJOBS | US federal jobs | REST API. Search requires a user-owned API key. Useful only for users targeting US public-sector roles. |
 
 Do not add keys to env or config without explicit user permission.
 
-## Reverse ATS Directory
+## JobHive Snapshot And ATS Directory
 
-Decision: use an ApplyCue-owned reverse ATS directory source for broader discovery.
+Decision: adopt JobHive behind two narrow ApplyCue-owned boundaries, but keep it review-only until repeated source scorecards pass.
 
-The base workflow has a useful `scan:full` pattern: walk public ATS company directories, fetch public postings, and filter before expensive evaluation. ApplyCue keeps that pattern behind `provider: "ats_directory"` instead of importing base workflow.
+The old non-commercial company-list dependency is gone from runtime code. JobHive's code and published dataset are MIT-licensed. Its global aggregate snapshot is too large for a normal ApplyCue run, so ApplyCue never downloads it. The `jobhive` provider uses DuckDB predicate pushdown against selected per-ATS Parquet slices. The `ats_directory` provider reads only small company CSVs and delegates live fetching to existing ApplyCue ATS adapters.
 
-Current implementation:
+Directory implementation:
 
-- reads the public `job-board-aggregator` company lists for Greenhouse, Lever, and Ashby
-- validates directory slugs before building URLs
-- guards each constructed URL to the expected ATS host
+- reads JobHive's per-ATS `companies.csv` files for all twelve ATS types supported by ApplyCue
+- validates directory slugs and requires HTTPS on the expected ATS host
 - samples across the directory instead of only taking the alphabetic prefix
 - fetches public ATS APIs in small batches
 - normalizes every posting into `JobRecord`
 - runs source-quality filtering before shortlist and CV work
+- remains explicitly configured because broad directory scans create request fan-out
 
-Config lives in `sources.searches`, not hardcoded code:
+Example bounded directory config:
 
 ```json
 {
@@ -329,7 +336,7 @@ Config lives in `sources.searches`, not hardcoded code:
     "searches": [
       {
         "kind": "ats",
-        "label": "Reverse ATS directory scan",
+        "label": "JobHive ATS directory scan",
         "provider": "ats_directory",
         "query": "vp product",
         "enabled": true,
@@ -345,11 +352,11 @@ Config lives in `sources.searches`, not hardcoded code:
 }
 ```
 
-Do not use this as a final relevance signal. It is a supply source. The generated `searchProfile`, hard gates, agent shortlist review, CV truth reconciliation, source trust, and scan history still decide what moves forward.
+For geography-aware discovery, prefer `provider: "jobhive"` in `sources.jobBoards`; see `docs/configuration.md`. Both lanes remain supply sources only. The generated `searchProfile`, hard gates, agent review, CV truth reconciliation, source trust, and scan history still decide what moves forward. The directory canary uses `pnpm applycue:source-canary -- --include-ats-directory`.
 
-## Crawl4AI
+## Public Page Crawling
 
-Decision: use Crawl4AI later for public pages that JobSpy or official APIs do not cover.
+Decision: defer a crawler dependency until repeated public pages prove the need. Trial Crawlee first because it is Apache-2.0 and fits the TypeScript/Playwright runtime. Keep Crawl4AI as a comparison candidate only if its extraction quality offsets another Python sidecar.
 
 Use it for:
 
@@ -358,7 +365,7 @@ Use it for:
 - pages where clean Markdown extraction helps the CV/reconciliation engine
 - CSS/XPath extraction when repeated job cards exist
 
-Do not use it for:
+Do not use a crawler for:
 
 - logged-in applications
 - pages needing account-specific interaction
@@ -413,7 +420,8 @@ Use libraries where they remove format work:
 
 | Feature | Candidate | Decision |
 | --- | --- | --- |
-| DOCX base CV ingestion | Mammoth.js | Good fit. Converts `.docx` to clean semantic HTML/text. Use for base CV import. |
+| DOCX base CV ingestion | Mammoth.js | Implemented as raw-text extraction; the original DOCX remains authoritative and converted HTML is not embedded. |
+| Text-based PDF ingestion | PDF.js | Implemented as text extraction; image-only PDFs stop with an OCR-needed message. |
 | DOCX CV export | `docx` | Implemented for `standard_ats_v1` upload artifacts. Browser plans should upload DOCX, not Markdown. |
 | Markdown parsing | unified/remark | Good fit for inspecting generated CV and job imports as ASTs. |
 | JSON contract validation | Ajv | Good fit for config, source rows, facts, CV plans, and reconciliation reports. |
@@ -437,15 +445,15 @@ These are the product.
 
 ## Implemented Build Slice
 
-Status: implemented on 2026-07-06.
+Status: initial adapters implemented on 2026-07-06; discovery resilience delta updated on 2026-07-10.
 
 Implemented:
 
 - `provider: "jobspy"` job-board source shape.
-- `provider: "ats_directory"` reverse public ATS directory source shape.
+- migration-compatible `provider: "ats_directory"` parsing remains, but it is absent from generated/default source activation.
 - Optional Python runner for `jobspy.scrape_jobs()`.
 - `provider: "remotive"` no-key public API source shape.
-- `provider: "themuse"` no-key public jobs API source shape.
+- `provider: "themuse"` published jobs API source shape; explicit testing only until user-owned registration and a live canary pass.
 - `provider: "workable"` and `provider: "smartrecruiters"` company/ATS source shapes.
 - `provider: "bamboohr"` company/ATS source shape.
 - `provider: "breezy"` company/ATS source shape.
@@ -460,6 +468,8 @@ Implemented:
 - Disabled fake config examples.
 - Source-plan suggestions for JobSpy and Remotive.
 - Approval route preserves provider options.
+- Bounded top-level ATS/job-board and ATS-detail fan-out with per-source partial success.
+- Clean setup selects a direct no-key fallback beside JobSpy, or direct no-key sources when JobSpy is unavailable.
 
 Live scraping still runs only from approved user config.
 

@@ -7,13 +7,6 @@ body:
       value: |
         > ⚠️ **Privacy first.** ApplyCue runs locally. **Never** paste your CV, scan results, pipeline data, job listings, or other personal info — issues are **public forever**. Keep your data on your machine; share only sanitized snippets.
   - type: checkboxes
-    id: coc
-    attributes:
-      label: Code of Conduct
-      options:
-        - label: I agree to follow the [Code of Conduct](https://github.com/eyeinthesky6/applycue/blob/main/CODE_OF_CONDUCT.md)
-          required: true
-  - type: checkboxes
     id: search
     attributes:
       label: Existing issues
@@ -50,8 +43,8 @@ body:
       label: OS and Node.js version
       placeholder: "e.g., macOS 15 / Node 20.11"
   - type: textarea
-    id: doctor
+    id: status
     attributes:
-      label: Output of npm run doctor
-      description: Paste the output here (helps us diagnose setup issues)
+      label: Sanitized output of pnpm applycue:status
+      description: Remove names, paths, job details, and other personal information before pasting.
       render: shell

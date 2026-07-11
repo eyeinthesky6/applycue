@@ -1,5 +1,7 @@
 # FAQ
 
+Status: current short answers; detailed rules remain in their owner documents.
+
 ## Is ApplyCue a job board?
 
 No. ApplyCue is an agent-led CV-to-offer workflow. It helps the agent discover jobs, filter obvious misses, generate truthful CV variants, prepare applications, and track outcomes.
@@ -16,7 +18,7 @@ Prefer the external profile store:
 ~/.applycue/profiles/<profile>/
 ```
 
-Repo-local files still work during the transition, but real CVs and generated outputs should not be committed.
+Repo-local config remains a development fallback, but real CVs and generated outputs belong only in the external profile store and must not be committed.
 
 ## Can it apply automatically?
 

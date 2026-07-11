@@ -2,6 +2,10 @@
 
 Date: 2026-07-06
 
+Status: implementation history and backlog. Use `product-roadmap.md` for MVP/V1/V2 scope, `ARCHITECTURE.md` for ownership, and `launch-readiness.md` for the current release gate.
+
+Terminology note: historical `V1` and `MVP` headings below predate the canonical version plan. They describe requirements and implementation history, not the current V1 release boundary.
+
 ## Build Readiness
 
 ApplyCue is ready to start implementation.
@@ -134,7 +138,7 @@ Generate one truthful job-specific CV in `standard_ats_v1`.
 
 Build:
 
-- base CV parser/importer, initially text or Markdown
+- base CV parser/importer for DOCX, text-based PDF, Markdown, and text; OCR remains evidence-gated
 - fact extraction stub
 - requirement extraction stub
 - truth-oriented requirement-to-proof mapper
@@ -246,7 +250,7 @@ Later learning:
 Current implementation status:
 
 - Outcome events can be recorded into the user store with `pnpm applycue:record-outcome`.
-- A successful `pnpm applycue:browser-live-apply --allow-submit` run now records a `submitted` outcome event automatically from the captured browser receipt. Review-mode pauses still do not create submission outcomes.
+- A successful `pnpm applycue:browser-live-apply -- --allow-submit` run now records a `submitted` outcome event automatically from the captured browser receipt. Review-mode pauses still do not create submission outcomes.
 - The engine reads `data/local/outcomes.jsonl` during local runs.
 - Run manifests, dashboard HTML, and chat summaries include Source Learning:
   - applications with source context
@@ -353,7 +357,7 @@ base-workflow-inspired source coverage improvement now in place:
 approved company ATS source -> Greenhouse/Lever/Ashby/Workable/SmartRecruiters/BambooHR/Breezy/Recruitee/Pinpoint/Workday/Personio adapter -> JobRecord
 ```
 
-Workable, SmartRecruiters, BambooHR, Breezy, Recruitee, Pinpoint, Workday, Personio, and Rippling use public no-login surfaces and normalize into the same company-source path as the original ATS adapters. Reverse ATS directory discovery still covers only Greenhouse, Lever, and Ashby until ApplyCue has reliable public company directories for the newer providers.
+Workable, SmartRecruiters, BambooHR, Breezy, Recruitee, Pinpoint, Workday, Personio, and Rippling use public no-login surfaces and normalize into the same company-source path as the original ATS adapters. On 2026-07-11 the old non-commercial reverse-directory input was replaced with JobHive's MIT company CSVs. A separate review-only JobHive/DuckDB lane now performs bounded India title/location queries over selected ATS snapshots. Neither lane is auto-approved, and concrete company/ATS URLs remain preferred.
 
 Shortlist parity improvement now in place:
 
@@ -372,10 +376,10 @@ This keeps weak matches and explicit user-rule violations from filling applicati
 Shortlist upgrade path:
 
 ```text
-hard gates -> source-quality filter -> agent fit review -> shortlist -> source scorecards -> ambiguity prompts -> user config updates
+hard gates -> source-quality filter -> clear shortlist + ambiguous fit review -> source scorecards -> ambiguity prompts -> user config updates
 ```
 
-The current backend ordering in `packages/ranker` must remain subordinate to `apply -> review -> watch -> skip` policy buckets. Do not expand this into a search-ranking platform. If the shortlist feels wrong, first update the user's target roles, source filters, proof bank, or preferences, then rerun the engine.
+The current ordering in `packages/ranker` remains subordinate to `apply -> review -> watch -> skip` policy buckets. Clear `apply` rows may prepare automatically; `review` rows go to the agent only when needed. Do not expand this into a search-ranking platform. If the shortlist feels wrong, first update the user's target roles, source filters, proof bank, or preferences, then rerun the engine.
 
 `buildAmbiguityPrompts` emits reusable policy questions for company-grade seniority, location/work authorization, work mode, employment type, and company-stage ambiguity. These prompts must be answered into editable user config; agents must not patch source code for one job.
 
@@ -410,7 +414,7 @@ Every prepared application writes a normalized JD Markdown file with source meta
 base workflow parity / UAT volume improvement now in place:
 
 ```text
-source jobs -> source-quality filter -> hard gates -> agent shortlist -> cleaned JD requirements -> truth reconciliation -> daily batch filled when enough eligible roles exist
+source jobs -> source-quality filter -> hard gates -> clear shortlist + ambiguity review -> cleaned JD requirements -> truth reconciliation -> daily batch filled when enough eligible roles exist
 ```
 
 The first real UAT exposed the base workflow gap clearly: broad job-board discovery found many roles, but weak source filtering and over-mechanical ordering prepared too few useful applications. ApplyCue should keep weak-role matches capped, map requirements only to approved evidence, and strip common non-requirement job-post metadata before CV reconciliation. The goal is better batch fill without lowering the truth gate or pretending math knows the user's real opportunity.
@@ -493,9 +497,9 @@ Build order:
 9. Scan history and repeat avoidance for daily/push automation. Done.
 10. Repost/stale-opening signals from scan history. Done.
 11. Source outcome learning from application events. Done.
-12. Reverse ATS directory scan over public Greenhouse, Lever, and Ashby directories. Done.
+12. JobHive ATS directory seed over the twelve supported ATS types, plus a review-only filtered snapshot provider for India. The old non-commercial directory input was removed on 2026-07-11.
 13. Workable, SmartRecruiters, BambooHR, Breezy, Recruitee, Pinpoint, Workday, Personio, and Rippling company ATS adapters. Done.
-14. The Muse no-key public jobs API adapter. Done.
+14. The Muse public jobs API adapter. Adapter done; explicit trial only because official registration is required beyond testing and the 2026-07-10 live canary failed.
 15. Local lexical retrieval list in backend ordering. Done. Do not expand this into a ranking platform without a new product decision.
 16. Source scorecards in manifest, dashboard, and chat summary. Done.
 17. Reusable ambiguity prompts in manifest, dashboard, and chat summary. Done.

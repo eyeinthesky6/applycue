@@ -1,111 +1,18 @@
-# ApplyCue Data Contract
+# ApplyCue Data Contract Pointer
 
-This document defines which files belong to the **system** and which belong to the **user**.
+Status: compatibility pointer; the inherited root updater has been removed
 
-During the transition, the repo-local user layer still works inside this checkout. New ApplyCue engine outputs should prefer the external profile store:
+The current ApplyCue contracts are:
 
-`~/.applycue/profiles/<profile>/`
+- [`docs/data-contracts.md`](docs/data-contracts.md) for typed product data;
+- [`docs/user-asset-storage.md`](docs/user-asset-storage.md) for the system/user file boundary.
 
-That keeps real user assets, generated CVs, run manifests, browser receipts, and outcomes outside the product repo.
+Real user data belongs under:
 
-## User Layer (NEVER auto-updated)
+```text
+~/.applycue/profiles/<profile>/
+```
 
-These files contain your personal data, customizations, and work product. Updates will NEVER modify them.
+Do not store real CVs, contact data, generated applications, receipts, or outcomes in the source checkout.
 
-Preferred ApplyCue profile-store files:
-
-| File | Purpose |
-|------|---------|
-| `~/.applycue/profiles/<profile>/applycue.json` | User profile, preferences, search policy, and apply policy |
-| `~/.applycue/profiles/<profile>/assets/` | Base CVs, profile images, and imported user documents |
-| `~/.applycue/profiles/<profile>/outputs/` | Generated CVs, application drafts, browser plans, receipts, UAT reports, and dashboards |
-| `~/.applycue/profiles/<profile>/sources/` | User-approved, agent-suggested, and system-generated source plans |
-| `~/.applycue/profiles/<profile>/outcomes/` | Replies, interviews, offers, rejections, and learning notes |
-
-Repo-local user files:
-
-| File | Purpose |
-|------|---------|
-| `cv.md` | Your CV in markdown |
-| `config/profile.yml` | Your identity, targets, comp range |
-| `modes/_profile.md` | Your archetypes, narrative, negotiation scripts |
-| `modes/_custom.md` | Your house rules, custom workflows & output preferences (procedural — survives updates) |
-| `voice-dna.md` | Your writing voice guardrail — banned words, anti-AI-slop rules, tone (optional) |
-| `article-digest.md` | Your proof points from portfolio |
-| `interview-prep/story-bank.md` | Your accumulated STAR+R stories |
-| `interview-prep/{company}-{role}.md` | Company-specific interview prep reports (written by interview-prep mode) |
-| `portals.yml` | Your customized company list |
-| `config/plugins.yml` | Your plugin activation toggles (opt-in; seeded from `config/plugins.example.yml`) |
-| `plugins.local/` | Your own / private plugins (never auto-updated) |
-| `plugins.lock` | Integrity pins + recorded consent for your enabled plugins (generated; never auto-updated) |
-| `data/applications.md` | Your application tracker (source of truth) |
-| `data/applications.db` | Derived query index over `applications.md` (SQLite, rebuilt by `node tracker.mjs sync` — safe to delete) |
-| `data/pipeline.md` | Your URL inbox |
-| `data/scan-history.tsv` | Your scan history |
-| `data/follow-ups.md` | Your follow-up history |
-| `writing-samples/*` | Your personal writing samples for style calibration (except `writing-samples/README.md`, which is system-owned documentation delivered by updates) |
-| `reports/*` | Your evaluation reports |
-| `output/*` | Your generated PDFs |
-| `jds/*` | Your saved job descriptions |
-
-## System Layer (safe to auto-update)
-
-These files contain system logic, scripts, templates, and instructions that improve with each release.
-
-| File | Purpose |
-|------|---------|
-| `modes/_shared.md` | Scoring system, global rules, tools |
-| `modes/_custom.template.md` | Template seed for the user's `modes/_custom.md` |
-| `modes/oferta.md` | Evaluation mode instructions |
-| `modes/pdf.md` | PDF generation instructions |
-| `modes/scan.md` | Portal scanner instructions |
-| `modes/batch.md` | Batch processing instructions |
-| `modes/apply.md` | Application assistant instructions |
-| `modes/auto-pipeline.md` | Auto-pipeline instructions |
-| `modes/contacto.md` | LinkedIn outreach instructions |
-| `modes/deep.md` | Research prompt instructions |
-| `modes/regional/*` | Regional market calibration modes |
-| `modes/ofertas.md` | Comparison instructions |
-| `modes/pipeline.md` | Pipeline processing instructions |
-| `modes/project.md` | Project evaluation instructions |
-| `modes/tracker.md` | Tracker instructions |
-| `modes/training.md` | Training evaluation instructions |
-| `modes/patterns.md` | Pattern analysis instructions |
-| `modes/followup.md` | Follow-up cadence instructions |
-| `modes/de/*` | German language modes |
-| `modes/fr/*` | French language modes |
-| `modes/ja/*` | Japanese language modes |
-| `modes/pl/*` | Polish language modes |
-| `modes/pt/*` | Portuguese language modes |
-| `modes/ru/*` | Russian language modes |
-| `modes/heuristics/*` | Shared candidate-facing application heuristics |
-| `CLAUDE.md` | Agent instructions (Claude Code) |
-| `OPENCODE.md` | Agent instructions (OpenCode) |
-| `GEMINI.md` | Legacy no-op context guard (prevents Antigravity duplicate imports) |
-| `AGENTS.md` | Canonical agent instructions (imported by CLI-specific wrappers) |
-| `*.mjs` | Utility scripts |
-| `plugins/` | Bundled plugins + the plugin engine (opt-in external integrations) |
-| `plugins.mjs` | Plugin CLI (list/run/available/add/new/enable/skill/trust/remove) |
-| `plugins-registry.json` | Curated list of approved community plugins (the trust root) |
-| `plugin-install.mjs` / `plugin-audit.mjs` / `validate-plugin-registry.mjs` | Plugin install/audit/registry-validation utilities |
-| `config/plugins.example.yml` | Plugin activation template (seed for `config/plugins.yml`) |
-| `batch/batch-prompt.md` | Batch worker prompt |
-| `batch/batch-runner.sh` | Batch orchestrator |
-| `dashboard/*` | Go TUI dashboard |
-| `templates/*` | Base templates |
-| `fonts/*` | Self-hosted fonts |
-| `.claude/skills/*` | Skill definitions (Claude Code) |
-| `.opencode/skills/*` | Skill definitions (OpenCode) |
-| `.qwen/skills/*` | Skill definitions (Qwen Code) |
-| `.antigravitycli/skills/*` | Skill definitions (Antigravity CLI) |
-| `.grok/skills/*` | Skill definitions (Grok Build CLI) |
-| `docs/*` | Documentation |
-| `VERSION` | Current version number |
-| `DATA_CONTRACT.md` | This file |
-| `writing-samples/README.md` | System-owned onboarding documentation for the writing-samples directory |
-
-## The Rule
-
-**If a file is in the User Layer, no update process may read, modify, or delete it.**
-
-**If a file is in the System Layer, it can be safely replaced by a product update.**
+The removed updater and its repo-local data layout are not supported ApplyCue contracts. Historical details remain in Git history and dated reviews only. Current code must use the typed contracts and external profile store linked above.
