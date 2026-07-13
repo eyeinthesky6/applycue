@@ -7,7 +7,7 @@
  * - 8-col: num\tdate\tcompany\trole\tstatus\tscore\tpdf\treport (no notes)
  * - Pipe-delimited (markdown table row): | col | col | ... |
  *
- * Dedup: company normalized + role fuzzy match + report number match
+ * Dedup: exact report/tracker identity only. Similar titles stay for agent review.
  * If duplicate with higher score → update in-place, update report link
  * Validates status against states.yml (rejects non-canonical, logs warning)
  *
@@ -21,7 +21,6 @@ import { execFileSync } from 'child_process';
 import { createHash, randomUUID } from 'crypto';
 import { tmpdir } from 'os';
 import { normalizeReportLink as normalizeLink } from './tracker-links.mjs';
-import { roleFuzzyMatch } from './role-matcher.mjs';
 import { LEGACY_COLMAP, detectColumns } from './tracker-parse.mjs';
 
 const APPLYCUE = dirname(fileURLToPath(import.meta.url));
@@ -671,9 +670,8 @@ for (const file of tsvFiles) {
   // so it resolves correctly when clicked from applications.md (see #760).
   addition.report = normalizeReportLink(addition.report);
 
-  // Check for duplicate by:
-  // 1. Exact report number match
-  // 2. Company + role fuzzy match
+  // Check only exact stored identity. Company/title similarity is ambiguous:
+  // employers routinely publish the same title for different teams/locations.
   const reportNum = extractReportNum(addition.report);
   let duplicate = null;
 
@@ -701,15 +699,6 @@ for (const file of tsvFiles) {
     duplicate = existingApps.find(app =>
       app.num === addition.num && normalizeCompany(app.company) === normCompany
     );
-  }
-
-  if (!duplicate) {
-    // Company + role fuzzy match
-    const normCompany = normalizeCompany(addition.company);
-    duplicate = existingApps.find(app => {
-      if (normalizeCompany(app.company) !== normCompany) return false;
-      return roleFuzzyMatch(addition.role, app.role);
-    });
   }
 
   if (duplicate) {

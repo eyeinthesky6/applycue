@@ -4,6 +4,8 @@ data/applications.md
 data/applications.db
 data/pipeline.md
 data/scan-history.tsv
+data/job-feedback.jsonl
+data/application-attempts.jsonl
 data/parser-output/**/*.json
 !data/parser-output/.gitkeep
 !data/parser-output/**/.gitkeep
@@ -49,8 +51,6 @@ assets/
 # Generated
 .resolved-prompt-*
 node_modules/
-apps/*/dist/
-packages/*/dist/
 bun.lock
 # Report-number reservation sentinels (ephemeral, created by reserve-report-num.mjs)
 reports/*-RESERVED.md
@@ -68,7 +68,6 @@ reports/*-RESERVED.md
 .claude/memory/
 .opencode/settings.local.json
 .opencode/memory/
-career-dashboard
 package-lock.json
 
 # Playwright MCP server run artifacts (ephemeral, machine-local — never commit)

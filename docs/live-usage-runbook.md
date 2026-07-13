@@ -1,198 +1,63 @@
-# Live Usage Runbook
+# ApplyCue Live Usage Runbook
 
-Date: 2026-07-11
-
-This runbook is for the first real multi-candidate UAT. The goal is to use ApplyCue as an agent-operated CV-to-shortlist system first, then apply only when the user explicitly asks.
-
-## Live-Day Rule
-
-Each person gets a separate ApplyCue profile.
-
-```text
-C:\Users\<user>\.applycue\profiles\<profile>\
-```
-
-Do not mix CVs, contact details, preferences, generated CVs, dashboards, receipts, or outcomes across people.
-
-Use `default` only for the current operator unless the user explicitly says otherwise.
-
-## What We Are Testing
-
-For each candidate, prove this flow:
-
-```text
-CV + preferences
-  -> profile setup
-  -> clean job discovery
-  -> dedupe/noise filtering
-  -> ranked queue
-  -> truthful role-specific CVs
-  -> reusable form data preview
-  -> local dashboard/summary
-```
-
-Do not submit live applications during search UAT unless the user changes the task to apply.
-
-## Default Profile First
-
-Run the current operator's profile first:
+## Start
 
 ```powershell
-pnpm applycue:status -- --profile default
-pnpm applycue:first-build -- --profile default --more-results --target-ranking-queue 200
-pnpm applycue:form-data -- --profile default --more-results --target-ranking-queue 200
-pnpm applycue:status -- --profile default
+node doctor.mjs --json
 ```
 
-Expected result:
+The agent greets the user, reads existing user files, and asks only for missing material information.
 
-- status is `READY`
-- latest ranked queue is large enough for review, usually 200+ when available
-- master form data preview is current
-- dashboard and summary paths are written under `%USERPROFILE%\.applycue\profiles\default\outputs\`
+## New candidate
 
-If `form-data` says values need confirmation, show the preview to the user. Confirm only after the user approves:
+1. Preserve the supplied CV exactly.
+2. Extract contact and history already present.
+3. Ask for approved local/public portfolio sources.
+4. Build and confirm the coherent profile/story.
+5. Confirm search intent, hard constraints, current employer, past-employer policy, and pace.
+6. Run a baseline scan before rewriting the base CV.
+
+The current checkout supports one active candidate safely. Until V1 external multi-profile storage lands, use a separate checkout/user directory for another real candidate; never mix their user layers.
+
+## Search day
+
+1. Run configured sources without silent widening.
+2. Show fetched and loss counts.
+3. Hydrate viable full JDs in the approved browser.
+4. Let the agent review all viable candidates and record `apply`, `watch`, or `skip`.
+5. If starved/noisy, audit a sample and propose one reusable change for approval.
+6. Prepare the first five genuine matches, or fewer when fewer fit.
+
+## Application session
+
+For each named role:
+
+1. Recheck liveness and exact company/role/URL.
+2. Skip current employer; ask for past employer.
+3. Generate and open role PDF/DOCX.
+4. Resolve material claim and form-answer questions.
+5. Show the final application package.
+6. Get explicit approval.
+7. Start `application-attempt.mjs` receipt.
+8. Fill/upload/submit through the approved agent browser.
+9. Record `confirmed`, `unknown`, `failed`, or `abandoned` immediately.
+10. Update tracker to Applied only for confirmed success.
+
+Never retry unknown without reconciliation and new approval.
+
+## Feedback
+
+Open `npm run dashboard`. Read `data/job-feedback.jsonl` for unresolved thumbs-down. Ask why, summarize the reusable lesson, and get approval before changing user config.
+
+After a few ApplyCue applications, offer an approved mailbox pass for older confirmations and ongoing outcomes. It is useful history, not a first-run prerequisite.
+
+## End of session
+
+Run:
 
 ```powershell
-pnpm applycue:form-data -- --profile default --confirm --more-results --target-ranking-queue 200
+node verify-pipeline.mjs
+npm run tracker -- query --limit 20
 ```
 
-## New Candidate Intake
-
-When the user drops a new CV, create a profile key from the person's name, for example:
-
-```text
-anita-sharma
-rahul-mehta
-```
-
-Then create or update:
-
-```text
-%USERPROFILE%\.applycue\profiles\<profile>\applycue.json
-%USERPROFILE%\.applycue\profiles\<profile>\assets\base-cvs\<cv-file>
-```
-
-The repo must not store the real CV.
-
-Minimum setup facts to collect from the CV and user chat:
-
-- name and contact details
-- current title and current company
-- current country/city and search countries/cities
-- target role families and titles
-- preferred industries and clear no-go industries
-- work mode: remote, hybrid, onsite
-- employment type: full time, contract, internship, fractional
-- compensation floor if the user gives it
-- notice period if known
-- years of total experience and relevant experience
-- apply mode and applications per day
-- whether past employers are allowed
-
-Do not force a long setup form. Ask only for missing blockers and continue with reasonable defaults when the CV is enough.
-
-## New Candidate Commands
-
-Use this sequence for each new profile:
-
-```powershell
-pnpm applycue:setup -- --profile <profile> --skip-source-approval
-pnpm applycue:status -- --profile <profile>
-pnpm applycue:first-build -- --profile <profile> --more-results --target-ranking-queue 200
-pnpm applycue:form-data -- --profile <profile> --more-results --target-ranking-queue 200
-pnpm applycue:status -- --profile <profile>
-```
-
-Run this once per repo session, not once per candidate:
-
-```powershell
-pnpm applycue:check
-```
-
-Use browser UAT only when checking the application-fill leg for that candidate:
-
-```powershell
-pnpm applycue:browser-uat -- --profile <profile> --more-results --target-ranking-queue 200
-```
-
-## Search Quality Review
-
-After each first build, inspect:
-
-```text
-outputs\runs\latest-summary.md
-outputs\runs\latest-job-decisions.json
-outputs\dashboard\latest.html
-```
-
-Tell the user in plain language:
-
-- total discovered
-- kept after hard filters
-- ranked queue count
-- duplicate jobs blocked
-- risky/scam/manual-review jobs blocked or held
-- top role clusters
-- whether results look too narrow, too broad, or good enough for review
-
-If results are too small, widen in this order:
-
-```text
-source -> title -> industry -> location -> recency -> batch strictness
-```
-
-Do not widen geography, older post dates, source scope, or applications per day without telling the user what is changing.
-
-## Application Mode
-
-Only switch to application mode when the user says to apply.
-
-Application flow:
-
-```text
-selected job
-  -> generated application packet
-  -> apply route
-  -> master form data confirmation
-  -> live preflight
-  -> user-approved submit or pause
-  -> receipt/outcome saved
-```
-
-Commands:
-
-```powershell
-pnpm applycue:apply-route -- --profile <profile> --route-id <route-id>
-pnpm applycue:browser-live-preflight -- --profile <profile> --route-id <route-id>
-pnpm applycue:browser-live-apply -- --profile <profile> --route-id <route-id>
-```
-
-Never reuse a stale live preflight for a real submit. Rerun preflight on the current page before applying.
-
-Email and DM sending are not done by the app. The agent may draft through native Codex, Claude, Hermes, or similar connectors, or browser control with user permission. Final send always needs explicit user confirmation.
-
-## Evidence To Save
-
-For each candidate, keep these paths in the session notes:
-
-- profile path
-- base CV asset path
-- latest dashboard path
-- latest summary path
-- latest decision queue path
-- master form data preview path
-- any generated CV path used for review or application
-- any receipt path if an application is submitted
-
-## Stop Conditions
-
-Stop and ask the user before continuing if:
-
-- contact details are missing
-- the CV does not identify the user's role level or target roles
-- location/work authorization makes the batch ambiguous
-- results are mostly irrelevant
-- the job source asks for fees, payment, private IDs, or suspicious registration
-- a form asks a new reusable question
-- a submit button would send a live application
+Tell the user what was fetched, reviewed, shortlisted, generated, attempted, confirmed, and what exact next action remains.

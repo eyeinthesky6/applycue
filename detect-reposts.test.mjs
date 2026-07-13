@@ -7,7 +7,7 @@
  * - TSV parsing (column count, whitespace, special chars)
  * - Row filtering (status, empty fields, type coercion)
  * - Company grouping (case sensitivity, unicode, whitespace)
- * - Title matching (exact, fuzzy, variations, empty, unicode)
+ * - Title matching (exact signal only, variations stay separate, empty, unicode)
  * - Window logic (boundary days, transitive chains, sliding window)
  * - URL deduplication (same URL, multiple sightings, dedup + repost)
  * - Cluster output shape (all fields present, correct types)
@@ -18,7 +18,6 @@
  */
 
 import { detectReposts, parseScanHistory } from './detect-reposts.mjs';
-import { roleFuzzyMatch } from './role-matcher.mjs';
 import { readFileSync, writeFileSync, unlinkSync, existsSync, mkdtempSync, rmSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -292,15 +291,15 @@ eq('identical titles match', detectReposts([
   row({ url: 'https://x.com/2', title: 'Senior Backend Engineer Payments', date: d('2026-02-01'), dateStr: '2026-02-01' }),
 ]).length, 1);
 
-eq('fuzzy match: word order variation', detectReposts([
+eq('word order variation stays separate for agent review', detectReposts([
   row({ url: 'https://x.com/1', title: 'Senior Backend Engineer Payments' }),
   row({ url: 'https://x.com/2', title: 'Backend Engineer Payments Senior', date: d('2026-02-01'), dateStr: '2026-02-01' }),
-]).length, 1);
+]).length, 0);
 
-eq('fuzzy match: minor wording change', detectReposts([
+eq('minor wording change stays separate for agent review', detectReposts([
   row({ url: 'https://x.com/1', title: 'Senior Backend Engineer Payments Processing' }),
   row({ url: 'https://x.com/2', title: 'Backend Engineer Payments Processing Senior', date: d('2026-02-01'), dateStr: '2026-02-01' }),
-]).length, 1);
+]).length, 0);
 
 eq('distinct roles NOT matched', detectReposts([
   row({ url: 'https://x.com/1', title: 'Senior Backend Engineer Payments' }),

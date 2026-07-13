@@ -1,110 +1,79 @@
-# Architecture
+# ApplyCue Architecture
 
-## System Overview
+## Shape
 
-```
-                    ┌─────────────────────────────────┐
-                    │         AI Coding CLI Agent      │
-                    │   (reads AGENTS.md + modes/*.md) │
-                    └──────────┬──────────────────────┘
-                               │
-            ┌──────────────────┼──────────────────────┐
-            │                  │                       │
-     ┌──────▼──────┐   ┌──────▼──────┐   ┌───────────▼────────┐
-     │ Single Eval  │   │ Portal Scan │   │   Batch Process    │
-     │ (auto-pipe)  │   │  (scan.md)  │   │   (batch-runner)   │
-     └──────┬──────┘   └──────┬──────┘   └───────────┬────────┘
-            │                  │                       │
-            │           ┌──────▼──────┐          ┌────▼─────┐
-            │           │ pipeline.md │          │ N workers│
-            │           │ (URL inbox) │          │ (headless)
-            │           └─────────────┘          └────┬─────┘
-            │                                          │
-     ┌──────▼──────────────────────────────────────────▼──────┐
-     │                    Output Pipeline                      │
-     │  ┌──────────┐  ┌────────────┐  ┌───────────────────┐  │
-     │  │ Report.md│  │  PDF (HTML  │  │ Tracker TSV       │  │
-     │  │ (A-F eval)│  │  → Puppeteer)│  │ (merge-tracker)  │  │
-     │  └──────────┘  └────────────┘  └───────────────────┘  │
-     └────────────────────────────────────────────────────────┘
-                               │
-                    ┌──────────▼──────────┐
-                    │  data/applications.md │
-                    │  (canonical tracker)  │
-                    └──────────────────────┘
+ApplyCue is a local agent-operated product, not a second AI platform. One root runtime supplies tools and durable state; Codex, Claude, or another external agent supplies judgment and uses the user's approved browser/connectors.
+
+```text
+user chat
+   |
+external agent (judgment, writing, browser/connectors)
+   |
+ApplyCue root operator
+   |-- providers + scan.mjs          fetch and normalize leads
+   |-- modes/*.md                    workflow and output contracts
+   |-- reports/ + output/            review and CV artifacts
+   |-- application-attempt.mjs       attempt certainty
+   |-- data/applications.md          canonical application history
+   |-- tracker.mjs                   derived query index
+   `-- dashboard-server.mjs          browser view + feedback capture
 ```
 
-## Evaluation Flow (Single Offer)
+There is no TypeScript worker/engine control plane and no Go dashboard in the launch branch.
 
-1. **Input**: User pastes JD text or URL
-2. **Extract**: Playwright/WebFetch extracts JD from URL
-3. **Classify**: Detect archetype (1 of 6 types)
-4. **Evaluate**: 6 blocks (A-F):
-   - A: Role summary
-   - B: CV match (gaps + mitigation)
-   - C: Level strategy
-   - D: Comp research (WebSearch)
-   - E: CV personalization plan
-   - F: Interview prep (STAR stories)
-5. **Score**: Weighted average across 10 dimensions (1-5)
-6. **Report**: Save as `reports/{num}-{company}-{date}.md`
-7. **PDF**: Generate ATS-optimized CV (`generate-pdf.mjs`)
-8. **Track**: Write TSV to `batch/tracker-additions/`, auto-merged
+## Decision split
 
-## Batch Processing
+The boundary is based on whether a result is objectively reproducible.
 
-The batch system processes multiple offers in parallel:
+| Deterministic code | External agent |
+| --- | --- |
+| validate protocol and URL | understand a vague or unusual title |
+| fetch provider records | read full rendered/collapsed JD |
+| exact URL/record dedupe | decide whether similar roles are duplicates |
+| confirmed page liveness | judge CV-to-JD and user intent fit |
+| explicit hard constraints and exact attempt state | interpret company/title cooldown hints |
+| build PDF/DOCX | answer non-standard form questions |
+| preserve tracker and attempt receipts | decide `apply`, `watch`, or `skip` |
 
-```
-batch-input.tsv    →  batch-runner.sh  →  N × headless CLI workers
-(id, url, source)     (orchestrator)       (self-contained prompt)
-                           │
-                    batch-state.tsv
-                    (tracks progress)
-```
+Scores, keyword overlap, inferred levels, and similar-title math may be displayed as evidence but cannot reject or apply by themselves.
 
-Each worker is a headless AI CLI instance — the bundled `batch-runner.sh` supports multiple CLIs via the `--cli` flag (`--cli claude` or `--cli opencode`). See the Headless / Batch Mode table in `AGENTS.md`. Workers produce:
-- Report .md
-- PDF
-- Tracker TSV line
+## Main data flow
 
-The orchestrator manages parallelism, state, retries, and resume.
+1. `doctor.mjs` identifies missing user setup.
+2. The agent ingests the exact CV, reads approved sources, and confirms a coherent profile.
+3. `scan.mjs` invokes configured provider modules and writes leads/history.
+4. The agent opens viable links, hydrates the full JD, and records review results/reports.
+5. CV mode writes durable Markdown/HTML and renders PDF/DOCX.
+6. Apply mode performs browser preflight, gets named approval, starts a receipt, fills/uploads/submits, and records the outcome.
+7. `data/applications.md` remains canonical history; SQLite is a replaceable query index.
+8. The browser dashboard reads that history and captures feedback without changing preferences.
 
-## Data Flow
+## Source adapters and providers
 
-```
-cv.md                    →  Evaluation context
-article-digest.md        →  Proof points for matching
-config/profile.yml       →  Candidate identity
-portals.yml              →  Scanner configuration
-templates/states.yml     →  Canonical status values
-templates/cv-template.html → PDF generation template
-```
+Providers translate an external source into one common job-lead shape: company, title, location, URL, source, optional salary/date/description. They do not decide candidate fit.
 
-## File Naming Conventions
+Prefer stable public ATS/company APIs or feeds, mature permissive OSS bridges where they add coverage, agent browser extraction for rendered/collapsed pages, and manual/user-added links. Do not build a 10,000-line universal scraper inside the core. Any provider needs fixtures, pagination/error handling, source attribution, and a canary.
 
-- Reports: `{###}-{company-slug}-{YYYY-MM-DD}.md` (3-digit zero-padded)
-- PDFs: `cv-candidate-{company-slug}-{YYYY-MM-DD}.pdf`
-- Tracker TSVs: `batch/tracker-additions/{id}.tsv`
+## Tracker and identity
 
-## Pipeline Integrity
+`data/applications.md` is the source of truth because users and agents can inspect it. `data/applications.db` is derived and safe to rebuild.
 
-Scripts maintain data consistency:
+Automatic duplicate suppression requires exact identity: same normalized URL, same tracker id, same report id, or confirmed prior application evidence. Company/title similarity is only an agent-review signal.
 
-| Script | Purpose |
-|--------|---------|
-| `merge-tracker.mjs` | Merges batch TSV additions into applications.md |
-| `verify-pipeline.mjs` | Health check: statuses, duplicates, links |
-| `dedup-tracker.mjs` | Removes duplicate entries by company+role |
-| `normalize-statuses.mjs` | Maps status aliases to canonical values |
-| `cv-sync-check.mjs` | Validates setup consistency |
+## CV artifacts
 
-## Dashboard TUI
+The exact supplied CV is a baseline. Profile enrichment is confirmed separately. Each applied role should have durable Markdown/HTML source and PDF/DOCX output.
 
-The `dashboard/` directory contains a standalone Go TUI application that visualizes the pipeline:
+Claim states are advisory: sourced, reframed, or new/unconfirmed. Confirmed user claims are allowed. Hard technical failure is reserved for broken/missing files, wrong-role artifacts, or unresolved required/legal fields—not unfamiliar marketing wording.
 
-- Filter tabs: All, Evaluada, Aplicado, Entrevista, Top >=4, No Aplicar
-- Sort modes: Score, Date, Company, Status
-- Grouped/flat view
-- Lazy-loaded report previews
-- Inline status picker
+## Application certainty
+
+`application-attempt.mjs` is append-only. An attempt moves from `started` to exactly one of `confirmed`, `unknown`, `failed`, or `abandoned`. `unknown` is not `Applied` and blocks retry until the agent reconciles evidence and the user approves.
+
+## Browser dashboard
+
+`dashboard-server.mjs` binds only to `127.0.0.1`. It reads the tracker, report headers, PDF manifest, scan history, and feedback. It serves only files under `reports/`, `output/`, and `jds/`. Feedback writes `data/job-feedback.jsonl` and never mutates search config automatically.
+
+## Extension rule
+
+New work must attach to an owner above. Do not add another engine, worker, ranker, tracker, dashboard, profile store, or instruction tree. When OSS is considered, record license, maturity, maintenance, failure modes, and a bounded trial.

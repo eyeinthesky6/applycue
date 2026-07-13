@@ -2,7 +2,7 @@
 /**
  * dedup-tracker.mjs — Remove duplicate entries from applications.md
  *
- * Groups by normalized company + fuzzy role match.
+ * Groups by normalized company, but only collapses exact tracker/report identity.
  * Keeps entry with highest score. If discarded entry had more advanced status,
  * preserves that status. Merges notes.
  *
@@ -12,7 +12,6 @@
 import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { roleFuzzyMatch } from './role-matcher.mjs';
 import { rebuildRow } from './tracker-utils.mjs';
 import { resolveColumns, parseTrackerRow } from './tracker-parse.mjs';
 
@@ -108,26 +107,11 @@ function statusRank(status) {
 }
 
 /**
- * Check whether a status represents a real application already in motion.
- *
- * Rows at Applied or later have user-visible history that dedup must preserve
- * unless the duplicate relationship is exact. This guard prevents fuzzy title
- * matches from silently deleting an active application record.
- *
- * @param {string} status - Raw status value from the tracker row.
- * @returns {boolean} True when the row is Applied, Responded, Interview, or Offer.
- */
-function isAdvancedStatus(status) {
-  return statusRank(status) >= STATUS_RANK.applied;
-}
-
-/**
  * Extract the report number from a Markdown report link.
  *
  * Tracker report cells are normally written as links like
  * `[123](../reports/123-company-role-date.md)`. The bracketed number is the
- * stable report identity used to distinguish exact duplicates from merely
- * similar fuzzy-title matches.
+ * stable report identity used to distinguish exact duplicate records.
  *
  * @param {string} reportStr - Raw report cell from applications.md.
  * @returns {number|null} Parsed report number, or null when no link number exists.
@@ -140,9 +124,8 @@ function extractReportNum(reportStr) {
 /**
  * Determine whether two tracker rows point to the same exact report identity.
  *
- * Exact identity is stronger than fuzzy role matching. If two rows share the
- * same tracker number or bracketed report number, dedup may treat them as the
- * same record even when an advanced status is present.
+ * If two rows share the same tracker number or bracketed report number, dedup
+ * may treat them as the same stored record.
  *
  * @param {object} a - First parsed applications.md row.
  * @param {object} b - Second parsed applications.md row.
@@ -156,54 +139,19 @@ function sameReportIdentity(a, b) {
 }
 
 /**
- * Build a stable key for logging one protected fuzzy pair only once.
- *
- * The nested dedup loop can encounter a protected pair during cluster building.
- * Sorting the row numbers produces the same key regardless of comparison order,
- * which keeps the warning output readable and avoids repeated noise.
- *
- * @param {object} a - First parsed applications.md row.
- * @param {object} b - Second parsed applications.md row.
- * @returns {string} Stable pair key in ascending tracker-number order.
- */
-function pairKey(a, b) {
-  return [a.num, b.num].sort((x, y) => x - y).join(':');
-}
-
-const protectedFuzzyPairs = new Set();
-
-/**
  * Decide whether two same-company tracker rows should be deduplicated.
  *
- * The function first accepts exact report identity, then applies the shared
- * fuzzy role matcher. If either row is already Applied or later, fuzzy matching
- * alone is not enough; dedup keeps both rows and warns because deleting one
- * would lose application status, report link, and notes for a potentially
- * distinct opening.
+ * Similar or identical-looking titles are not proof of the same opening. One
+ * employer can publish the same title for different teams, cities or countries.
+ * Only a shared tracker id or report id is safe for automatic deletion; every
+ * other pair remains visible for agent review against the full JD and source URL.
  *
  * @param {object} a - First parsed applications.md row.
  * @param {object} b - Second parsed applications.md row.
  * @returns {boolean} True when dedup may cluster the two rows as duplicates.
  */
 function roleMatch(a, b) {
-  if (sameReportIdentity(a, b)) return true;
-  if (!roleFuzzyMatch(a.role, b.role)) return false;
-
-  // Fuzzy title matches are intentionally conservative once either row has
-  // entered the real application pipeline. A user may already have applied to
-  // one sibling role, so deleting that row because a higher-scored sibling has
-  // similar wording would lose status, report, and notes. Keep both unless the
-  // rows point to the exact same report identity.
-  if (isAdvancedStatus(a.status) || isAdvancedStatus(b.status)) {
-    const key = pairKey(a, b);
-    if (!protectedFuzzyPairs.has(key)) {
-      protectedFuzzyPairs.add(key);
-      console.warn(`⚠️  Keep #${a.num} and #${b.num}: fuzzy role match but advanced status requires exact report identity`);
-    }
-    return false;
-  }
-
-  return true;
+  return sameReportIdentity(a, b);
 }
 
 /**

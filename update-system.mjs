@@ -96,7 +96,6 @@ const SYSTEM_PATHS = [
   'verify-pipeline.mjs',
   'reconcile-pipeline.mjs',
   'dedup-tracker.mjs',
-  'role-matcher.mjs',
   'tracker-utils.mjs',
   'tracker-parse.mjs',
   'normalize-statuses.mjs',
@@ -115,10 +114,12 @@ const SYSTEM_PATHS = [
   'analyze-patterns.mjs',
   'detect-reposts.mjs',
   'followup-cadence.mjs',
-  'gemini-eval.mjs',
-  'ollama-eval.mjs',
-  'openai-eval.mjs',
-  'openrouter-runner.mjs',
+  'dashboard-server.mjs',
+  'dashboard-server.test.mjs',
+  'generate-docx.mjs',
+  'generate-docx.test.mjs',
+  'application-attempt.mjs',
+  'application-attempt.test.mjs',
   'test-all.mjs',
   'detect-reposts.test.mjs',
   'test-salary-filter.mjs',
@@ -131,7 +132,6 @@ const SYSTEM_PATHS = [
   'batch/batch-prompt.md',
   'batch/batch-runner.sh',
   'batch/README.md',
-  'dashboard/',
   'templates/',
   'fonts/',
   'examples/',
@@ -146,46 +146,21 @@ const SYSTEM_PATHS = [
   '.antigravitycli/skills/',
   '.grok/skills/',
   '.kimi/skills/',
+  'skills/applycue/SKILL.md',
   'docs/',
   'writing-samples/README.md',
   'VERSION',
   'DATA_CONTRACT.md',
-  'CONTRIBUTING.md',
-  'MAINTAINERS.md',
   'ARCHITECTURE.md',
   'README.md',
-  'README.ar.md',
-  'README.cn.md',
-  'README.da.md',
-  'README.de.md',
-  'README.es.md',
-  'README.fr.md',
-  'README.ja.md',
-  'README.ko-KR.md',
-  'README.pl.md',
-  'README.pt-BR.md',
-  'README.ru.md',
-  'README.ua.md',
-  'README.zh-TW.md',
-  'CHANGELOG.md',
-  'CODE_OF_CONDUCT.md',
-  'CONTRIBUTORS.md',
-  'GOVERNANCE.md',
   'LEGAL_DISCLAIMER.md',
   'SECURITY.md',
   'SUPPORT.md',
-  'TRADEMARK.md',
   'LICENSE',
-  'CITATION.cff',
   '.github/',
   'package.json',
   'build-cv-latex.mjs',
   'scaffolder/',
-  'Dockerfile',
-  'docker-compose.yml',
-  '.dockerignore',
-  'cops',
-  'DOCKER.md',
   'plugins/',
   'plugins.mjs',
   'plugins-registry.json',
@@ -193,13 +168,7 @@ const SYSTEM_PATHS = [
   'plugin-audit.mjs',
   'validate-plugin-registry.mjs',
   'config/plugins.example.yml',
-  'apps/',
-  'packages/',
   'pnpm-lock.yaml',
-  'pnpm-workspace.yaml',
-  'tsconfig.base.json',
-  'tsconfig.json',
-  'vitest.config.ts',
 ];
 
 // User layer paths — NEVER touch these (safety check)
@@ -421,32 +390,6 @@ function addPaths(paths) {
   git('add', '--', ...paths);
 }
 
-function dashboardGoSourcesChanged() {
-  try {
-    const changed = git('diff', '--name-only', 'HEAD', '--', 'dashboard');
-    return changed
-      .split('\n')
-      .some(path => path.startsWith('dashboard/') && path.endsWith('.go'));
-  } catch {
-    return false;
-  }
-}
-
-function rebuildDashboardBinaryIfNeeded() {
-  if (!dashboardGoSourcesChanged()) return;
-
-  try {
-    execFileSync('go', ['build', '-o', 'career-dashboard', '.'], {
-      cwd: join(ROOT, 'dashboard'),
-      timeout: 60000,
-      stdio: 'pipe',
-    });
-    console.log('dashboard binary rebuilt');
-  } catch {
-    console.log('dashboard binary rebuild skipped -- run: cd dashboard && go build -o career-dashboard . manually');
-  }
-}
-
 // ── CHECK ───────────────────────────────────────────────────────
 
 // curl helper used by check() — curl works inside the Claude Code sandbox
@@ -632,7 +575,7 @@ async function apply() {
 
     // 3a. Keep bootstrap paths as a fallback for very old targets, but the
     // target updater's SYSTEM_PATHS is now the source of truth for new files.
-    const BOOTSTRAP_PATHS = ['.agents/', '.opencode/skills/', '.antigravitycli/skills/', '.grok/skills/', '.kimi/skills/', 'providers/', 'liveness-browser.mjs', 'tracker-links.mjs', 'role-matcher.mjs', 'tracker-utils.mjs', 'tracker-parse.mjs', 'scaffolder/', 'reserve-report-num.mjs', 'updater-migration-tests.mjs', 'validate-portals.mjs', 'tracker-columns-tests.mjs', 'plugins/', 'plugins.mjs', 'plugins-registry.json', 'plugin-install.mjs', 'plugin-audit.mjs', 'validate-plugin-registry.mjs', 'config/plugins.example.yml'];
+    const BOOTSTRAP_PATHS = ['.agents/', '.opencode/skills/', '.antigravitycli/skills/', '.grok/skills/', '.kimi/skills/', 'providers/', 'liveness-browser.mjs', 'tracker-links.mjs', 'tracker-utils.mjs', 'tracker-parse.mjs', 'scaffolder/', 'reserve-report-num.mjs', 'updater-migration-tests.mjs', 'validate-portals.mjs', 'tracker-columns-tests.mjs', 'plugins/', 'plugins.mjs', 'plugins-registry.json', 'plugin-install.mjs', 'plugin-audit.mjs', 'validate-plugin-registry.mjs', 'config/plugins.example.yml'];
     const updatePaths = mergePathLists(SYSTEM_PATHS, remoteSystemPaths, BOOTSTRAP_PATHS);
 
     for (const path of updatePaths) {
@@ -734,8 +677,6 @@ async function apply() {
     }
 
     // 6. Rebuild compiled dashboard if Go sources changed
-    rebuildDashboardBinaryIfNeeded();
-
     // 7. Commit the update
     const remote = localVersion(); // Re-read after checkout updated VERSION
     try {

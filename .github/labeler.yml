@@ -47,13 +47,15 @@
 "📊 dashboard":
   - changed-files:
       - any-glob-to-any-file:
-          - dashboard/**
+          - dashboard-server.mjs
+          - dashboard-server.test.mjs
+          - build-dashboard.mjs
 
 "📦 dependencies":
   - changed-files:
       - any-glob-to-any-file:
           - package.json
-          - package-lock.json
+          - pnpm-lock.yaml
 
 "⚙️ ci":
   - changed-files:

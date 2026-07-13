@@ -1,268 +1,174 @@
 ---
 name: ApplyCue
-description: CV-to-offer agent that sets up a user profile, finds jobs, prepares truthful role-specific CVs, applies under policy, tracks outcomes, and learns from results.
+description: Agent-led CV-to-application workflow that discovers roles, reviews full JDs, creates role-specific CVs, applies with permission, tracks outcomes, and learns from feedback.
 arguments: mode
 user_invocable: true
 user-invocable: true
-argument-hint: "[setup | status | batch | single-role | sources | tuning | apply | answers | outcomes | dashboard | uat | interview | offer]"
+argument-hint: "[setup | status | find | review | cv | apply | dashboard | outcome | uat]"
 license: MIT
 ---
 
-# ApplyCue Skill
+# ApplyCue
 
-ApplyCue is used through chat. The user should not edit JSON, install JobSpy, run package commands, or understand the repo. The agent reads status, runs commands, explains results, asks only useful questions, and writes user preferences into the user store.
+Use ApplyCue through chat. The agent operates the repository, the user's approved browser, and available connectors. The user should not need to learn commands or edit configuration.
 
-Core rule: use the ApplyCue engine. Do not hand-edit generated CVs, generated browser plans, generated source plans, or source code for one job application. If the user changes facts, goals, sources, or application rules, update reusable user config or approved facts, then regenerate.
+Codex users may start with `codex` or `codex exec "Read AGENTS.md, run doctor, and begin ApplyCue setup."` Claude and other hosts use the equivalent repository prompt. Plain-language prompts are canonical; `/applycue` is optional and may not exist in every host.
 
-## First Step Every Session
+## First action
 
-Unless the task is repository development or documentation, start with:
-
-```powershell
-pnpm applycue:status
-```
-
-Use the status output to decide the next safe action. Tell the user the plain result, not the command noise.
-
-## Multi-Candidate Live Usage
-
-When ApplyCue is used for more than one real person, each person must have a separate profile key and user-store folder.
-
-Use `default` only for the current operator unless the user explicitly says otherwise. For every other CV, create a clear slug such as `anita-sharma` or `rahul-mehta` and pass it to commands:
+For product usage, greet the user and run:
 
 ```powershell
-pnpm applycue:status -- --profile <profile>
-pnpm applycue:setup -- --profile <profile> --skip-source-approval
-pnpm applycue:first-build -- --profile <profile> --more-results --target-ranking-queue 200
-pnpm applycue:form-data -- --profile <profile> --more-results --target-ranking-queue 200
+node doctor.mjs --json
 ```
 
-Real CVs, profile images, generated CVs, receipts, form data, and outcomes must stay under:
+Read existing user files before asking questions. Extract name, contact details, employment dates, and public links from the CV when present. Ask only for missing information that changes the next action.
 
-```text
-%USERPROFILE%\.applycue\profiles\<profile>\
-```
+Inspect the browser and connector tools actually available in the current agent host. A native Codex/Claude/Chrome browser counts; `doctor` cannot detect host-native tools and may only report that no project MCP file exists. Ask the user to connect a browser only if no usable browser tool is available when a rendered or collapsed JD needs it.
 
-Do not put real candidate assets into the repo. Do not mix generated outputs between candidates. During live search UAT, stop at shortlist/CV/form-data review unless the user explicitly switches to application mode.
+For repository development, skip onboarding and follow `docs/agent-development-guide.md`.
 
-For the full live-day sequence, read `docs/live-usage-runbook.md`.
+## Mode routing
 
-## Scope Guard
-
-At the start of every non-trivial action, identify the mode from the routing table and stay inside it.
-
-The agent may continue without asking only when the next step is inside the selected mode and uses generated ApplyCue artifacts. The agent must ask before:
-
-- widening geography, source scope, title scope, recency, seniority strictness, or application volume
-- changing saved user preferences, base CV facts, proof bank facts, reusable form answers, sources, or apply policy
-- submitting an application, sending email, sending a DM, or messaging a referral/contact
-- using a logged-in browser/account for a new site or connector
-- editing source code, docs, skills, templates, or package config during normal product operation
-- bypassing a generated apply route, browser plan, reconciliation report, or preflight blocker
-
-If the user asks for one mode, do not silently jump to another. Examples:
-
-- `find jobs` may run discovery and prepare a review batch, but must not apply.
-- `apply approved jobs` may execute generated apply routes, but must not widen search.
-- `answer form questions` may save approved reusable answers, but must not change CV claims or preferences.
-- `more results` may use the documented widening order, but must explain what will relax before doing it.
-
-When unsure, stop with one plain question in chat. Do not invent a new workflow path.
-
-## Mode Routing
-
-| User intent | Mode | Agent action |
+| User intent | Mode | What the agent does |
 | --- | --- | --- |
-| set up, install, import CV, start ApplyCue | `setup` | Run setup, import assets, create/update profile config, ask only blocking questions. |
-| what next, status, where are we | `status` | Run read-only status and summarize queue, warnings, next action, dashboard paths. |
-| find jobs, run today, prepare batch | `batch` | Run the configured clean batch. Do not widen unless the user asks for more results. |
-| pasted JD, job URL, apply to this role | `single-role` | Ingest the role, verify fit/liveness, generate CV/application artifacts if relevant. |
-| add sources, approve sources, more results | `sources` | Approve reusable sources only with user intent; use transient widening for one-off more-results runs. |
-| tune search, noisy results, wrong titles, agent analysis | `tuning` | Record user feedback or agent batch analysis as tuning signals; do not silently rewrite active config. |
-| apply approved jobs, fill forms, submit | `apply` | Read the generated apply route first. Execute API, browser, email, DM, or manual-review route under policy. |
-| answer form questions, save reusable answer | `answers` | Save only user-approved reusable answers into editable config. |
-| got confirmation, reply, interview, rejection, offer | `outcomes` | Record outcome event, refresh dashboard/summary, update learning signals. |
-| show dashboard, show CVs, show output | `dashboard` | Open or summarize generated artifacts from the user store. |
-| test it, is it ready | `uat` | Run UAT and report PASS/WARN/FAIL with exact blocker. |
-| prepare for interview | `interview` | Build company/role prep from the JD, CV, proof bank, and application history. |
-| compare or negotiate offer | `offer` | Compare offer, pipeline alternatives, constraints, and draft negotiation if allowed. |
+| install, start, upload/import CV | `setup` | Check prerequisites, ingest the exact CV, ask for source access, build and confirm the profile. |
+| where are we, what next | `status` | Read doctor, tracker, pipeline, feedback, and attempts; give the next safe action. |
+| find jobs, run a batch | `find` | Scan approved sources, inspect losses, hydrate viable full JDs, and prepare agent review. |
+| shortlist or assess a role | `review` | Read the full JD and decide `apply`, `watch`, or `skip` with reasons. |
+| improve or tailor CV | `cv` | Preserve baseline, confirm material claim changes, and create MD/HTML/PDF/DOCX artifacts. |
+| fill or submit applications | `apply` | Preflight, get named approval, record attempt, fill/upload, reconcile outcome. |
+| show results or feedback | `dashboard` | Run/open the browser dashboard and explain counts or unresolved feedback. |
+| response, rejection, interview, offer | `outcome` | Update tracker and learning evidence. Interview/offer preparation is a later workflow. |
+| test or readiness question | `uat` | Run checks and report PASS/WARN/FAIL with the first real blocker. |
 
-If the user provides a job URL or JD without a mode, treat it as `single-role`.
+A pasted JD or job URL defaults to `review`. Do not silently jump from finding jobs to applying.
 
-## Commands The Agent May Use
+## Setup flow
 
-Use these as implementation details:
+### 1. Preserve the supplied CV
 
-```powershell
-pnpm applycue:setup
-pnpm applycue:status
-pnpm applycue:first-build
-pnpm applycue:first-build -- --more-results
-pnpm applycue:first-build -- --more-results --target-ranking-queue 200
-pnpm applycue:form-data
-pnpm applycue:form-data -- --confirm
-pnpm applycue:apply-route -- --route-id <route-id>
-pnpm applycue:scan-email-leads -- --input <raw-mail-export.json|jsonl> --import
-pnpm applycue:import-email-leads -- --input <normalized-email-leads.json|jsonl>
-pnpm applycue:approve-sources -- --dry-run --ids <id>
-pnpm applycue:approve-sources -- --ids <id>
-pnpm applycue:browser-live-preflight
-pnpm applycue:approve-answers -- --from-live --set field=value --dry-run
-pnpm applycue:approve-answers -- --from-live --set field=value
-pnpm applycue:browser-live-apply
-pnpm applycue:record-outcome -- --application <id> --type <type>
-pnpm applycue:record-tuning -- --origin agent_analysis --target title_variant --action promote --value <term> --reason <why>
-pnpm applycue:record-tuning -- --origin user_feedback --target role_term --action block --value <term> --reason <why> --approved-by-user
-pnpm applycue:apply-tuning -- --dry-run --ids <signal-id>
-pnpm applycue:apply-tuning -- --ids <signal-id>
-pnpm applycue:uat
-pnpm applycue:check
-```
+- Save/import the user's CV as the exact baseline before rewriting it.
+- DOCX, PDF, Markdown, and text are valid inputs. Use available document/PDF tools to extract them; do not recreate the user's history from memory.
+- Keep a larger evidence-rich base CV. Role CVs may be shorter.
+- Extract contact details from the CV instead of asking again.
 
-Do not ask the user to run these commands. The agent runs them and reports the result.
+### 2. Ask about additional sources
 
-## Apply Route Rules
+Immediately after CV ingestion, ask whether the user wants the profile enriched from any of:
 
-Every prepared application should have an apply route artifact under `outputs/apply-routes/`. The route tells the agent what to do next:
+- selected local folders or project repositories;
+- GitHub or other code profiles;
+- LinkedIn, personal website, Linktree, portfolio, blogs, or public posts;
+- certificates, case studies, writing samples, or existing application answers;
+- connected email later for job alerts and application confirmations.
 
-- `api`: use only the named safe adapter/endpoint in the route. If the adapter is unavailable, fall back to browser preflight.
-- `browser`: confirm master form data, run live preflight for the route's browser plan, then fill/upload, and submit only when the plan and user policy allow it.
-- `email`: draft the email exactly from the route and attach only generated artifacts from the active user store. ApplyCue must not send email; actual sending is agent-managed through native Codex, Claude, Hermes, or similar connected email tools when available. Use browser control only with user permission. Final send always needs explicit user confirmation.
-- `dm`: draft the recruiter/referral message from the route. ApplyCue must not send DMs; actual sending is agent-managed through native Codex, Claude, Hermes, or similar connected social/email tools when available. Use browser control only with user permission. Final send always needs explicit user confirmation.
-- `manual_review`: stop and explain the blocker or missing information.
+Ask for access to each local path/account before reading it. Public URLs may be read when the user supplies or approves them. Do not scan the whole machine.
 
-The agent must not invent a new application path when a route exists. If the route is wrong, record a reusable tuning/source/policy issue and regenerate. Do not hand-edit a generated route for one job unless the user explicitly asks for a one-off rescue.
+### 3. Extract, connect, confirm
 
-Default apply command:
+Build one coherent candidate story from the approved sources:
 
-```powershell
-pnpm applycue:apply-route -- --route-id <route-id>
-```
+- role history and chronology;
+- products, projects, ownership, teams, outcomes, and industries;
+- strengths and likely target roles;
+- inconsistencies, missing measures, unclear authorship, and possible improvements.
 
-Use its report as the next action. Browser routes still require the route's live preflight command before live apply. Email/DM routes create drafts only. If the user wants sending, prefer native Codex, Claude, Hermes, or similar connected tools; use browser control only with user permission; final send always needs explicit user confirmation. API routes pause unless a real adapter executor is present. Manual-review routes stop and explain the blocker/questions.
+Show material additions and conflicts to the user. Correct them together. Only confirmed facts enter the working profile/base CV.
 
-Before a browser portal route can proceed, refresh the reusable form values:
+### 4. Capture search intent
 
-```powershell
-pnpm applycue:form-data
-```
+Ask only what is not already known: target outcomes, acceptable adjacent roles, geography/relocation, compensation, availability, current employer, past-employer policy, work authorization, hard no-go companies, and desired application pace.
 
-Show `outputs/form-data/master-form-data.md` in chat. Confirm only after the user approves the values:
+Current employer is always skipped. Past employers need confirmation for each search/application policy change.
 
-```powershell
-pnpm applycue:form-data -- --confirm
-```
+### 5. Baseline before edits
 
-Do not silently confirm the user's real master form data. If a live portal asks a new reusable question, save the approved answer with `approve-answers`, regenerate the form data, and confirm the new preview.
+Run the first search against the exact supplied CV and confirmed intent. Record visible counts for fetched, objectively blocked, full-JD reviewed, shortlisted, skipped, CVs generated, attempted, and confirmed applied. This gives the user a clear “what ApplyCue did” baseline.
 
-Reusable form-answer loop:
+Only after the baseline should the agent propose base-CV improvements. Review them role-by-role or section-by-section and retain the user's language/style unless the user approves a change.
 
-1. If live preflight asks a reusable question, ask the user in chat.
-2. Save only approved reusable values with `approve-answers`.
-3. Rerun `pnpm applycue:form-data`.
-4. Show the updated preview.
-5. Confirm only after the user approves the changed field/value set.
+## Discovery and review
 
-Prefer canonical fields so answers are reused across differently worded portals: `notice_period`, `expected_salary`, `current_salary`, `work_authorization`, `visa_sponsorship`, `relocation_availability`, `total_experience_years`, `product_management_years`, `current_company`, and `current_title`. Do not store passwords, OTPs, private IDs, payment data, or one-off legal/sensitive answers as reusable answers.
+Use `portals.yml`, root providers, public job pages, user-added links, and approved native connectors. Prefer native email connectors for mailbox searches; if unavailable, tell the user what connection is needed. Most job boards do not expose agent connectors, so use public pages or the user's logged-in browser with permission.
 
-## Duplicate And Noise Rules
+Short cards, emails, snippets, and collapsed descriptions are leads, not JDs. Open the source in the user's real browser, expand “read more”, and read the full description before a final decision. If the full JD cannot be obtained, keep it pending or ask the user—do not reject it on the preview.
 
-Avoid duplicate shortlists and duplicate applications before the user sees them:
+Code may reject only objective cases: unsafe/invalid URL, confirmed dead posting, exact source identity already handled, current employer, explicit hard constraint, or the exact application URL/attempt already recorded. Company/title cooldown hints, similar titles, inferred seniority, keyword overlap, and CV-to-JD fit go to the agent.
 
-- current-run dedupe removes exact URL repeats and same-company/similar-role repeats before ranking and CV generation
-- daily and push modes skip non-manual jobs already marked prepared or closed in scan history
-- daily and push modes also skip same-company/similar-role jobs already prepared from previous automated runs
-- manual imports stay visible because a pasted job is deliberate user intent
-- source approvals dedupe generated source suggestions before writing editable config
-- submitted/confirmed outcomes are recorded as application events, not as fresh jobs
-- known jobs older than the active freshness window stay out of the first-run queue; unknown post dates stay eligible but sort below known fresh jobs
+The agent reviews the viable queue and records `apply`, `watch`, or `skip`. Scores help explain a decision but never make it. Audit false positives and false eliminations on the first run. Propose reusable configuration changes and get approval before saving them.
 
-If a duplicate is ambiguous, keep it out of automation and surface it as a short note, not as another CV/application for the user to review.
-
-## Tuning Rules
-
-Use tuning signals for reusable learning:
-
-- `user_feedback`: the user directly says a title, source, location, company, or match pattern is good or bad
-- `agent_analysis`: the agent reviews a batch and finds a reusable pattern, such as a noisy title or missing title variant
-- `outcome_learning`: replies, interviews, offers, and rejections suggest a source/title/company pattern is working or failing
-
-Agent-analysis signals default to proposed. User feedback can be saved as approved. Neither one should silently edit active preferences. Use `pnpm applycue:apply-tuning -- --dry-run --ids <signal-id>` to show the exact config change, then apply approved IDs only after the change is acceptable. Use `--all` only for explained bulk changes.
-
-The apply step writes only safe config lists: role/title terms, industries, locations, keyword lists, and trusted/ask-before/blocked portals. Ambiguous seniority, company-grade, CV-fact, work-mode, or apply-policy signals stay skipped until the agent asks the user or another product flow handles them.
-
-Never patch source code for one user's tuning.
-
-Seniority/title level is advisory by default. Do not block a role just because the inferred title level differs from `acceptableSeniorities` unless `matchSettings.seniorityGateMode` is `hard`. Prefer known required experience ranges for clear out-of-band filtering.
-
-When shortlist quality is noisy, keep feedback in chat. The user can tell the agent what is wrong, or the agent can propose simple reusable labels such as `bad fit`, `band too high`, `band too low`, `salary too low`, `wrong industry`, `wrong geography`, `culture`, `duplicate`, or `scam/risky`. Record approved reusable feedback as tuning; do not add dashboard buttons or a one-job code rule.
-
-## Clean First Run
-
-The first run must stay clean:
-
-- use saved user preferences and approved starter sources
-- use recent known posts first, defaulting to the last 30 days
-- do not silently widen geography, seniority, title, or source scope
-- do not silently include older historical postings
-- do not bulk-approve generated sources
-- if the batch is small, explain the count and offer simple more-results options
-- after the first run, if no inbox/email-alert source is approved, ask whether to add Gmail/Outlook job-alert search; prefer native Codex, Claude, Hermes, or similar connected email tools and do not enable mailbox access silently
-
-When the user asks for more results, widen in this order:
+If the queue is starved, show which counts fell at each stage. Offer one change at a time in this order:
 
 ```text
-source -> title -> industry -> location -> recency -> batch strictness
+source coverage -> title variants -> industry -> location -> recency -> strictness
 ```
 
-Hard rules never relax automatically: fake claims, blocked companies, impossible work authorization, blocked geographies, sensitive personal data, and user-defined no-go rules.
+Do not silently relax work authorization, blocked companies, current-employer, user no-go, unsafe-source, or application-approval rules.
 
-If the user asks for a wider queue, use `--more-results --target-ranking-queue <count>` as a transient run. The target is a ranked queue target, not a number of applications. After the run, inspect `outputs/runs/latest-job-decisions.json` for the full decision queue before changing preferences or applying tuning.
+## First application batch
 
-## Email And Inbox Sources
+Select the first five genuine matches, or fewer if fewer fit. Prepare each role fully; do not pad the batch with junk.
 
-Inbox leads are high signal because the user has already subscribed to job boards, LinkedIn alerts, recruiters, newsletters, and saved searches. Use broad recent mailbox search strings, then import only real job evidence into ApplyCue.
+For every role:
 
-The agent may use Gmail/Outlook only through native Codex, Claude, Hermes, or similar connected email tools first. If those are unavailable, browser control may be used only with user permission. ApplyCue stores imported jobs and connector references only; it does not store mailbox tokens and does not send email. Final send always needs explicit user confirmation.
+1. Read the full live JD.
+2. Explain why it fits the user's intent and evidence.
+3. Draft the role CV from the baseline plus confirmed profile facts.
+4. Mark claims as sourced, reframed, or new/unconfirmed. Ask for material confirmation; do not hard-reject useful marketing language merely because wording is new.
+5. Save durable Markdown and HTML, then generate PDF and DOCX.
+6. Verify the files open and belong to this company/role.
+7. Show company, role, URL, CV filename, and unresolved form answers.
+8. Obtain explicit approval for this named application.
+9. Follow `modes/apply.md`, including the application-attempt receipt.
+10. Mark `Applied` only on confirmed success. An unknown outcome remains unresolved and must not be retried automatically.
 
-Reject or manual-review email leads that ask for fees, deposits, paid registration, training fees, private IDs, bank/salary documents before a verified interview/offer, or candidate/profile database registration before naming the company and role. Do not block all consultants or recruiters, especially in India, because many real leads come through agencies.
+## Dashboard and learning loop
 
-Email lead import flow:
-
-1. Search recent mailbox leads with the native agent connector.
-2. Read only likely job-alert/recruiter messages.
-3. Save the raw connector results locally as JSON or JSONL.
-4. Run:
+Run:
 
 ```powershell
-pnpm applycue:scan-email-leads -- --input <raw-mail-export.json|jsonl> --import
-pnpm applycue:first-build
+npm run dashboard
 ```
 
-The scanner extracts real company, role title, apply URL/JD URL, location if visible, and useful JD/body text. It unwraps common tracking links, skips generic/profile/course links, writes normalized leads under `assets/inbox-leads/`, and then imports them into the normal local job source when `--import` is used. The lower-level `import-email-leads` command is only for already-normalized rows. Do not ask the user to copy emails into JSON; the agent saves connector results and runs the scanner.
+The browser dashboard reads `data/applications.md` and shows scanned, reviewed, shortlisted, applied/active, rejected, and skipped counts plus posting/report/CV links. Thumbs feedback writes `data/job-feedback.jsonl` only.
 
-## Truth And CV Rules
+Thumbs-down without a reason is `needs_reason`. The agent should ask a short follow-up in chat and use the answer to propose future tuning. Feedback never rewrites preferences automatically.
 
-Generated CVs must come from the base CV, approved profile facts, proof bank, approved application answers, and the JD. The agent may reframe, reorder, and emphasize. It must not invent companies, dates, metrics, titles, tools, credentials, work authorization, location, or achievements.
+After the first few ApplyCue applications, offer to search approved email for earlier/ongoing application confirmations and import them into the same history. This is not a pre-first-run blocker; the dashboard should make imported history visible.
 
-Major changes such as role pivot, industry pivot, city, seniority, or new claims must be saved as approved facts or a new base CV version first, then regenerated.
+## Permission rules
 
-## Browser Rules
+Ask before:
 
-Before filling a real application page:
+- accessing a new folder, browser account, or connector;
+- changing saved search/profile/CV facts;
+- widening search scope or application count;
+- applying, submitting, sending email/DM, or contacting a referral;
+- retrying an unknown attempt;
+- editing product code during a normal user workflow.
 
-1. Open the generated apply route and browser plan.
-2. Run live preflight for the same browser plan.
-3. Verify visible company, role, liveness, required fields, and sensitive questions.
-4. Pause if the page is unclear, closed, mismatched, asks for unknown answers, or asks for sensitive information.
-5. Fill and upload only after a current passing preflight for the same browser plan.
-6. Submit only when the user's apply policy explicitly allows it.
+One approval covers only the named action it describes.
 
-## Useful Docs
+## Commands for the agent
 
-- `docs/agent-first-installation-and-usage.md`
-- `docs/end-to-end-user-flow.md`
-- `docs/agent-development-guide.md`
-- `docs/configuration.md`
-- `docs/data-contracts.md`
-- `docs/cv-tailoring-policy.md`
+```powershell
+node doctor.mjs --json
+npm run scan
+node verify-pipeline.mjs
+npm run tracker -- query --limit 20
+npm run dashboard
+node generate-docx.mjs <tailored.md> <tailored.docx>
+node application-attempt.mjs check --job=N
+npm run check
+```
+
+Use the relevant `modes/*.md` file for evaluation, CV, pipeline, application, contact, or follow-up details. Commands are implementation details; explain outcomes in plain language.
+
+## MVP boundary
+
+MVP ends at a confirmed application plus tracking and feedback. Interview scheduling, alerts, deep interview preparation, offer comparison, and negotiation are documented future flows. Do not delay a working CV-to-application loop to build them now.
+
+## Success gate
+
+“Ready” means a clean checkout can be installed by an agent, ingest a real CV without losing content, discover roles, hydrate full JDs, produce a sensible shortlist, create verified PDF and DOCX files, obtain named approval, make one controlled application attempt, record a reliable outcome, and show it on the dashboard.

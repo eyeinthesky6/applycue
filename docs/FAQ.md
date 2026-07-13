@@ -2,26 +2,28 @@
 
 ## Is ApplyCue a job board?
 
-No. ApplyCue is an agent-led CV-to-offer workflow. It helps the agent discover jobs, filter obvious misses, generate truthful CV variants, prepare applications, and track outcomes.
+No. It is an agent-led CV-to-application workflow that uses several sources and the user's approved browser/connectors.
 
-## Does the user need to edit files?
+## Does the user edit files or run commands?
 
-No for normal use. The user should chat with the agent. The agent can update profile files, source approvals, and apply policy.
+Not normally. The agent installs, configures, runs, and explains ApplyCue through chat.
 
-## Where does user data live?
+## Where does data live?
 
-Prefer the external profile store:
+In the gitignored local user layer of the checkout for MVP. See `DATA_CONTRACT.md`. Use separate checkouts for different real candidates until V1 multi-profile storage exists.
 
-```text
-~/.applycue/profiles/<profile>/
-```
+## Does ApplyCue need an AI API key?
 
-Repo-local files still work during the transition, but real CVs and generated outputs should not be committed.
+No. MVP uses the model and tools already available in Codex, Claude, or another agent harness.
 
-## Can it apply automatically?
+## Can it submit automatically?
 
-Yes, only inside the user's configured policy. It must pause on unclear answers, sensitive fields, unsupported claims, ask-before portals, blocked or scammy portals, payment requests, or anything that changes a public profile.
+The agent can fill and submit after explicit approval for the named role. Every attempt gets a receipt. Sensitive/unknown answers, mismatches, closed pages, and uncertain prior attempts pause the flow.
 
-## Should scores be shown to users?
+## Are scores decisions?
 
-Usually no. Scores are backend prioritization signals. The user needs plain decisions: apply, review, watch, or skip.
+No. Scores are diagnostics. The agent reads the full JD and decides `apply`, `watch`, or `skip`.
+
+## Why keep similar titles?
+
+One company can use the same title across teams, cities, and countries. Only exact source/record identity or confirmed history is safe for automatic dedupe.

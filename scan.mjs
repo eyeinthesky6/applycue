@@ -156,6 +156,12 @@ export function buildTitleFilter(titleFilter) {
   };
 }
 
+// Title/content keyword matching is semantic and therefore advisory by default.
+// A user may deliberately opt into hard mode for a known exact rule.
+export function semanticFilterMode(filterConfig) {
+  return filterConfig?.mode === 'hard' ? 'hard' : 'advisory';
+}
+
 // ── Location filter ─────────────────────────────────────────────────
 // Optional. If `location_filter` is absent from portals.yml, all locations pass.
 // Semantics (case-insensitive substring, in this order):
@@ -364,12 +370,17 @@ export function buildCooldownFilter(windows, today) {
         }
 
         if (Array.isArray(window.applied_to)) {
+          const normalizeExactTitle = (value) => String(value || '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          const exactJobTitle = normalizeExactTitle(jobTitleLower);
           const matchesApplied = window.applied_to.some(role => {
-            const roleLower = role.toLowerCase();
-            return jobTitleLower.includes(roleLower);
+            return exactJobTitle === normalizeExactTitle(role);
           });
           if (matchesApplied) {
-            return { skip: true, reason: `cooldown:${windowCompany}:${cooldownUntil}`, cooldownUntil };
+            return { skip: false, review: true, reason: `cooldown-review:${windowCompany}:${cooldownUntil}`, cooldownUntil };
           }
         }
 
@@ -387,7 +398,7 @@ export function buildCooldownFilter(windows, today) {
           });
 
           if (matchesBucket) {
-            return { skip: true, reason: `cooldown:${windowCompany}:${cooldownUntil}`, cooldownUntil };
+            return { skip: false, review: true, reason: `cooldown-review:${windowCompany}:${cooldownUntil}`, cooldownUntil };
           }
         }
       }
@@ -554,22 +565,6 @@ export function loadSeenUrls(policy = {}) {
   }
 
   return { seen, recheckEligible };
-}
-
-function loadSeenCompanyRoles() {
-  const seen = new Set();
-  if (existsSync(APPLICATIONS_PATH)) {
-    const text = readFileSync(APPLICATIONS_PATH, 'utf-8');
-    // Parse markdown table rows: | # | Date | Company | Role | ...
-    for (const match of text.matchAll(/\|[^|]+\|[^|]+\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|/g)) {
-      const company = match[1].trim().toLowerCase();
-      const role = match[2].trim().toLowerCase();
-      if (company && role && company !== 'company') {
-        seen.add(`${company}::${role}`);
-      }
-    }
-  }
-  return seen;
 }
 
 // ── Pipeline writer ─────────────────────────────────────────────────
@@ -907,10 +902,12 @@ async function main() {
   const companies = Array.isArray(config.tracked_companies) ? config.tracked_companies : [];
   const boards = Array.isArray(config.job_boards) ? config.job_boards : [];
   const titleFilter = buildTitleFilter(config.title_filter);
+  const titleFilterMode = semanticFilterMode(config.title_filter);
   const locationFilter = buildLocationFilter(config.location_filter);
   const salaryFilter = buildSalaryFilter(config.salary_filter);
   const trustValidator = buildTrustValidator(config.trust_filter);
   const contentFilter = buildContentFilter(config.content_filter);
+  const contentFilterMode = semanticFilterMode(config.content_filter);
 
   // 3. Resolve a provider for each enabled company / board
   const targets = [];
@@ -974,19 +971,19 @@ async function main() {
   const historyPolicy = scanHistoryPolicy(config);
   const seenUrlState = loadSeenUrls(historyPolicy);
   const seenUrls = seenUrlState.seen;
-  const seenCompanyRoles = loadSeenCompanyRoles();
 
   // 5. Fetch from each target
   const date = new Date().toISOString().slice(0, 10);
   const windows = loadReApplyWindows();
   const cooldownFilter = buildCooldownFilter(windows, date);
-  let totalFilteredCooldown = 0;
-  const cooldownOffers = [];
+  let totalCooldownReview = 0;
   let totalFound = 0;
   let totalFilteredTitle = 0;
+  let totalAdvisoryTitle = 0;
   let totalFilteredLocation = 0;
   let totalFilteredSalary = 0;
   let totalFilteredContent = 0;
+  let totalAdvisoryContent = 0;
   let totalDupes = 0;
   const newOffers = [];
   const errors = [...resolveErrors];
@@ -1024,8 +1021,12 @@ async function main() {
         job.trustLevel = trustResult.level;
 
         if (!titleFilter(job.title)) {
-          totalFilteredTitle++;
-          continue;
+          if (titleFilterMode === 'hard') {
+            totalFilteredTitle++;
+            continue;
+          }
+          totalAdvisoryTitle++;
+          job.reviewSignals = [...(job.reviewSignals || []), 'title-keyword-mismatch'];
         }
         if (!locationFilter(job.location)) {
           totalFilteredLocation++;
@@ -1036,30 +1037,24 @@ async function main() {
           continue;
         }
         if (!contentFilter(job.description)) {
-          totalFilteredContent++;
-          continue;
+          if (contentFilterMode === 'hard') {
+            totalFilteredContent++;
+            continue;
+          }
+          totalAdvisoryContent++;
+          job.reviewSignals = [...(job.reviewSignals || []), 'content-keyword-mismatch'];
         }
         if (seenUrls.has(job.url)) {
           totalDupes++;
           continue;
         }
-        const key = `${job.company.toLowerCase()}::${job.title.toLowerCase()}`;
-        if (seenCompanyRoles.has(key)) {
-          totalDupes++;
-          continue;
-        }
         const cooldownResult = cooldownFilter(job);
-        if (cooldownResult.skip) {
-          totalFilteredCooldown++;
-          cooldownOffers.push({
-            job: { ...job, source: sourceName },
-            status: cooldownResult.reason,
-          });
-          continue;
+        if (cooldownResult.review) {
+          totalCooldownReview++;
+          job.reviewSignals = [...(job.reviewSignals || []), cooldownResult.reason];
         }
         // Mark as seen to avoid intra-scan dupes
         seenUrls.add(job.url);
-        seenCompanyRoles.add(key);
         // Tag with the company's careers domain so verify can offer a 404/410
         // rediscovery fallback. A null domain (no careers_url) marks the offer
         // as broad-discovery — ineligible for the fallback, per the issue scope.
@@ -1103,18 +1098,6 @@ async function main() {
     appendToPipeline(verifiedOffers);
     appendToScanHistory(verifiedOffers, date);
   }
-  if (!dryRun && cooldownOffers.length > 0) {
-    const cooldownGroups = {};
-    for (const item of cooldownOffers) {
-      if (!cooldownGroups[item.status]) {
-        cooldownGroups[item.status] = [];
-      }
-      cooldownGroups[item.status].push(item.job);
-    }
-    for (const [status, group] of Object.entries(cooldownGroups)) {
-      appendToScanHistory(group, date, status);
-    }
-  }
   // Expired postings — plus the old URLs of migrated offers — are recorded as
   // skipped_expired so subsequent scans dedup-skip the dead URLs.
   const expiredForHistory = [
@@ -1155,13 +1138,15 @@ async function main() {
   if (summaryBoards > 0) console.log(`Job boards scanned:    ${summaryBoards}`);
   console.log(`Total jobs found:      ${totalFound}`);
   console.log(`Filtered by title:     ${totalFilteredTitle} removed`);
+  if (totalAdvisoryTitle > 0) console.log(`Title review signals:  ${totalAdvisoryTitle} kept for agent review`);
   console.log(`Filtered by location:  ${totalFilteredLocation} removed`);
   console.log(`Filtered by salary:   ${totalFilteredSalary} removed`);
   console.log(`Filtered by content:  ${totalFilteredContent} removed`);
-  if (Object.keys(windows).length > 0 || totalFilteredCooldown > 0) {
-    console.log(`Filtered by cooldown:  ${totalFilteredCooldown} removed`);
+  if (totalAdvisoryContent > 0) console.log(`Content review signals:${totalAdvisoryContent} kept for agent review`);
+  if (Object.keys(windows).length > 0 || totalCooldownReview > 0) {
+    console.log(`Cooldown review:       ${totalCooldownReview} kept for agent review`);
   }
-  console.log(`Duplicates:            ${totalDupes} skipped`);
+  console.log(`Exact URL duplicates:  ${totalDupes} skipped`);
   if (historyPolicy.recheckAfterDays != null) {
     console.log(`Recheck eligible:      ${seenUrlState.recheckEligible} old scan-history URL(s)`);
   }

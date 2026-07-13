@@ -122,9 +122,9 @@
 #   #   - "custom-ats.example.com"
 
 # -- Content filter (optional) --
-# Filters on the job DESCRIPTION text, not just the title — useful when
-# companies post generic titles ("Software Engineer") with very different
-# stacks. Case-insensitive substring match.
+# Adds review signals from DESCRIPTION text. Advisory mode keeps jobs for the
+# agent because keyword matching is not semantic understanding. Set `mode: hard`
+# only for a user-approved exact rule.
 # Semantics:
 #   - A job with no description always passes (see provider support below)
 #   - Any `negative` keyword present → reject
@@ -139,6 +139,7 @@
 #
 # Example: keep roles that mention Rust/Go, drop legacy PHP/WordPress shops
 # content_filter:
+#   mode: advisory
 #   positive:
 #     - "rust"
 #     - "golang"
@@ -147,10 +148,12 @@
 #     - "wordpress"
 
 # -- Title filter --
-# The scanner uses these keywords to decide if a title is relevant.
-# At least 1 positive must match AND 0 negatives must match (case-insensitive).
+# Keywords add agent-review signals by default. They do not discard jobs because
+# similar or unusual titles can still fit. Set `mode: hard` only after the user
+# approves that false eliminations are acceptable for this exact list.
 
 title_filter:
+  mode: advisory
   positive:
     # [CUSTOMIZE] Add keywords matching YOUR target roles
     # -- AI/ML roles --

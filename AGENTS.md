@@ -1,157 +1,122 @@
 # ApplyCue Agent Instructions
 
-ApplyCue is a CV-to-offer agent. The user should experience it through chat: the agent sets up the profile, finds roles, prepares truthful CVs, routes applications, tracks outcomes, and learns from feedback.
+ApplyCue is an agent-led CV-to-application product. The user talks to Codex, Claude, or another capable agent; the agent operates the local code, browser, and approved connectors.
 
-This file is the repo-level bootloader for agents. Keep it short. Product workflow rules live in the canonical skill, and development rules live in docs.
+## Read order
 
-## Instruction Hierarchy
+1. `skills/applycue/SKILL.md` — canonical user workflow.
+2. `docs/PRODUCT_DECISION.md` — settled product and ownership decisions.
+3. `docs/ARCHITECTURE.md` — technical boundaries.
+4. `docs/product-roadmap.md` — MVP, V1, and V2.
+5. `docs/launch-readiness.md` — claim gate.
+6. `docs/agent-development-guide.md` — code-change rules.
+7. Specific contract docs only when relevant.
 
-Use this order:
+Do not duplicate product rules in `CLAUDE.md`, `CODEX.md`, `OPENCODE.md`, or CLI bridge skills. They point here or to the canonical skill.
 
-1. `AGENTS.md` tells the agent where to look.
-2. `skills/applycue/SKILL.md` is the canonical user-facing ApplyCue workflow.
-3. `docs/agent-development-guide.md` is the canonical guide for code changes.
-4. `docs/launch-readiness.md` is the release and distribution gate for launch claims.
-5. `docs/live-usage-runbook.md` is the operating guide for real multi-candidate sessions.
-6. `docs/pivot-history.md` explains the independent branch, the career-ops fork branch, and why the current launch path changed.
-7. Contract docs such as `docs/data-contracts.md`, `docs/configuration.md`, `docs/cv-tailoring-policy.md`, and `docs/agent-first-installation-and-usage.md` explain specific behavior.
-8. CLI-specific files and skill bridges must stay thin and point back here or to the canonical skill.
+## One-line product decision
 
-Do not duplicate product rules across `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, `OPENCODE.md`, or bridge skills. Duplication causes drift.
+Run one ApplyCue root operator. Complex judgment belongs to the external agent; deterministic code owns fetching, exact identity/history, artifacts, receipts, and integrity.
 
-## Start Here
+The former TypeScript `apps/` and `packages/` control plane and the Go terminal dashboard were removed from this launch branch. The independent work remains preserved in its donor branch/worktree and may inspire small, tested ports. Never restore or run it as a second product runtime.
 
-For normal ApplyCue product operation, read:
+## Start every user session
 
-```text
-skills/applycue/SKILL.md
-```
-
-Then start with:
+Unless the user asked for repository development:
 
 ```powershell
-pnpm applycue:status
+node doctor.mjs --json
 ```
 
-For repo development, read:
+Then read the candidate's existing user-layer files that are present:
 
 ```text
-docs/agent-development-guide.md
+cv.md
+config/profile.yml
+modes/_profile.md
+modes/_custom.md
+portals.yml
+data/applications.md
+data/pipeline.md
 ```
 
-Then use repo-native checks:
+Greet the user. If onboarding is needed, follow the canonical skill. Extract name and contact details from the supplied CV; do not ask for information already present.
+
+Codex may be started interactively with `codex` or headlessly with `codex exec "Read AGENTS.md, run doctor, and begin ApplyCue setup."` `CODEX.md` is only a thin pointer. Plain-language prompts are the supported interface; `/applycue` may be unavailable in some hosts.
+
+## Ownership boundary
+
+Code may decide only objective, reproducible facts:
+
+- fetch and normalize source records;
+- reject invalid protocols, unsafe URLs, confirmed dead pages, and exact URL/record duplicates;
+- enforce explicit geography, authorization, blocked-company, current-employer, exact application identity/attempt state, and user-approved hard constraints;
+- build files, preserve tracker state, and record application attempts.
+
+The agent decides meaning:
+
+- whether a title matches the user's intent;
+- whether experience is relevant to a JD;
+- whether a role is `apply`, `watch`, or `skip`;
+- how to write a truthful marketing CV;
+- whether a short preview needs full-page hydration;
+- whether two similar roles are actually the same opening.
+
+Numeric scores and keyword matches are diagnostics, not rejection or application authority. Same-company similar titles and legacy company/title cooldowns are ambiguous. Only exact source/record identity or an exact confirmed application URL/attempt may suppress them automatically.
+
+## User safety and permission
+
+- Current employer: always skip.
+- Past employer: ask before proceeding.
+- Do not widen geography, titles, recency, sources, seniority, or application volume without explaining the change and getting approval.
+- Do not use a new logged-in account or connector without approval.
+- Do not submit an application or send a message without approval for that named company and role.
+- Record every browser attempt with `application-attempt.mjs`. An `unknown` outcome blocks retry until reconciled.
+- Do not commit real CVs, contact data, generated user files, browser receipts, or application history.
+
+## CV rule
+
+Keep the exact supplied CV as the baseline. Additional local/public sources may enrich a working profile only after the user grants access. Present the coherent story and material additions for confirmation before changing the base CV.
+
+CV evidence is a decision aid, not a morality gate. The agent may reorder, shorten, emphasize, and translate real experience. Label a claim as sourced, reframed, or new/unconfirmed. Ask once for material new claims. User confirmation makes the claim approved. Never invent employers, dates, credentials, metrics, legal answers, work authorization, or achievements.
+
+For each role being applied to, create durable Markdown/HTML source plus PDF and DOCX output. Verify the chosen file opens and belongs to the named role before upload.
+
+## Main commands
+
+The agent runs commands; normal users should not have to.
 
 ```powershell
-pnpm applycue:check
-pnpm applycue:uat -- --skip-tools
+npm run doctor
+npm run scan
+node verify-pipeline.mjs
+npm run tracker -- query --limit 20
+npm run dashboard
+npm run build:dashboard
+npm run check
 ```
 
-For launch-readiness claims, also read:
-
-```text
-docs/launch-readiness.md
-```
-
-For real multi-candidate usage, also read:
-
-```text
-docs/live-usage-runbook.md
-```
-
-For branch/direction questions, also read:
-
-```text
-docs/pivot-history.md
-```
-
-## What Goes Where
-
-Source repo:
-
-```text
-C:\Projects\applycue
-```
-
-Contains product code, docs, tests, example config, templates, and skills.
-
-User store:
-
-```text
-%USERPROFILE%\.applycue\profiles\<profile>\
-```
-
-Contains real user config, CVs, assets, local state, generated CVs, dashboards, receipts, outcomes, and form data.
-
-Do not put real user CVs, contact data, generated user outputs, browser receipts, or application history into source code.
-
-## Core Rules
-
-- Use the ApplyCue engine and generated artifacts. Do not hand-edit generated CVs, browser plans, source plans, dashboards, or apply routes for one job.
-- User-specific facts, preferences, reusable form answers, sources, and tuning belong in the user store or approved config flows, not source code.
-- For multiple real candidates, use one profile key per person. Keep `default` for the current operator unless the user explicitly changes it.
-- Generated CVs must come from the base CV, approved profile facts, proof bank, approved application answers, and the JD. Reframe and emphasize, but do not invent facts.
-- Application execution starts from generated apply routes. Browser routes require master form data confirmation, live preflight, then controlled fill/upload/submit under policy.
-- Email and DM search/drafting/sending are agent-managed through native Codex, Claude, Hermes, or similar connected tools first. Browser control is a fallback only when native connector access is unavailable and the user approves it. ApplyCue may create drafts and attachment lists, but the app does not send them, and final send always needs explicit user confirmation.
-- If a live form asks a reusable question, ask the user once, save the approved answer with `approve-answers`, regenerate/refresh, and reuse it through aliases.
-- If search or shortlist quality is noisy, record tuning or update user config through product commands. Do not patch core code for one user's one-off preference.
-
-## Scope Guard
-
-Agents must stay inside the user's requested mode unless the user explicitly expands scope.
-
-Ask before:
-
-- widening search scope, source scope, recency, geography, title bands, or application count
-- changing saved preferences, base CV facts, proof bank facts, reusable form answers, source approvals, or apply policy
-- submitting applications or sending emails, DMs, or referral messages
-- using a logged-in browser/account for a new site or connector
-- editing source code, docs, skills, templates, or package config during normal product operation
-- bypassing generated routes, plans, reconciliation, preflight, master form data, or truth gates
-
-If a requested action exposes a different needed action, report it as the next step in chat instead of silently doing it.
-
-## Instruction Surface Policy
-
-Keep one canonical ApplyCue skill unless a split has a clear operational reason.
-
-Good reasons to split later:
-
-- a connector-specific skill, such as Gmail or LinkedIn, with its own permissions and safety rules
-- a heavy workflow that agents need independently, such as interview prep or offer negotiation
-- a skill file becoming too long for agents to reliably follow
-
-Bad reasons to split:
-
-- repeating the same setup rules for Claude, Codex, OpenCode, Qwen, Gemini, or other CLIs
-- making a separate skill just because a workflow has a new mode
-- putting user-specific preferences into global skill files
-
-CLI bridges under `.agents`, `.claude`, `.opencode`, `.qwen`, `.antigravitycli`, `.grok`, and `.kimi` should only point to `skills/applycue/SKILL.md`.
-
-Root `CLAUDE.md`, `CODEX.md`, `OPENCODE.md`, and similar files should only import `AGENTS.md` or point to the canonical skill. Do not add separate product rules there.
-
-## Current Canonical Commands
-
-Agent-facing commands include:
+Application receipt:
 
 ```powershell
-pnpm applycue:status
-pnpm applycue:setup
-pnpm applycue:first-build
-pnpm applycue:form-data
-pnpm applycue:apply-route
-pnpm applycue:browser-live-preflight
-pnpm applycue:browser-live-apply
-pnpm applycue:approve-answers
-pnpm applycue:record-outcome
-pnpm applycue:record-tuning
-pnpm applycue:apply-tuning
-pnpm applycue:uat
-pnpm applycue:check
+node application-attempt.mjs start --job=N --company="Company" --title="Role" --url="https://..." --approved-by-user
+node application-attempt.mjs finish --attempt=ID --outcome=confirmed|unknown|failed|abandoned --evidence="..."
 ```
 
-These are implementation details for agents and developers. Do not make normal users run commands.
+## Source of truth
 
-## Keep This File Small
+- `data/applications.md`: canonical application tracker.
+- `data/applications.db`: disposable derived query index.
+- `data/scan-history.tsv`: discovery history and exact-URL dedupe input.
+- `data/application-attempts.jsonl`: application attempt receipts.
+- `data/job-feedback.jsonl`: dashboard feedback for agent follow-up.
+- `reports/`: full-JD reviews.
+- `output/`: generated CVs and dashboard snapshots.
 
-If you need to add detailed behavior, update the canonical skill or the appropriate doc instead of growing this file.
+User-specific preferences belong in the user layer, not source code. Add a provider or change shared logic only for a reusable product need.
+
+## Development rule
+
+Start from a real failure or documented requirement. Identify the existing owner, make the smallest change there, add a regression test, and run the repo checks. Do not introduce another orchestrator, tracker, dashboard, ranker, or instruction tree.
+
+For launch claims, a green unit suite is necessary but insufficient. Use `docs/launch-readiness.md` and prove a clean install plus a real discover-to-application run.

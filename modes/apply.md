@@ -19,7 +19,9 @@ Interactive mode for when the candidate is filling out an application form in Ch
 5. PREFLIGHT   → Confirm posting liveness + company/role match before drafting
 6. ANALYZE     → Identify ALL visible form questions
 7. GENERATE    → For each question, generate a personalized response
-8. PRESENT     → Show formatted responses for copy-paste
+8. APPROVE     → Get explicit approval for this named company + role
+9. ATTEMPT     → Start receipt, fill/upload, and stop before submit unless approved
+10. RECONCILE  → Record confirmed, unknown, failed, or abandoned outcome
 ```
 
 ## Step 5 — Preflight gate
@@ -27,14 +29,18 @@ Interactive mode for when the candidate is filling out an application form in Ch
 Before generating any application answers, verify that the form still points to the intended active job. This gate runs after the page has been detected, the company/role has been identified, and the matching report has been loaded.
 
 1. Read the visible URL, page title, company, role, and any closed/expired signals.
-2. If a URL is available, verify liveness with Playwright:
+2. Check employer safety before doing form work:
+   - current employer: always skip;
+   - past employer: pause and ask for confirmation;
+   - similar company/title: never treat it as an automatic duplicate. Compare the exact URL/full JD or leave it for agent review.
+3. If a URL is available, verify liveness with the agent's available browser tool:
    - active posting evidence: title/role + job description or form fields + submit/apply path
    - closed posting evidence: expired/closed/no longer accepting applications, missing JD with only nav/footer, hard redirect to generic careers/search, or 404/410
-3. Compare the visible company and role against the matched report.
-4. If company or title changed materially, stop before drafting and ask:
+4. Compare the visible company and role against the matched report.
+5. If company or title changed materially, stop before drafting and ask:
    "The form appears to be for [visible company] — [visible role], but the matched report is [report company] — [report role]. Do you want me to re-evaluate, adapt with this mismatch, or stop?"
-5. If the posting appears closed, refuse to generate final copy unless the candidate explicitly overrides with a known reason.
-6. If liveness cannot be verified because the candidate only pasted questions or a screenshot, state that limitation and ask the candidate to confirm the company, role, and active posting before drafting.
+6. If the posting appears closed, refuse to generate final copy unless the candidate explicitly overrides with a known reason.
+7. If liveness cannot be verified because the candidate only pasted questions or a screenshot, state that limitation and ask the candidate to confirm the company, role, and active posting before drafting.
 
 Do not continue to Step 6 until this preflight is resolved.
 
@@ -124,10 +130,39 @@ Notes:
 - [Personalization suggestions the candidate should review]
 ```
 
-## Step 8 — Post-apply (optional)
+## Step 8 — Approval and attempt receipt
 
-If the candidate confirms that they submitted the application:
-1. Update status in `applications.md` from "Evaluated" to "Applied"
+Before typing into a live form, show the final company, role, URL, CV filename and any answers that still need confirmation. Ask for one explicit approval that names this application. Approval for one role never carries to another role.
+
+After approval, start a durable receipt:
+
+```text
+node application-attempt.mjs start --job={tracker number} --company="{company}" --title="{role}" --url="{application URL}" --approved-by-user
+```
+
+Keep the returned `attemptId`. If the command says an earlier attempt is `started`, `unknown`, or `confirmed`, stop and reconcile it; do not click submit again.
+
+Fill fields and upload the exact CV shown to the user. A submission click is not proof of success.
+
+## Step 9 — Reconcile the outcome
+
+- `confirmed`: the page or a received confirmation gives clear evidence that the application was accepted;
+- `unknown`: submit was clicked but the browser timed out, closed, redirected ambiguously, or gave no reliable confirmation;
+- `failed`: the form clearly rejected the submission;
+- `abandoned`: the user or agent intentionally stopped.
+
+Record it immediately:
+
+```text
+node application-attempt.mjs finish --attempt={attemptId} --outcome={confirmed|unknown|failed|abandoned} --evidence="{brief visible evidence}"
+```
+
+Never retry an `unknown` attempt until the agent checks the portal or confirmation email and the user approves the retry.
+
+## Step 10 — Post-apply
+
+If the receipt is `confirmed`:
+1. Update status in `applications.md` from "Evaluated" to "Applied". Do not mark `unknown` as Applied.
 2. Update Section G of the report with the final responses
 3. Suggest next step: run the `contacto` mode (`/applycue contacto` where available) for LinkedIn outreach
 

@@ -2,12 +2,10 @@
 /**
  * detect-reposts.mjs — Repost Detector for ApplyCue
  *
- * Reads data/scan-history.tsv, groups rows by company, fuzzy-matches role
- * titles with roleFuzzyMatch from role-matcher.mjs, and flags any
- * company+role that appears 2+ times with different URLs within a 90-day
- * window. Such clusters are almost certainly the same opening being
- * re-listed by the employer — useful for tracking stale pipelines and
- * ghost postings.
+ * Reads data/scan-history.tsv and flags exact company+title combinations that
+ * appear under different URLs within a 90-day window. This is an agent-review
+ * signal only: employers reuse titles across teams, cities and countries, so a
+ * possible repost must never suppress or reject a job automatically.
  *
  * Only rows with status `added` are considered. Rows with a non-`added`
  * status (`skipped_expired`, `skipped_invalid_url`, `skipped_blocked_host`)
@@ -24,8 +22,6 @@
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-
-import { roleFuzzyMatch } from './role-matcher.mjs';
 
 const APPLYCUE = dirname(fileURLToPath(import.meta.url));
 const SCAN_HISTORY_PATH = join(APPLYCUE, 'data/scan-history.tsv');
@@ -91,8 +87,7 @@ function loadScanHistory(path = SCAN_HISTORY_PATH) {
 // --- Core detection ---
 //
 // Group rows by company (case-insensitive), then within each company group
-// compare all pairs of titles via roleFuzzyMatch. Build clusters of matching
-// rows with union-find, then keep a cluster only if (a) it contains 2+ rows,
+// group exact case-insensitive titles, then keep a cluster only if (a) it contains 2+ rows,
 // (b) at least two rows have different URLs, and (c) the cluster's first_seen
 // dates all fall within `windowDays` of each other.
 //
@@ -135,7 +130,7 @@ export function detectReposts(rows, windowDays = DEFAULT_WINDOW_DAYS) {
 }
 
 // Cluster rows in a single company group. Rows are first grouped by title
-// (exact or fuzzy match), then each title group is sorted by date and a
+// (exact case-insensitive match), then each title group is sorted by date and a
 // sliding window finds sub-clusters within the windowDays span. This two-phase
 // approach prevents non-matching roles (e.g. a Product Manager between two
 // Backend Engineer postings) from breaking a valid repost cluster.
@@ -149,7 +144,7 @@ function detectRepostsInGroup(rows, windowDays) {
     used.add(row);
     for (const other of rows) {
       if (used.has(other)) continue;
-      if (row.title.toLowerCase() === other.title.toLowerCase() || roleFuzzyMatch(row.title, other.title)) {
+      if (row.title.toLowerCase() === other.title.toLowerCase()) {
         group.push(other);
         used.add(other);
       }
@@ -194,7 +189,7 @@ function detectRepostsInGroup(rows, windowDays) {
   return results;
 }
 
-// A fuzzy-matched cluster becomes a repost cluster only when (a) at least two
+// An exact-title cluster becomes a possible repost signal only when (a) at least two
 // distinct URLs are present (same URL means a dedup hit, not a repost), and
 // (b) every row's first_seen date falls within windowDays of every other row.
 // We enforce the window by requiring max-min span <= windowDays. Rows sharing

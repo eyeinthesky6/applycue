@@ -447,23 +447,21 @@ try {
   fail(`Liveness classification tests crashed: ${e.message}`);
 }
 
-// ── 4. DASHBOARD BUILD ──────────────────────────────────────────
+// ── 4. MERGED PRODUCT MODULES ───────────────────────────────────
 
+console.log('\n4. Merged product modules');
+for (const script of ['dashboard-server.test.mjs', 'generate-docx.test.mjs', 'application-attempt.test.mjs']) {
+  if (run(NODE, [script]) !== null) pass(`${script} passes`);
+  else fail(`${script} failed`);
+}
 if (!QUICK) {
-  console.log('\n4. Dashboard build');
-  const isWindows = process.platform === 'win32';
-  const outPath = isWindows ? 'career-dashboard-test.exe' : '/tmp/career-dashboard-test';
-  const goBuild = run(`cd dashboard && go build -o ${outPath} . 2>&1`);
-  if (goBuild !== null) {
-    pass('Dashboard compiles');
-    if (isWindows) {
-      try { rmSync(join(ROOT, 'dashboard', 'career-dashboard-test.exe'), { force: true }); } catch (e) {}
-    }
+  if (run(NODE, ['build-dashboard.mjs']) !== null && existsSync(join(ROOT, 'output', 'dashboard.html'))) {
+    pass('Browser dashboard snapshot builds');
   } else {
-    fail('Dashboard build failed');
+    fail('Browser dashboard snapshot build failed');
   }
 } else {
-  console.log('\n4. Dashboard build (skipped --quick)');
+  console.log('Browser dashboard snapshot build skipped (--quick)');
 }
 
 // ── 5. DATA CONTRACT ────────────────────────────────────────────
@@ -477,6 +475,7 @@ const systemFiles = [
   'modes/oferta.md', 'modes/pdf.md', 'modes/scan.md',
   'modes/heuristics/recruiter-side.md',
   'templates/states.yml', 'templates/cv-template.html',
+  'dashboard-server.mjs', 'generate-docx.mjs', 'application-attempt.mjs',
   '.claude/skills/applycue/SKILL.md',
   '.opencode/skills/applycue/SKILL.md',
   '.qwen/skills/applycue/SKILL.md',
@@ -563,21 +562,18 @@ const leakPatterns = [
   'security-contact@example.com', '688921377',
 ];
 
-const scanExtensions = ['md', 'yml', 'html', 'mjs', 'sh', 'go', 'json'];
+const scanExtensions = ['md', 'yml', 'html', 'mjs', 'sh', 'json'];
 const allowedFiles = [
   // English README + localized translations (all legitimately credit ApplyCue)
   'README.md', 'README.da.md', 'README.de.md', 'README.es.md', 'README.fr.md', 'README.ja.md', 'README.ko-KR.md',
   'README.pt-BR.md', 'README.ru.md', 'README.cn.md', 'README.zh-TW.md',
   // Standard project files
   'LICENSE', 'CITATION.cff', 'CONTRIBUTING.md', 'CHANGELOG.md', 'TRADEMARK.md',
-  'package.json', '.github/FUNDING.yml', 'CLAUDE.md', 'AGENTS.md', 'go.mod', 'test-all.mjs',
+  'package.json', '.github/FUNDING.yml', 'CLAUDE.md', 'AGENTS.md', 'test-all.mjs',
   '.claude-plugin/marketplace.json', '.claude-plugin/plugin.json',
   // Community / governance files (added in v1.3.0, all legitimately reference the maintainer)
   'CODE_OF_CONDUCT.md', 'GOVERNANCE.md', 'SECURITY.md', 'SUPPORT.md',
   '.github/SECURITY.md',
-  // Dashboard credit string
-  'dashboard/internal/ui/screens/pipeline.go',
-  'dashboard/internal/ui/screens/progress.go',
 ];
 
 // Build pathspec for git grep — only scan tracked files matching these
@@ -596,7 +592,6 @@ for (const pattern of leakPatterns) {
     for (const line of result.split('\n')) {
       const file = line.split(':')[0];
       if (allowedFiles.some(a => file.includes(a))) continue;
-      if (file.includes('dashboard/go.mod')) continue;
       warn(`Possible personal data in ${file}: "${pattern}"`);
       leakFound = true;
     }
@@ -612,9 +607,15 @@ console.log('\n7. Absolute path check');
 
 // Same git grep approach: only scans tracked files. Untracked AI tool
 // outputs, local debate artifacts, etc. can't false-positive here.
-const absPathResult = run(
-  `git grep -n "/Users/" -- '*.mjs' '*.sh' '*.md' '*.go' '*.yml' 2>/dev/null | grep -v README.md | grep -v LICENSE | grep -v CLAUDE.md | grep -v test-all.mjs`
-);
+const absPathResult = (run(
+  `git grep -n "/Users/" -- '*.mjs' '*.sh' '*.md' '*.go' '*.yml' 2>/dev/null`
+) || '').split('\n').filter(line =>
+  line &&
+  !line.includes('README.md') &&
+  !line.includes('LICENSE') &&
+  !line.includes('CLAUDE.md') &&
+  !line.includes('test-all.mjs')
+).join('\n');
 if (!absPathResult) {
   pass('No absolute paths in code files');
 } else {
@@ -669,21 +670,15 @@ try {
   fail(`PDF manifest path helper test crashed: ${e.message}`);
 }
 
-// ── 7c. UPDATER DASHBOARD REBUILD ─────────────────────────────────
+// ── 7c. UPDATER MERGED PRODUCT FILES ────────────────────────────
 
-console.log('\n7c. Updater dashboard rebuild');
+console.log('\n7c. Updater merged product files');
 
 const updateSystemScript = readFile('update-system.mjs');
-if (
-  /git\('diff',\s*'--name-only',\s*'HEAD',\s*'--',\s*'dashboard'\)/.test(updateSystemScript) &&
-  /path\.startsWith\(['"]dashboard\/['"]\)\s*&&\s*path\.endsWith\(['"]\.go['"]\)/.test(updateSystemScript) &&
-  /go build -o career-dashboard \./.test(updateSystemScript) &&
-  /cwd:\s*join\(ROOT,\s*['"]dashboard['"]\)/.test(updateSystemScript) &&
-  /dashboard binary rebuild skipped/.test(updateSystemScript)
-) {
-  pass('update-system rebuilds dashboard binary when dashboard Go sources change');
+if (['dashboard-server.mjs', 'generate-docx.mjs', 'application-attempt.mjs'].every(path => updateSystemScript.includes(`'${path}'`))) {
+  pass('update-system preserves merged dashboard, DOCX, and application receipt owners');
 } else {
-  fail('update-system does not rebuild dashboard binary after dashboard Go source updates');
+  fail('update-system is missing a merged product owner');
 }
 
 if (updateSystemScript.includes("'CODEX.md'")) {
@@ -720,30 +715,36 @@ if (shared.includes('_profile.md')) {
   fail('_shared.md does NOT reference _profile.md');
 }
 
-for (const skillPath of ['.claude/skills/applycue/SKILL.md', '.agents/skills/applycue/SKILL.md']) {
-  if (!fileExists(skillPath)) {
-    fail(`${skillPath} is missing`);
-    continue;
-  }
-  const skill = readFile(skillPath);
-  if (skill.includes('/applycue latex')) {
-    pass(`${skillPath} exposes /applycue latex in discovery menu`);
+const canonicalApplyCueSkill = 'skills/applycue/SKILL.md';
+if (
+  fileExists(canonicalApplyCueSkill) &&
+  readFile(canonicalApplyCueSkill).includes('| improve or tailor CV | `cv` |') &&
+  readFile(canonicalApplyCueSkill).includes('PDF and DOCX')
+) {
+  pass(`${canonicalApplyCueSkill} routes CV work and requires PDF/DOCX output`);
+} else {
+  fail(`${canonicalApplyCueSkill} does not expose the canonical CV artifact workflow`);
+}
+for (const bridgePath of ['.claude/skills/applycue/SKILL.md', '.agents/skills/applycue/SKILL.md']) {
+  if (fileExists(bridgePath) && readFile(bridgePath).includes('../../../skills/applycue/SKILL.md')) {
+    pass(`${bridgePath} points to the canonical ApplyCue skill`);
   } else {
-    fail(`${skillPath} does not expose /applycue latex in discovery menu`);
+    fail(`${bridgePath} does not point to the canonical ApplyCue skill`);
   }
 }
 
 const applyMode = readFile('modes/apply.md');
 if (
   applyMode.includes('## Step 5 — Preflight gate') &&
-  applyMode.includes('verify liveness with Playwright') &&
+  applyMode.includes("verify liveness with the agent's available browser tool") &&
   applyMode.includes('matching report has been loaded') &&
   applyMode.includes('Do not continue to Step 6 until this preflight is resolved') &&
-  applyMode.includes('refuse to generate final copy')
+  applyMode.includes('never treat it as an automatic duplicate') &&
+  applyMode.includes('application-attempt.mjs start')
 ) {
-  pass('apply mode includes liveness and role-match preflight gate');
+  pass('apply mode includes liveness, identity, and attempt-receipt preflight gates');
 } else {
-  fail('apply mode missing liveness/role-match preflight gate');
+  fail('apply mode missing the merged application preflight gates');
 }
 
 const ofertaMode = readFile('modes/oferta.md');
@@ -1220,9 +1221,8 @@ console.log('\n11. AGENTS.md integrity');
 
 const agents = readFile('AGENTS.md');
 const requiredSections = [
-  'Data Contract', 'Update Check', 'Ethical Use',
-  'Offer Verification', 'Canonical States', 'TSV Format',
-  'First Run', 'Onboarding',
+  'Read order', 'Start every user session', 'Ownership boundary',
+  'User safety and permission', 'Source of truth', 'Development rule',
 ];
 
 for (const section of requiredSections) {
@@ -1284,8 +1284,9 @@ if (
 
 console.log('\n12. Skill symlink integrity');
 
-const canonicalSkill = '.agents/skills/applycue/SKILL.md';
+const canonicalSkill = 'skills/applycue/SKILL.md';
 const symlinks = [
+  '.agents/skills/applycue/SKILL.md',
   '.claude/skills/applycue/SKILL.md',
   '.opencode/skills/applycue/SKILL.md',
   '.qwen/skills/applycue/SKILL.md',
@@ -1324,6 +1325,8 @@ for (const link of symlinks) {
     pass(`${link} → canonical skill`);
   } else if (canonicalContent !== null && readFile(link) === canonicalContent) {
     pass(`${link} is a materialized copy of canonical skill`);
+  } else if (readFile(link).includes('../../../skills/applycue/SKILL.md')) {
+    pass(`${link} is a thin bridge to the canonical skill`);
   } else {
     fail(`${link} resolves to ${resolved}, expected ${canonicalReal} or byte-identical canonical skill copy`);
   }
@@ -1334,7 +1337,7 @@ if (
   /`codex`/.test(canonicalContent ?? '') &&
   /`codex exec/.test(canonicalContent ?? '') &&
   /prompt/i.test(canonicalContent ?? '') &&
-  /\/applycue/.test(canonicalContent ?? '')
+  /plain-language/i.test(canonicalContent ?? '')
 ) {
   pass('ApplyCue skill router documents the Codex invocation model');
 } else {
@@ -1383,22 +1386,26 @@ console.log('\n12a. Skill entrypoint materialization');
 {
   const fixtureRoot = mkdtempSync(join(tmpdir(), 'applycue-skills-'));
   try {
-    const canonicalDir = join(fixtureRoot, '.agents', 'skills', 'applycue');
+    const canonicalDir = join(fixtureRoot, 'skills', 'applycue');
+    const agentsDir = join(fixtureRoot, '.agents', 'skills', 'applycue');
     const claudeDir = join(fixtureRoot, '.claude', 'skills', 'applycue');
     const opencodeDir = join(fixtureRoot, '.opencode', 'skills', 'applycue');
     mkdirSync(canonicalDir, { recursive: true });
+    mkdirSync(agentsDir, { recursive: true });
     mkdirSync(claudeDir, { recursive: true });
     mkdirSync(opencodeDir, { recursive: true });
 
     const fixtureSkill = '---\nname: ApplyCue\n---\n\n# canonical skill\n';
-    const pointer = '../../../.agents/skills/applycue/SKILL.md';
+    const pointer = '../../../skills/applycue/SKILL.md';
     writeFileSync(join(canonicalDir, 'SKILL.md'), fixtureSkill);
+    writeFileSync(join(agentsDir, 'SKILL.md'), pointer);
     writeFileSync(join(claudeDir, 'SKILL.md'), pointer);
     writeFileSync(join(opencodeDir, 'SKILL.md'), pointer);
 
     const updater = await import(pathToFileURL(join(ROOT, 'update-system.mjs')).href);
     const materialized = updater.materializeSkillEntrypoints(fixtureRoot).sort();
     const expected = [
+      '.agents/skills/applycue/SKILL.md',
       '.claude/skills/applycue/SKILL.md',
       '.opencode/skills/applycue/SKILL.md',
     ];
@@ -1409,9 +1416,10 @@ console.log('\n12a. Skill entrypoint materialization');
       fail(`unexpected materialized skill entrypoints: ${JSON.stringify(materialized)}`);
     }
 
+    const agentsSkill = readFileSync(join(agentsDir, 'SKILL.md'), 'utf-8');
     const claudeSkill = readFileSync(join(claudeDir, 'SKILL.md'), 'utf-8');
     const opencodeSkill = readFileSync(join(opencodeDir, 'SKILL.md'), 'utf-8');
-    if (claudeSkill === fixtureSkill && opencodeSkill === fixtureSkill) {
+    if (agentsSkill === fixtureSkill && claudeSkill === fixtureSkill && opencodeSkill === fixtureSkill) {
       pass('materialized skill entrypoints match canonical content');
     } else {
       fail('materialized skill entrypoints do not match canonical content');
@@ -1428,22 +1436,27 @@ console.log('\n12b. Skill entrypoint bootstrap (npx / old releases)');
 {
   const fixtureRoot = mkdtempSync(join(tmpdir(), 'ApplyCue-ensure-skills-'));
   try {
-    const canonicalDir = join(fixtureRoot, '.agents', 'skills', 'applycue');
+    const canonicalDir = join(fixtureRoot, 'skills', 'applycue');
+    const agentsDir = join(fixtureRoot, '.agents', 'skills', 'applycue');
     const claudeDir = join(fixtureRoot, '.claude', 'skills', 'applycue');
     mkdirSync(canonicalDir, { recursive: true });
+    mkdirSync(agentsDir, { recursive: true });
     mkdirSync(claudeDir, { recursive: true });
 
     const fixtureSkill = '---\nname: ApplyCue\n---\n\n# canonical skill\n';
-    const pointer = '../../../.agents/skills/applycue/SKILL.md';
+    const pointer = '../../../skills/applycue/SKILL.md';
     writeFileSync(join(canonicalDir, 'SKILL.md'), fixtureSkill);
+    writeFileSync(join(agentsDir, 'SKILL.md'), pointer);
     writeFileSync(join(claudeDir, 'SKILL.md'), pointer);
 
     const skills = await import(pathToFileURL(join(ROOT, 'scaffolder/bin/skill-entrypoints.mjs')).href);
     const touched = skills.ensureSkillEntrypoints(fixtureRoot).sort();
     const expectedTouched = [
+      '.agents/skills/applycue/SKILL.md',
       '.antigravitycli/skills/applycue/SKILL.md',
       '.claude/skills/applycue/SKILL.md',
       '.grok/skills/applycue/SKILL.md',
+      '.kimi/skills/applycue/SKILL.md',
       '.opencode/skills/applycue/SKILL.md',
       '.qwen/skills/applycue/SKILL.md',
     ];
@@ -1454,9 +1467,10 @@ console.log('\n12b. Skill entrypoint bootstrap (npx / old releases)');
       fail(`unexpected bootstrapped skill entrypoints: ${JSON.stringify(touched)}`);
     }
 
+    const agentsSkill = readFileSync(join(agentsDir, 'SKILL.md'), 'utf-8');
     const grokSkill = readFileSync(join(fixtureRoot, '.grok', 'skills', 'applycue', 'SKILL.md'), 'utf-8');
     const claudeSkill = readFileSync(join(claudeDir, 'SKILL.md'), 'utf-8');
-    if (grokSkill === fixtureSkill && claudeSkill === fixtureSkill) {
+    if (agentsSkill === fixtureSkill && grokSkill === fixtureSkill && claudeSkill === fixtureSkill) {
       pass('ensureSkillEntrypoints materializes canonical skill content');
     } else {
       fail('bootstrapped skill entrypoints do not match canonical content');
@@ -1509,12 +1523,12 @@ console.log('\n12b. Skill entrypoint bootstrap (npx / old releases)');
 {
   const fixtureRoot = mkdtempSync(join(tmpdir(), 'applycue-skills-unreadable-'));
   try {
-    const canonicalDir = join(fixtureRoot, '.agents', 'skills', 'applycue');
+    const canonicalDir = join(fixtureRoot, 'skills', 'applycue');
     const claudeDir = join(fixtureRoot, '.claude', 'skills', 'applycue');
     mkdirSync(canonicalDir, { recursive: true });
     mkdirSync(claudeDir, { recursive: true });
 
-    const pointer = '../../../.agents/skills/applycue/SKILL.md';
+    const pointer = '../../../skills/applycue/SKILL.md';
     mkdirSync(join(canonicalDir, 'SKILL.md'));
     writeFileSync(join(claudeDir, 'SKILL.md'), pointer);
 
@@ -1536,7 +1550,7 @@ console.log('\n12b. Skill entrypoint bootstrap (npx / old releases)');
 {
   const fixtureRoot = mkdtempSync(join(tmpdir(), 'applycue-skills-entry-dir-'));
   try {
-    const canonicalDir = join(fixtureRoot, '.agents', 'skills', 'applycue');
+    const canonicalDir = join(fixtureRoot, 'skills', 'applycue');
     const claudeDir = join(fixtureRoot, '.claude', 'skills', 'applycue');
     const opencodeDir = join(fixtureRoot, '.opencode', 'skills', 'applycue');
     mkdirSync(canonicalDir, { recursive: true });
@@ -1544,7 +1558,7 @@ console.log('\n12b. Skill entrypoint bootstrap (npx / old releases)');
     mkdirSync(opencodeDir, { recursive: true });
 
     const fixtureSkill = '---\nname: ApplyCue\n---\n\n# canonical skill\n';
-    const pointer = '../../../.agents/skills/applycue/SKILL.md';
+    const pointer = '../../../skills/applycue/SKILL.md';
     writeFileSync(join(canonicalDir, 'SKILL.md'), fixtureSkill);
     mkdirSync(join(claudeDir, 'SKILL.md'));
     writeFileSync(join(opencodeDir, 'SKILL.md'), pointer);
@@ -1581,7 +1595,7 @@ console.log('\n12c. Materialized skill index mode');
   });
 
   try {
-    const canonicalDir = join(fixtureRoot, '.agents', 'skills', 'applycue');
+    const canonicalDir = join(fixtureRoot, 'skills', 'applycue');
     const claudeDir = join(fixtureRoot, '.claude', 'skills', 'applycue');
     const opencodeDir = join(fixtureRoot, '.opencode', 'skills', 'applycue');
     mkdirSync(canonicalDir, { recursive: true });
@@ -1589,7 +1603,7 @@ console.log('\n12c. Materialized skill index mode');
     mkdirSync(opencodeDir, { recursive: true });
 
     const fixtureSkill = '---\nname: ApplyCue\n---\n\n# canonical skill\n';
-    const pointer = '../../../.agents/skills/applycue/SKILL.md';
+    const pointer = '../../../skills/applycue/SKILL.md';
 
     gitRun(['init']);
     gitRun(['config', 'core.symlinks', 'false']);
@@ -1599,7 +1613,7 @@ console.log('\n12c. Materialized skill index mode');
     writeFileSync(join(canonicalDir, 'SKILL.md'), fixtureSkill);
     writeFileSync(join(claudeDir, 'SKILL.md'), pointer);
     writeFileSync(join(opencodeDir, 'SKILL.md'), pointer);
-    gitRun(['add', '--', '.agents/skills/applycue/SKILL.md']);
+    gitRun(['add', '--', 'skills/applycue/SKILL.md']);
 
     const pointerBlob = gitRun(['hash-object', '-w', '--stdin'], { input: pointer });
     gitRun(['update-index', '--add', '--cacheinfo', `120000,${pointerBlob},.claude/skills/applycue/SKILL.md`]);
@@ -1994,7 +2008,13 @@ try {
 // ── 11b. TITLE FILTER — acronym word boundaries ──────────────────
 console.log('\n11b. Title filter — acronym word boundaries');
 try {
-  const { buildTitleFilter, compileKeyword } = await import(pathToFileURL(join(ROOT, 'scan.mjs')).href);
+  const { buildTitleFilter, compileKeyword, semanticFilterMode } = await import(pathToFileURL(join(ROOT, 'scan.mjs')).href);
+
+  if (semanticFilterMode(undefined) === 'advisory' && semanticFilterMode({ positive: ['product'] }) === 'advisory' && semanticFilterMode({ mode: 'hard' }) === 'hard') {
+    pass('title/content semantic filters default to advisory and require explicit hard mode');
+  } else {
+    fail('semantic filter mode could silently hard-filter jobs');
+  }
 
   // Short all-letter acronyms match on WORD BOUNDARIES, not as substrings.
   const cooFilter = buildTitleFilter({ positive: ['coo'] });
@@ -2728,35 +2748,11 @@ try {
   fail(`tracker-link normalization tests crashed: ${e.message}`);
 }
 
-// ── SHARED ROLE MATCHER + DEDUP-TRACKER SAFETY (#947) ───────────
-// dedup-tracker.mjs used to ship an older fuzzy role matcher than
-// merge-tracker.mjs. That weaker matcher collapsed sibling roles at the same
-// company when they shared generic title words such as "Full Stack Engineer",
-// and could delete an already-Applied row because data/applications.md is
-// normally gitignored. The matcher is now shared, and dedup protects advanced
-// application states from fuzzy-only deletion.
-console.log('\n🧪 Testing shared role matcher and dedup-tracker safety...');
+// ── EXACT-IDENTITY DEDUP SAFETY ─────────────────────────────────
+// Titles are not identity: companies reuse identical titles across teams,
+// cities and countries. Automatic deletion requires a shared tracker/report id.
+console.log('\n🧪 Testing exact-identity dedup-tracker safety...');
 try {
-  const { roleFuzzyMatch } = await import(pathToFileURL(join(ROOT, 'role-matcher.mjs')).href);
-
-  if (!roleFuzzyMatch('Full Stack Engineer, Foundation', 'Full Stack Engineer, Guarded Releases')) {
-    pass('role matcher keeps Full Stack Engineer sibling teams distinct (#947)');
-  } else {
-    fail('role matcher still collapses distinct Full Stack Engineer sibling teams');
-  }
-
-  if (!roleFuzzyMatch('Staff Software Engineer, API', 'Staff Software Engineer, SDK')) {
-    pass('role matcher keeps short-acronym sibling teams distinct');
-  } else {
-    fail('role matcher collapsed API and SDK sibling teams');
-  }
-
-  if (roleFuzzyMatch('Staff Software Engineer, API', 'Staff Software Engineer, API Platform')) {
-    pass('role matcher still uses short specialty acronyms for true overlaps');
-  } else {
-    fail('role matcher ignored a real short-acronym overlap');
-  }
-
   const dedupTmp = mkdtempSync(join(tmpdir(), 'applycue-dedup-'));
   try {
     mkdirSync(join(dedupTmp, 'data'));
@@ -2795,15 +2791,15 @@ try {
       }
 
       const growthRows = deduped.split('\n').filter(l => l.includes('Product Engineer, Growth'));
-      if (growthRows.length === 1 && growthRows[0].includes('4.0/5')) {
-        pass('dedup-tracker still removes a real duplicate evaluated row');
+      if (growthRows.length === 2) {
+        pass('dedup-tracker keeps identical titles with different report identities for agent review');
       } else {
-        fail(`dedup-tracker duplicate handling broken: ${growthRows.length} Growth rows`);
+        fail(`dedup-tracker erased an ambiguous identical-title row: ${growthRows.length} Growth rows`);
       }
 
       const revenueRows = deduped.split('\n').filter(l => l.includes('Solutions Engineer, Revenue'));
       if (revenueRows.length === 2 && revenueRows.some(l => l.includes('Applied'))) {
-        pass('dedup-tracker never removes Applied+ rows by fuzzy title match');
+        pass('dedup-tracker never removes Applied+ rows by title similarity');
       } else {
         fail('dedup-tracker removed an Applied+ row by fuzzy title match');
       }
@@ -2819,7 +2815,7 @@ try {
     rmSync(dedupTmp, { recursive: true, force: true });
   }
 } catch (e) {
-  fail(`shared role matcher / dedup safety tests crashed: ${e.message}`);
+  fail(`exact-identity dedup safety tests crashed: ${e.message}`);
 }
 
 // dedup-tracker / normalize-statuses rebuilt promoted rows with
@@ -2842,7 +2838,7 @@ try {
       '| # | Date | Company | Role | Score | Status | PDF | Report | Notes |\n' +
       '|---|------|---------|------|-------|--------|-----|--------|-------|\n' +
       '| 50 | 2026-02-01 | Globex | Widget Engineer | 4.5/5 | Rejected | ❌ | [50](../reports/050-widget.md) | KEEPER_NOTE_SENTINEL\n' +
-      '| 51 | 2026-02-02 | Globex | Widget Engineer | 3.0/5 | Evaluated | ❌ | [51](../reports/051-widget.md) | dup row |\n');
+      '| 51 | 2026-02-02 | Globex | Widget Engineer | 3.0/5 | Evaluated | ❌ | [50](../reports/050-widget.md) | exact duplicate record |\n');
 
     const r = run(NODE, ['dedup-tracker.mjs'], { env: { ...process.env, APPLYCUE_TRACKER: tracker } });
     if (r === null) {
@@ -2960,7 +2956,7 @@ try {
       '| # | Date | Company | Role | Location | Score | Status | PDF | Report | Notes |\n' +
       '|---|------|---------|------|----------|-------|--------|-----|--------|-------|\n' +
       '| 60 | 2026-02-01 | Globex | Widget Engineer | Berlin | 4.5/5 | Rejected | ❌ | [60](r.md) | LOC_SENTINEL |\n' +
-      '| 61 | 2026-02-02 | Globex | Widget Engineer | Berlin | 3.0/5 | Evaluated | ❌ | [61](r.md) | dup |\n');
+      '| 61 | 2026-02-02 | Globex | Widget Engineer | Berlin | 3.0/5 | Evaluated | ❌ | [60](r.md) | exact duplicate record |\n');
 
     const r = run(NODE, ['dedup-tracker.mjs'], { env: { ...process.env, APPLYCUE_TRACKER: tracker } });
     if (r === null) {
@@ -2982,16 +2978,10 @@ try {
   fail(`dedup-tracker Location-column test crashed: ${e.message}`);
 }
 
-// ── MERGE-TRACKER FUZZY DEDUP (#751 / #721 family) ──────────────
-// roleFuzzyMatch over-matched whenever the token overlap dominated the
-// SMALLER side: two distinct roles sharing a long prefix ("Full-Stack
-// Engineer 5, AI Insights & Visualizations" vs "Full Stack Engineer 5, Ads
-// Reporting") or a brand token (#751: "UberEats Feed" vs "Consumer
-// Fulfillment (UberEats)") collapsed onto one tracker row — silently
-// dropping evaluations. The ratio now divides by the token UNION (true
-// Jaccard): genuine reposts (identical token sets) still score 1.0, while
-// distinct specialties fall below the 0.6 threshold.
-console.log('\n🧪 Testing merge-tracker fuzzy dedup (distinct roles vs reposts)...');
+// ── MERGE-TRACKER AMBIGUOUS TITLE SAFETY ────────────────────────
+// Even identical titles can represent different openings. Without exact source
+// identity, merge-tracker appends the row and leaves the decision to the agent.
+console.log('\n🧪 Testing merge-tracker keeps ambiguous title matches...');
 try {
   const mergeTmp = mkdtempSync(join(tmpdir(), 'applycue-merge-'));
   try {
@@ -3009,13 +2999,13 @@ try {
     for (const n of ['001-streamco-2026-01-04', '002-uber-2026-01-04', '003-streamco-2026-01-05', '004-uber-2026-01-05', '005-streamco-2026-01-06']) {
       writeFileSync(join(mergeTmp, 'reports', `${n}.md`), '# fixture\n');
     }
-    // Two DISTINCT roles (long shared prefix / shared brand token) + one true repost (score bump).
+    // Two distinct roles plus an identical-looking title with a different report identity.
     writeFileSync(join(additionsDir, '003-streamco.tsv'),
       '3\t2026-01-05\tStreamCo\tFull-Stack Engineer 5, AI Insights & Visualizations\tEvaluated\t4.6/5\t❌\t[3](reports/003-streamco-2026-01-05.md)\tdistinct role\n');
     writeFileSync(join(additionsDir, '004-uber.tsv'),
       '4\t2026-01-05\tUber\tSenior Software Engineer, UberEats Feed\tEvaluated\t4.1/5\t❌\t[4](reports/004-uber-2026-01-05.md)\tdistinct team (#751)\n');
     writeFileSync(join(additionsDir, '005-streamco.tsv'),
-      '5\t2026-01-06\tStreamCo\tFull Stack Engineer 5, Ads Reporting\tEvaluated\t4.5/5\t❌\t[5](reports/005-streamco-2026-01-06.md)\trepost\n');
+      '5\t2026-01-06\tStreamCo\tFull Stack Engineer 5, Ads Reporting\tEvaluated\t4.5/5\t❌\t[5](reports/005-streamco-2026-01-06.md)\tambiguous same title\n');
 
     const mergeResult = run(NODE, ['merge-tracker.mjs'], { env: { ...process.env, APPLYCUE_TRACKER: tracker, APPLYCUE_ADDITIONS: additionsDir } });
     if (mergeResult === null) {
@@ -3037,19 +3027,19 @@ try {
         fail('brand-token roles were deduped (#751 regression)');
       }
 
-      // True repost (identical role tokens) must still UPDATE in place — exactly one row, score bumped.
+      // Identical title but different exact identity stays as two rows.
       const adsRows = merged.split('\n').filter(l => l.includes('Ads Reporting'));
-      if (adsRows.length === 1 && adsRows[0].includes('4.5/5')) {
-        pass('true repost still updates the existing row in place (4.4 → 4.5, no duplicate)');
+      if (adsRows.length === 2 && adsRows.some(l => l.includes('4.4/5')) && adsRows.some(l => l.includes('4.5/5'))) {
+        pass('identical title with different report identity remains queued for agent review');
       } else {
-        fail(`repost handling broken: ${adsRows.length} 'Ads Reporting' rows, expected 1 updated to 4.5/5`);
+        fail(`ambiguous title handling broken: ${adsRows.length} 'Ads Reporting' rows, expected 2`);
       }
     }
   } finally {
     rmSync(mergeTmp, { recursive: true, force: true });
   }
 } catch (e) {
-  fail(`merge-tracker fuzzy dedup tests crashed: ${e.message}`);
+  fail(`merge-tracker ambiguous-title tests crashed: ${e.message}`);
 }
 
 // ── MERGE-TRACKER REPORT-NUMBER COLLISION (#912) ─────────────────
@@ -3277,14 +3267,17 @@ try {
   rmSync(ready, { recursive: true, force: true });
 
   const claudeDoc = readFile('CLAUDE.md');
+  const agentsDoc = readFile('AGENTS.md');
   if (
-    /node\s+doctor\.mjs\s+--json/.test(claudeDoc) &&
-    /"warnings"\s*:\s*\[\.\.\.\]/.test(claudeDoc) &&
+    claudeDoc.includes('@AGENTS.md') &&
+    /node\s+doctor\.mjs\s+--json/.test(agentsDoc) &&
+    agentsDoc.includes('skills/applycue/SKILL.md') &&
+    /Greet the user/.test(agentsDoc) &&
     !/Does\s+`cv\.md`\s+exist\?/i.test(claudeDoc)
   ) {
-    pass('CLAUDE.md delegates onboarding state to doctor --json');
+    pass('CLAUDE.md delegates onboarding through AGENTS.md to doctor --json');
   } else {
-    fail('CLAUDE.md still duplicates onboarding prerequisite checks');
+    fail('CLAUDE.md does not thinly import the canonical doctor-based onboarding instructions');
   }
 } catch (e) {
   fail(`Cold-start trigger test crashed: ${e.message}`);
@@ -3381,30 +3374,32 @@ if (!sqliteAvailable) {
   }
 }
 
-// ── 12b. PLAYWRIGHT MCP DETECTION WARNING (#522) ────────────────
+// ── 12b. BROWSER CAPABILITY HANDOFF ──────────────────────────────
 
-console.log('\n12d. Playwright MCP detection warning');
+console.log('\n12d. Browser capability handoff');
 
 try {
   const doctorScript = readFile('doctor.mjs');
   if (
     !/Claude Code config/i.test(doctorScript) &&
-    /project-level MCP config/i.test(doctorScript) &&
+    /project MCP config/i.test(doctorScript) &&
     /\.mcp\.json/.test(doctorScript) &&
     /\.claude\/settings\.json/.test(doctorScript) &&
-    /\.claude\/settings\.local\.json/.test(doctorScript)
+    /\.claude\/settings\.local\.json/.test(doctorScript) &&
+    /cannot see host-native/i.test(doctorScript) &&
+    /native browser tool/i.test(doctorScript)
   ) {
-    pass('doctor Playwright MCP guidance is agent-neutral and keeps conservative config detection');
+    pass('doctor distinguishes project MCP config from host-native browser tools');
   } else {
-    fail('doctor Playwright MCP guidance is still Claude-specific or lost config detection');
+    fail('doctor browser guidance confuses project config with actual host capability');
   }
 
   // No project MCP config → doctor surfaces a (non-fatal) warning instead of
   // letting SPA job boards fail silently.
   const noMcp = mkdtempSync(join(tmpdir(), 'co-nomcp-'));
   const a = JSON.parse(run(NODE, ['doctor.mjs', '--json', '--target', noMcp]) || '{}');
-  if (Array.isArray(a.warnings) && a.warnings.some((w) => /playwright mcp/i.test(w))) {
-    pass('No Playwright MCP config → warning surfaced');
+  if (Array.isArray(a.warnings) && a.warnings.some((w) => /browser MCP config.*native browser/i.test(w))) {
+    pass('No project browser config → agent capability reminder surfaced');
   } else {
     fail(`Expected a Playwright MCP warning, got: ${JSON.stringify(a.warnings)}`);
   }
@@ -3418,7 +3413,7 @@ try {
     JSON.stringify({ mcpServers: { playwright: { command: 'npx', args: ['@playwright/mcp', '--headless'] } } }),
   );
   const b = JSON.parse(run(NODE, ['doctor.mjs', '--json', '--target', withMcp]) || '{}');
-  if (Array.isArray(b.warnings) && !b.warnings.some((w) => /playwright mcp/i.test(w))) {
+  if (Array.isArray(b.warnings) && !b.warnings.some((w) => /browser MCP config/i.test(w))) {
     pass('Playwright MCP configured → no warning');
   } else {
     fail(`Did not expect a Playwright MCP warning, got: ${JSON.stringify(b.warnings)}`);
@@ -3433,7 +3428,7 @@ try {
     JSON.stringify({ mcpServers: { browser: { command: 'npx', args: ['@playwright/mcp'] } } }),
   );
   const c = JSON.parse(run(NODE, ['doctor.mjs', '--json', '--target', withLocalMcp]) || '{}');
-  if (Array.isArray(c.warnings) && !c.warnings.some((w) => /playwright mcp/i.test(w))) {
+  if (Array.isArray(c.warnings) && !c.warnings.some((w) => /browser MCP config/i.test(w))) {
     pass('Playwright MCP configured via .claude/settings.local.json → no warning');
   } else {
     fail(`Did not expect a Playwright MCP warning for settings.local.json, got: ${JSON.stringify(c.warnings)}`);
@@ -5209,12 +5204,17 @@ try {
     fail('modes/_custom.template.md is NOT in SYSTEM_PATHS — the seed never updates (#1198)');
   }
 
-  // CLAUDE.md MUST route custom rules to the file AND seed it on onboarding.
+  // CLAUDE.md is intentionally a thin bootloader. AGENTS.md owns the route.
   const claudeMd = readFileSync(join(ROOT, 'CLAUDE.md'), 'utf-8');
-  if (claudeMd.includes('modes/_custom.md') && claudeMd.includes('modes/_custom.template.md')) {
-    pass('CLAUDE.md routes custom rules to modes/_custom.md + seeds it from the template');
+  const agentsMd = readFileSync(join(ROOT, 'AGENTS.md'), 'utf-8');
+  if (
+    claudeMd.includes('@AGENTS.md') &&
+    agentsMd.includes('modes/_custom.md') &&
+    existsSync(join(ROOT, 'modes', '_custom.template.md'))
+  ) {
+    pass('CLAUDE.md imports AGENTS.md, which owns the custom-rules route and template seed');
   } else {
-    fail('CLAUDE.md does not reference modes/_custom.md / its template — agents will not use it (#1198)');
+    fail('CLAUDE.md / AGENTS.md do not expose modes/_custom.md and its template (#1198)');
   }
 } catch (e) {
   fail(`custom instructions test crashed: ${e.message}`);
@@ -7372,33 +7372,6 @@ try {
   fail(`nofluffjobs provider tests crashed: ${e.message}`);
 }
 
-// ── 44. openrouter-runner — portals drift guard ─────────────────
-console.log('\n44. openrouter-runner — portals drift guard');
-
-try {
-  const { parsePortals } = await import(pathToFileURL(join(ROOT, 'openrouter-runner.mjs')).href);
-  const exampleYaml = readFileSync(join(ROOT, 'templates/portals.example.yml'), 'utf-8');
-  const { companies, titleMatches } = parsePortals(exampleYaml);
-
-  // The no-CLI runner must read the SAME canonical portals schema as scan.mjs
-  // (tracked_companies[].api + title_filter.positive/negative). If the schema
-  // drifts and the runner stops matching, this fails loudly — instead of the
-  // runner silently scanning zero companies (the exact bug this guard prevents).
-  if (companies.length > 0) pass(`runner parsePortals extracts ${companies.length} api-companies from the canonical portals schema`);
-  else fail('runner parsePortals extracted 0 companies from templates/portals.example.yml — schema drift');
-
-  if (companies.length > 0 && companies.every(c => c.name && c.api)) pass('each extracted company has a name and a JSON api endpoint');
-  else fail(`runner companies missing name/api: ${JSON.stringify(companies.slice(0, 3))}`);
-
-  if (titleMatches('AI Engineer') && !titleMatches('Forklift Operator')) {
-    pass('runner titleMatches honors title_filter.positive/negative from the canonical schema');
-  } else {
-    fail(`runner titleMatches drift: "AI Engineer"=${titleMatches('AI Engineer')} "Forklift Operator"=${titleMatches('Forklift Operator')}`);
-  }
-} catch (e) {
-  fail(`openrouter-runner portals drift guard crashed: ${e.message}`);
-}
-
 // ── 45. SCAN COOLDOWN FILTER ──────────────────────────────────
 
 console.log('\n45. Scan cooldown filter');
@@ -7439,17 +7412,19 @@ try {
   const cooldownFilterExpired = buildCooldownFilter(windows, filterExpired);
   const cooldownFilterBoundary = buildCooldownFilter(windows, filterBoundary);
 
-  // Exact/substring role match test
+  // Exact-title cooldown test. Similar titles remain agent-review candidates.
   const jobSameRole = { company: 'Company A', title: 'Senior Software Engineer' };
   const jobSubRole = { company: 'CompanyA Corp', title: 'Lead Senior Software Engineer' };
   const jobOtherRole = { company: 'Company A', title: 'Staff QA Engineer' };
   const jobCrossRole = { company: 'Company A', title: 'Engineering Manager' };
 
-  if (cooldownFilterActive(jobSameRole).skip === true &&
-      cooldownFilterActive(jobSubRole).skip === true &&
-      cooldownFilterActive(jobOtherRole).skip === false &&
-      cooldownFilterActive(jobCrossRole).skip === true) {
-    pass('cooldownFilter active skips same role, substring role, and cross role bucket matches');
+  if (cooldownFilterActive(jobSameRole).review === true &&
+      cooldownFilterActive(jobSameRole).skip === false &&
+      cooldownFilterActive(jobSubRole).review !== true &&
+      cooldownFilterActive(jobOtherRole).review !== true &&
+      cooldownFilterActive(jobCrossRole).review === true &&
+      cooldownFilterActive(jobCrossRole).skip === false) {
+    pass('cooldownFilter flags exact same role and explicit cross-role bucket for review without suppressing jobs');
   } else {
     fail(`cooldownFilter active: sameRole=${cooldownFilterActive(jobSameRole).skip}, subRole=${cooldownFilterActive(jobSubRole).skip}, otherRole=${cooldownFilterActive(jobOtherRole).skip}, crossRole=${cooldownFilterActive(jobCrossRole).skip}`);
   }
@@ -7953,7 +7928,7 @@ try {
   const { validateManifest, discoverPlugins, pluginRoots, buildCtx, mergeProviderPlugins } = eng;
 
   const base = { id: 'x', apiVersion: 1, description: 'one line', hooks: ['ingest'], requiredEnv: [], allowedHosts: [], humanInTheLoop: true };
-  const vm = (m, dirName = 'x') => validateManifest(m, join('/tmp', dirName), dirName);
+  const vm = (m, dirName = 'x') => validateManifest(m, join(tmpdir(), dirName), dirName);
 
   // Manifest validation (warnings are expected here — suppress to keep output clean).
   console.warn = () => {};

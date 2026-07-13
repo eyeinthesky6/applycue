@@ -10,5 +10,6 @@ ApplyCue is designed for agent CLIs that can read repo instructions and run loca
 | Antigravity CLI | `AGENTS.md` | Use for free-tier local agent runs where available. |
 | Qwen Code | `AGENTS.md` | Supported through shared instructions. |
 | Grok Build CLI | `AGENTS.md` | Supported through shared instructions. |
+| Kimi CLI | `AGENTS.md` | Supported through a thin skill bridge. |
 
 The user-facing interface is chat. Commands are for the agent.

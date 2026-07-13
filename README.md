@@ -1,117 +1,124 @@
 # ApplyCue
 
-ApplyCue is an agent-led CV-to-offer system.
+ApplyCue is a local, agent-led job-search and application product. Give the repository link and your CV to Codex, Claude, or another capable coding agent; the agent sets it up, learns your profile, finds roles, reads full job descriptions, creates role-specific CVs, applies with permission, and tracks what happened.
 
-## What It Does
+The MVP uses the coding agent's existing intelligence and connectors. There is no required AI API key and no second embedded model runtime.
 
-ApplyCue helps an agent run the job-search loop for a user:
+## Product decision
 
-1. Learn the user's CV, target roles, preferences, geography, compensation, and apply policy.
-2. Discover jobs from configured sources, public providers, and agent/user-added sources.
-3. Filter obvious no-go roles with hard blockers.
-4. Let the agent judge fuzzy fit from the CV, JD, preferences, and feedback.
-5. Generate truthful role-specific CV artifacts.
-6. Prepare browser application plans and pause before risky actions.
-7. Track applications and outcomes so future batches improve.
+ApplyCue has one launch runtime. Deterministic code handles sources, exact identity/history, document rendering, application receipts, and integrity. The external agent handles fuzzy title/intent/CV-to-JD judgment and writing.
 
-ApplyCue is not a generic job board, search engine, or score dashboard. The goal is interviews and offers, not a beautiful list of jobs.
+Competing control planes and the old terminal dashboard were retired after their useful features were re-homed behind the root runtime. See [Product decision](docs/PRODUCT_DECISION.md) and [Removal record](docs/REMOVALS_AND_REORGANIZATION.md).
 
-## Current Shape
+## Give this link to an agent
 
-ApplyCue is currently a local-first agent product:
-
-- TypeScript packages under `packages/` own profile loading, discovery, ranking, CV tailoring, application planning, and dashboard data.
-- Worker/browser apps under `apps/` expose the commands an agent runs.
-- `skills/applycue/SKILL.md` is the canonical user-facing workflow for agents.
-- Repo-local scripts from the base workflow still exist, but the ApplyCue commands are the launch path.
-
-User assets should live outside the repo, preferably under:
+Repository:
 
 ```text
-~/.applycue/profiles/<profile>/
+https://github.com/eyeinthesky6/applycue
 ```
 
-Repo-local user files still work during the transition.
+Suggested prompt:
 
-## Local Setup
+```text
+Install ApplyCue from this repository on my machine. Read AGENTS.md and
+skills/applycue/SKILL.md, run the doctor check, then greet me and begin CV
+ingestion. Ask before accessing folders, accounts, connectors, or submitting
+anything. Do not ask for details already present in my CV.
+```
 
-The current distribution path is GitHub repo + agent skill. npm/package install and SaaS are later.
+The agent should perform the installation and explain only useful outcomes.
 
-```bash
+## Manual installation
+
+Requirements: Git, Node.js 22.5 or newer, and a supported agent such as Codex or Claude.
+
+```powershell
 git clone https://github.com/eyeinthesky6/applycue.git
 cd applycue
-pnpm install
+corepack pnpm install
 node doctor.mjs --json
 ```
 
-Then open an agent CLI in this repo:
+If `pnpm` is already installed, `pnpm install` is equivalent. Direct `corepack pnpm`
+avoids the administrator permission that `corepack enable` can require on Windows.
 
-```bash
+Then start your agent in the repository:
+
+```powershell
 codex
-# or claude / opencode / qwen / agy / grok
+# or: claude
 ```
 
-Codex may not expose slash commands. In that case, use plain language or headless `codex exec`:
+Say: `Set up ApplyCue and start with my CV.` Slash commands are optional; plain language is the reliable interface.
 
-```bash
-codex exec "Run ApplyCue status in this repo."
-codex exec "Run ApplyCue UAT and summarize blockers."
+Codex can also start non-interactively and return when setup needs user input:
+
+```powershell
+codex exec "Read AGENTS.md and skills/applycue/SKILL.md, run doctor, and begin ApplyCue setup."
 ```
 
-See [Codex guide](docs/CODEX.md).
+`CODEX.md` is a thin repo pointer; `AGENTS.md` and the canonical skill remain the source of truth.
 
-The user should operate ApplyCue by chat. Normal users should not need to edit code.
+## What happens on first use
 
-## Useful Commands
+1. The agent preserves the supplied CV as the exact baseline and extracts details already present.
+2. It asks whether you want selected project folders, GitHub, LinkedIn, your website, blogs, portfolios, or other evidence scanned.
+3. It builds a coherent profile, shows additions/conflicts, and asks for confirmation.
+4. It records target roles, acceptable adjacent roles, location/relocation, compensation, availability, employer restrictions, and application pace.
+5. It runs a baseline search and shows fetched, blocked, reviewed, shortlisted, skipped, CV, attempted, and applied counts.
+6. The agent reads every viable full JD and chooses `apply`, `watch`, or `skip`. Scores are explanatory only.
+7. It prepares the first five genuine matches (or fewer), creates PDF and DOCX CVs, and asks for approval for each named application.
+8. It records every attempt and never silently retries an uncertain submit.
 
-Base workflow commands:
+Current employer is always skipped. Past employers require confirmation. Similar titles at one company are not automatic duplicates.
 
-```bash
-npm run doctor
-npm run scan
-npm run tracker
+## Dashboard
+
+The agent can open the local browser dashboard:
+
+```powershell
+npm run dashboard
+```
+
+It reads the canonical Markdown tracker and shows scanned, reviewed, shortlisted, applied/active, rejected, and skipped counts with job/report/CV links. Thumbs feedback is saved for the agent to discuss; it does not silently change preferences.
+
+For a read-only shareable snapshot:
+
+```powershell
 npm run build:dashboard
 ```
 
-ApplyCue engine commands:
+## Useful commands
 
-```bash
-pnpm applycue:setup
-pnpm applycue:first-build
-pnpm applycue:status
-pnpm applycue:uat
-pnpm applycue:browser-uat
+Normal users should not need these; the agent runs them.
+
+```powershell
+npm run doctor
+npm run scan
+node verify-pipeline.mjs
+npm run tracker -- query --limit 20
+npm run dashboard
+npm run check
 ```
 
-## First UAT Gate
+## Data and privacy
 
-A run is useful when one fresh role can go through:
+Candidate data stays local and is gitignored: `cv.md`, `config/profile.yml`, `modes/_profile.md`, `portals.yml`, `data/`, `reports/`, `output/`, and other user assets. ApplyCue does not store mailbox tokens. Agents use only connectors/accounts the user approves.
 
-```text
-discover -> evaluate -> truthful tailored CV -> DOCX/PDF/HTML artifact -> browser fill/upload plan -> pause before submit -> tracker updated -> receipt saved
-```
+See [Data contract](DATA_CONTRACT.md) and [Configuration](docs/configuration.md).
 
-Until this works reliably, dashboard polish and complex matching math are secondary.
+## MVP boundary
 
-## Launch Readiness
+The launch MVP ends at a confirmed application, tracking, and feedback. Interview scheduling, proactive alerts, deep interview preparation, offer comparison, and negotiation are future phases. See [Roadmap](docs/product-roadmap.md).
 
-See [Launch readiness](docs/launch-readiness.md) for the current distribution plan, release gate, privacy guard, and what is not part of v0.1.
+## Development and readiness
 
-For real multi-candidate sessions, use the [Live usage runbook](docs/live-usage-runbook.md). It defines the default-profile first run, one profile per candidate, and the search-UAT-before-apply flow.
-
-## Important Docs
-
-- [Agent rules](AGENTS.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Agent workflow](skills/applycue/SKILL.md)
+- [Development guide](docs/agent-development-guide.md)
 - [Launch readiness](docs/launch-readiness.md)
 - [Live usage runbook](docs/live-usage-runbook.md)
 - [Pivot history](docs/pivot-history.md)
-- [Data contract](DATA_CONTRACT.md)
-- [Build decision](docs/build-decision.md)
-- [Agent development guide](docs/agent-development-guide.md)
-- [CV tailoring policy](docs/cv-tailoring-policy.md)
-- [Build roadmap](docs/build-roadmap.md)
-- [Discovery decision record](docs/discovery-inspiration-and-build-decision.md)
 
-## License
-
-ApplyCue is MIT licensed. See [LICENSE](LICENSE).
+ApplyCue is MIT licensed. The codebase retains the required attribution for the Career-Ops-derived foundation in [LICENSE](LICENSE).

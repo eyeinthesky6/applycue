@@ -49,7 +49,7 @@ These are references, not current dependencies.
 
 | Project | License / Fit | Decision |
 | --- | --- | --- |
-| JobSpy | MIT, job-board scraping breadth | Use as the first broad job-board bridge behind `packages/discovery`. Do not make it the core engine. |
+| JobSpy | MIT, job-board scraping breadth | Trial as an optional bridge behind `providers/` only when source UAT proves a coverage gap. Do not make it the core engine. |
 | JSON Resume | MIT, structured resume schema | Use as schema inspiration for structured profile/CV facts. |
 | Resume Matcher | Apache-2.0, ATS/resume matching | Use as inspiration for ATS checks and keyword feedback, not as the truth layer. |
 | OpenResume | AGPL-3.0, resume builder/parser | Avoid as a dependency; license is not clean for planned distribution. Product ideas are useful. |

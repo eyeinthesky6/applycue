@@ -1,10 +1,10 @@
 ---
 name: ApplyCue
-description: CV-to-offer agent. Read the canonical ApplyCue skill router.
+description: Agent-led CV-to-application workflow. Read the canonical ApplyCue skill.
 arguments: mode
 user_invocable: true
 user-invocable: true
-argument-hint: "[setup | status | batch | single-role | sources | tuning | apply | answers | outcomes | dashboard | uat | interview | offer]"
+argument-hint: "[setup | status | find | review | cv | apply | dashboard | outcome | uat]"
 license: MIT
 ---
 

@@ -15,7 +15,7 @@ These are reference directions, not dependencies.
 
 - Playwright for deterministic browser control.
 - Stagehand or Browser Use patterns for agent-assisted browser control.
-- JobSpy as the first broad job-board bridge behind `packages/discovery`.
+- JobSpy as an optional broad job-board trial behind the existing root provider boundary when measured coverage is poor.
 - Crawl4AI for public web extraction where no official API or JobSpy source fits.
 - Firecrawl-style providers as optional cloud connectors only with explicit user approval.
 - JSON Resume as a reference for structured resume data.

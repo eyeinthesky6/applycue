@@ -46,9 +46,11 @@ Read `config/profile.yml`. Check `cv.output_format`:
 - If `"latex"`, execute the full pipeline from `modes/latex.md`
 - Otherwise (default), execute the full pipeline from `modes/pdf.md`
 
-## Step 4 — Draft Application Answers (only if score >= 4.5)
+## Step 4 — Agent decision and application draft
 
-If the final score is >= 4.5, generate a draft of responses for the application form:
+The numeric score is a diagnostic summary, not an application gate. After reading the full JD, the external agent decides `apply`, `watch`, or `skip` using the user's intent, CV, evidence, constraints, and feedback. Similar titles, keyword overlap, or a score threshold must never make the final decision.
+
+If the agent decides `apply`, generate a draft of responses for the application form:
 
 1. **Extract form questions**: Use Playwright to navigate to the form and take a snapshot. If they cannot be extracted, use the generic questions.
 2. **Generate responses** following the tone (see below).
@@ -86,4 +88,4 @@ If the final score is >= 4.5, generate a draft of responses for the application 
 
 Record it in `data/applications.md` with all columns including Report and PDF as ✅.
 
-**If any step fails**, continue with the next ones and mark the failed step as pending in the tracker.
+**If any step fails**, continue only where the remaining work is still valid and mark the failed step as pending. Never treat a missing full JD, missing approval, uncertain submit, or broken CV artifact as a successful application.

@@ -141,8 +141,10 @@ cover_letter:
 
 # ── Re-apply Cooldown Windows ──────────────────────────────────────────────
 #
-# Define cooldown windows for companies where you've recently applied.
-# The scanner will skip new postings at these companies during the window.
+# Define advisory cooldown windows for companies where you've recently applied.
+# The scanner keeps matching postings and flags them for agent review. It does
+# not suppress a role from company/title similarity because teams, locations,
+# and job descriptions may differ. Exact application URLs/attempts are blocked.
 #
 # re_apply_windows:
 #   CompanyA:

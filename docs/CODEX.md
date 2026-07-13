@@ -32,4 +32,4 @@ codex exec "Run ApplyCue UAT and summarize blockers."
 codex exec "Evaluate this job URL for my profile: https://company.com/jobs/123"
 ```
 
-Browser-heavy flows such as scan, pipeline, and apply still depend on Playwright browser tools being available in the active agent setup.
+Browser-heavy flows use the user's approved Codex browser/Chrome tools when available. If unavailable, Codex should explain the missing capability and use a safe supported fallback; ApplyCue does not require a separate embedded browser engine.

@@ -47,7 +47,7 @@ function checkDependencies() {
   return {
     pass: false,
     label: 'Dependencies not installed',
-    fix: 'Run: npm install',
+    fix: 'Run: pnpm install',
   };
 }
 
@@ -59,7 +59,7 @@ async function checkPlaywright() {
     return {
       pass: false,
       label: 'Playwright chromium not installed',
-      fix: 'Run: npx playwright install chromium',
+      fix: 'Run: pnpm exec playwright install chromium',
     };
   }
   // Validate by launching — chromium.executablePath() points at Chrome for Testing
@@ -75,20 +75,17 @@ async function checkPlaywright() {
     return {
       pass: false,
       label: 'Playwright chromium not installed',
-      fix: 'Run: npx playwright install chromium',
+      fix: 'Run: pnpm exec playwright install chromium',
     };
   } finally {
     try { await browser?.close(); } catch { /* ignore */ }
   }
 }
 
-// The browser tools (`browser_navigate` / `browser_snapshot`) that scan / pipeline /
-// apply rely on are provided by the Playwright MCP server, usually registered through a
-// project-level MCP config (for example `.mcp.json`, `.claude/settings.json`, or
-// `.claude/settings.local.json`). When no common config is detected, SPA job boards can
-// silently return empty or stale content (#522), so doctor surfaces a non-fatal warning
-// instead of letting it fail invisibly.
-const PLAYWRIGHT_MCP_WARNING = 'Playwright MCP tools not detected';
+// Node can detect project MCP config but cannot see host-native Codex/Claude/Chrome
+// tools. A missing project config is therefore a handoff reminder, not proof that the
+// agent lacks browser capability.
+const PLAYWRIGHT_MCP_WARNING = 'No project browser MCP config found; agent must confirm a native browser tool';
 
 function playwrightMcpConfigured(root) {
   const configFiles = ['.mcp.json', '.claude/settings.json', '.claude/settings.local.json'];
@@ -117,10 +114,9 @@ function checkPlaywrightMcp(root) {
     warn: true,
     label: PLAYWRIGHT_MCP_WARNING,
     fix: [
-      'Browser-driven JD fetching and liveness checks (scan / pipeline / apply) need the',
-      'Playwright MCP server. No project-level MCP config was detected in `.mcp.json`',
-      'or `.claude/settings*.json`, so SPA job boards may return empty or stale content.',
-      'Tracking: https://github.com/eyeinthesky6/applycue/issues/506',
+      'Doctor cannot see browser tools built into Codex, Claude, Chrome, or another host.',
+      'If the agent has a native browser tool, use it; no project MCP file is required.',
+      'Otherwise connect a browser tool before reading rendered/collapsed job pages.',
     ],
   };
 }
@@ -348,7 +344,7 @@ async function main() {
     process.exit(1);
   } else {
     const warnNote = warnings > 0 ? ` (${warnings} warning${warnings === 1 ? '' : 's'} — see above)` : '';
-    console.log(`Result: All checks passed${warnNote}. You're ready to go! Run \`claude\` (or \`opencode\`) to start.`);
+    console.log(`Result: All checks passed${warnNote}. You're ready to go! Run \`codex\`, \`claude\`, or another supported agent to start.`);
     console.log('');
     console.log('Join the community: https://discord.gg/8pRpHETxa4');
     process.exit(0);

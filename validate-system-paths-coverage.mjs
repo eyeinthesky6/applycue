@@ -94,13 +94,21 @@ if (process.argv.includes('--self-test')) {
 
 let tracked;
 try {
-  tracked = execFileSync('git', ['ls-files'], {
+  const cached = execFileSync('git', ['ls-files', '--cached'], {
+    cwd: ROOT,
+    encoding: 'utf-8',
+  })
+    .trim()
+    .split(/\r?\n/)
+    .filter((file) => file && existsSync(join(ROOT, file)));
+  const untracked = execFileSync('git', ['ls-files', '--others', '--exclude-standard'], {
     cwd: ROOT,
     encoding: 'utf-8',
   })
     .trim()
     .split(/\r?\n/)
     .filter(Boolean);
+  tracked = [...new Set([...cached, ...untracked])];
 } catch (err) {
   console.error('FAIL: git ls-files failed:', err.message);
   process.exit(1);

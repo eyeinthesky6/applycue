@@ -3,28 +3,36 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, lstatSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 
-export const CANONICAL_SKILL_PATH = '.agents/skills/applycue/SKILL.md';
+export const CANONICAL_SKILL_PATH = 'skills/applycue/SKILL.md';
 
 export const SKILL_ENTRYPOINTS = [
   {
+    path: '.agents/skills/applycue/SKILL.md',
+    pointer: '../../../skills/applycue/SKILL.md',
+  },
+  {
     path: '.claude/skills/applycue/SKILL.md',
-    pointer: '../../../.agents/skills/applycue/SKILL.md',
+    pointer: '../../../skills/applycue/SKILL.md',
   },
   {
     path: '.opencode/skills/applycue/SKILL.md',
-    pointer: '../../../.agents/skills/applycue/SKILL.md',
+    pointer: '../../../skills/applycue/SKILL.md',
   },
   {
     path: '.qwen/skills/applycue/SKILL.md',
-    pointer: '../../../.agents/skills/applycue/SKILL.md',
+    pointer: '../../../skills/applycue/SKILL.md',
   },
   {
     path: '.antigravitycli/skills/applycue/SKILL.md',
-    pointer: '../../../.agents/skills/applycue/SKILL.md',
+    pointer: '../../../skills/applycue/SKILL.md',
   },
   {
     path: '.grok/skills/applycue/SKILL.md',
-    pointer: '../../../.agents/skills/applycue/SKILL.md',
+    pointer: '../../../skills/applycue/SKILL.md',
+  },
+  {
+    path: '.kimi/skills/applycue/SKILL.md',
+    pointer: '../../../skills/applycue/SKILL.md',
   },
 ];
 

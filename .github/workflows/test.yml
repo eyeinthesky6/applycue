@@ -12,11 +12,6 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
-      - uses: actions/setup-go@v6
-        with:
-          go-version: '1.26'
-      - run: npm install
+      - run: corepack pnpm install --frozen-lockfile --ignore-scripts
+      - run: node validate-system-paths-coverage.mjs
       - run: node test-all.mjs --quick
-      - name: Go dashboard tests
-        run: go test ./...
-        working-directory: dashboard
