@@ -15,6 +15,7 @@
 | `data/scan-history.tsv` | scan history and exact-URL identity |
 | `data/application-attempts.jsonl` | append-only attempt receipts |
 | `data/job-feedback.jsonl` | dashboard fit feedback |
+| `data/pdf-index.tsv` | generated role/report-to-PDF links |
 | `reports/` | full-JD review reports |
 | `output/` | generated CVs, letters, dashboard snapshots |
 | `jds/` | locally archived job descriptions |
@@ -32,6 +33,7 @@ User preferences never belong in system files. Shared product fixes never belong
 - Markdown tracker is authoritative; SQLite is derived.
 - Full report and durable CV source files are authoritative for a role's generated artifacts.
 - Application attempt receipts are append-only evidence; they do not replace the tracker.
+- The PDF index is derived from generated user artifacts and must remain gitignored.
 - Dashboard feedback is input for agent discussion, not automatic configuration.
 - The separate typed `%USERPROFILE%\.applycue\profiles\...` store is not part of this runtime.
 

@@ -491,18 +491,25 @@ for (const f of systemFiles) {
   }
 }
 
-// Check user files are NOT tracked (gitignored)
+// Check candidate-owned files are both untracked and covered by an ignore rule.
+// `git ls-files` alone misses the dangerous case where a private generated file
+// is currently untracked but can be staged by the next broad `git add`.
 const userFiles = [
-  'config/profile.yml', 'modes/_profile.md', 'portals.yml',
+  'cv.md', 'config/profile.yml', 'modes/_profile.md', 'modes/_custom.md',
+  'article-digest.md', 'portals.yml', 'data/applications.md',
+  'data/application-attempts.jsonl', 'data/job-feedback.jsonl',
+  'data/pdf-index.tsv', 'config/plugins.yml', 'plugins.local/example.mjs',
+  'plugins.lock',
 ];
 for (const f of userFiles) {
   const tracked = run('git', ['ls-files', f]);
-  if (tracked === '') {
+  const ignored = run('git', ['check-ignore', '--', f]);
+  if (tracked === '' && ignored === f) {
     pass(`User file gitignored: ${f}`);
-  } else if (tracked === null) {
-    pass(`User file gitignored: ${f}`);
+  } else if (tracked !== '') {
+    fail(`User file IS tracked (should be private): ${f}`);
   } else {
-    fail(`User file IS tracked (should be gitignored): ${f}`);
+    fail(`User file has no gitignore rule: ${f}`);
   }
 }
 
