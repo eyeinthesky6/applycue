@@ -151,7 +151,7 @@ for (const f of mjsFiles) {
 console.log('\n2. Script execution (graceful on empty data)');
 
 const scripts = [
-  { name: 'cv-sync-check.mjs', expectExit: 1, allowFail: true }, // fails without cv.md (normal in repo)
+  { name: 'cv-sync-check.mjs', expectExit: fileExists('cv.md') && fileExists('config/profile.yml') ? 0 : 1 },
   { name: 'verify-pipeline.mjs', expectExit: 0 },
   // --dry-run: these scripts resolve ROOT from import.meta.url and write
   // data/applications.md (or data/pipeline.md) in place. On a provisioned working
@@ -177,14 +177,22 @@ const scripts = [
   { name: 'archive-posting.mjs --help', expectExit: 0 },
 ];
 
-for (const { name, allowFail } of scripts) {
-  const result = run(NODE, name.split(' '), { stdio: ['pipe', 'pipe', 'pipe'] });
-  if (result !== null) {
-    pass(`${name} runs OK`);
-  } else if (allowFail) {
-    warn(`${name} exited with error (expected without user data)`);
+for (const { name, expectExit } of scripts) {
+  let actualExit = 0;
+  try {
+    execFileSync(NODE, name.split(' '), {
+      cwd: ROOT,
+      encoding: 'utf-8',
+      timeout: 30000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    actualExit = Number.isInteger(error.status) ? error.status : null;
+  }
+  if (actualExit === expectExit) {
+    pass(`${name} exits ${expectExit} as expected`);
   } else {
-    fail(`${name} crashed`);
+    fail(`${name} exited ${actualExit ?? 'without a status'}; expected ${expectExit}`);
   }
 }
 
