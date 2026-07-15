@@ -21,8 +21,67 @@ export const LEGACY_COLMAP = {
 export const HEADER_ALIASES = {
   '#': 'num', 'num': 'num', 'date': 'date', 'company': 'company', 'empresa': 'company',
   'role': 'role', 'puesto': 'role', 'location': 'location', 'score': 'score',
-  'status': 'status', 'pdf': 'pdf', 'report': 'report', 'notes': 'notes',
+  'status': 'status', 'decision': 'decision', 'rank': 'rank',
+  'confidence': 'confidence', 'origin': 'origin',
+  'pdf': 'pdf', 'report': 'report', 'notes': 'notes',
 };
+
+export const DECISIONS = Object.freeze(['pending', 'apply', 'watch', 'skip']);
+export const CONFIDENCES = Object.freeze(['high', 'medium', 'low', 'unknown']);
+export const ORIGINS = Object.freeze(['current', 'legacy_import', 'mail_import', 'legacy_unknown']);
+
+/**
+ * Normalize the agent's semantic decision without treating a lifecycle status
+ * such as `Evaluated` as a shortlist decision. Old rows may carry an explicit
+ * `[AGENT: APPLY|WATCH|SKIP]` marker in Notes; submitted/replied rows also prove
+ * that an apply decision happened. Everything else remains pending.
+ */
+export function normalizeDecision(raw, { status = '', notes = '' } = {}) {
+  const value = String(raw || '').trim().toLowerCase();
+  const aliases = { pending: 'pending', review: 'pending', apply: 'apply', shortlist: 'apply', watch: 'watch', hold: 'watch', skip: 'skip' };
+  if (aliases[value]) return aliases[value];
+
+  const marker = String(notes || '').match(/\[AGENT:\s*(APPLY|WATCH|SKIP)\]/i)?.[1]?.toLowerCase();
+  if (marker) return marker;
+
+  const lifecycle = String(status || '').trim().toLowerCase();
+  if (['applied', 'responded', 'interview', 'offer', 'rejected'].includes(lifecycle)) return 'apply';
+  if (lifecycle === 'skip') return 'skip';
+  return 'pending';
+}
+
+/**
+ * Rank is the external agent's explicit ordering of the current apply queue.
+ * It is deliberately not inferred from a score. Non-ranked rows use an em dash.
+ */
+export function normalizeRank(raw) {
+  const value = String(raw ?? '').trim();
+  if (!/^\d+$/.test(value)) return '—';
+  const rank = Number(value);
+  return Number.isSafeInteger(rank) && rank > 0 ? String(rank) : '—';
+}
+
+/** Normalize review confidence without inventing certainty for old rows. */
+export function normalizeConfidence(raw) {
+  const value = String(raw || '').trim().toLowerCase();
+  return CONFIDENCES.includes(value) ? value : 'unknown';
+}
+
+/**
+ * Origin is internal provenance. A missing Origin column means the row predates
+ * this contract, so it must not silently enter current-run dashboard counts.
+ */
+export function normalizeOrigin(raw, { hasOriginColumn = true } = {}) {
+  if (!hasOriginColumn) return 'legacy_unknown';
+  const value = String(raw || '').trim().toLowerCase().replace(/[ -]+/g, '_');
+  const aliases = {
+    current: 'current', new: 'current',
+    imported: 'legacy_import', history: 'legacy_import', historical: 'legacy_import', legacy: 'legacy_import', legacy_import: 'legacy_import', career_ops: 'legacy_import',
+    mail: 'mail_import', email: 'mail_import', mail_import: 'mail_import',
+    legacy_unknown: 'legacy_unknown', unknown: 'legacy_unknown',
+  };
+  return aliases[value] || 'legacy_unknown';
+}
 
 /**
  * Scan the table for a header row and build a field-name → column-index map.
@@ -62,7 +121,7 @@ export function resolveColumns(lines) {
  *
  * @param {string} line - One line from applications.md.
  * @param {Object<string,number>} [colmap] - From resolveColumns(); defaults to legacy.
- * @returns {object|null} `{num,date,company,role,score,status,pdf,report,notes,location?,raw}`.
+ * @returns {object|null} Parsed row including normalized review metadata.
  */
 export function parseTrackerRow(line, colmap = LEGACY_COLMAP) {
   if (typeof line !== 'string' || !line.startsWith('|')) return null;
@@ -83,6 +142,10 @@ export function parseTrackerRow(line, colmap = LEGACY_COLMAP) {
     notes: at('notes'),
     raw: line,
   };
+  row.decision = normalizeDecision(at('decision'), row);
+  row.rank = normalizeRank(at('rank'));
+  row.confidence = normalizeConfidence(at('confidence'));
+  row.origin = normalizeOrigin(at('origin'), { hasOriginColumn: colmap.origin != null });
   if (colmap.location != null) row.location = at('location');
   return row;
 }

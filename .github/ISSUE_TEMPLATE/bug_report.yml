@@ -52,6 +52,6 @@ body:
   - type: textarea
     id: doctor
     attributes:
-      label: Output of npm run doctor
-      description: Paste the output here (helps us diagnose setup issues)
+      label: Sanitized doctor output
+      description: Run `node doctor.mjs --json`, remove personal paths or data, then paste only what is needed to diagnose the issue.
       render: shell

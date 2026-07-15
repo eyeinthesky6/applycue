@@ -28,7 +28,7 @@
      - Always write evaluation summaries in British English.
      - Never include a photo in my CV (US / ATS-first market).
      - Cap each batch run at 20 listings unless I say otherwise.
-     - If a report scores below 6, skip the cover letter. -->
+     - Generate a cover letter only for an `apply` decision. -->
 
 (none yet -- add yours above)
 
@@ -45,7 +45,7 @@
 ## Output Preferences
 
 <!-- How you like results formatted. Examples:
-     - Reports: lead with the score and the one-line verdict.
+     - Reports: lead with decision, rank, confidence, and the one-line reason.
      - Show the per-step token breakdown after a batch run.
      - Save PDFs date-first: YYYY-MM-DD-company.pdf -->
 

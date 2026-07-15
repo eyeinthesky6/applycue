@@ -42,7 +42,9 @@ For repository development, skip onboarding and follow `docs/agent-development-g
 | response, rejection, interview, offer | `outcome` | Update tracker and learning evidence. Interview/offer preparation is a later workflow. |
 | test or readiness question | `uat` | Run checks and report PASS/WARN/FAIL with the first real blocker. |
 
-A pasted JD or job URL defaults to `review`. Do not silently jump from finding jobs to applying.
+A pasted JD or job URL defaults to `review`. A job link supplied directly by the user also defaults to **high stakes** unless the user says to treat it as standard. Agent/scanner-discovered links remain standard unless the user upgrades them. Start the high-stakes workflow ahead of ordinary queued work; do not wait for the next batch. High stakes changes preparation depth and urgency, but it never bypasses liveness, legitimacy, current-employer, evidence, or named-application approval gates. Do not silently jump from finding jobs to applying.
+
+The English canonical decision modes (`modes/_shared.md`, `modes/oferta.md`, `modes/ofertas.md`, `modes/auto-pipeline.md`, and `modes/pipeline.md`) own semantic behavior for MVP. Localized copies may guide output language but must not restore score thresholds or make a different decision.
 
 ## Setup flow
 
@@ -76,11 +78,15 @@ Build one coherent candidate story from the approved sources:
 
 Show material additions and conflicts to the user. Correct them together. Only confirmed facts enter the working profile/base CV.
 
+Do not assume the supplied CV is exhaustive. People routinely omit or forget useful work. When a later JD exposes a potentially relevant area, ask a focused question and save the user's confirmed recollection in the approved evidence layer before using it. Do not require documentary proof or an exact metric; confirmed qualitative scope and outcomes are valid. Never manufacture precision.
+
 ### 4. Capture search intent
 
 Ask only what is not already known: target outcomes, acceptable adjacent roles, geography/relocation, compensation, availability, current employer, past-employer policy, work authorization, hard no-go companies, and desired application pace.
 
 Current employer is always skipped. Past employers need confirmation for each search/application policy change.
+
+Summarize the material preferences back to the user and confirm them before the first search. Save only confirmed answers. Re-read the saved preferences before every final role decision/rank and again before drafting a role CV or application answer. If a missing preference could change the result, keep the affected role pending and ask; do not guess. Dashboard feedback may propose a preference change but never saves one without approval.
 
 ### 5. Baseline before edits
 
@@ -96,7 +102,9 @@ Short cards, emails, snippets, and collapsed descriptions are leads, not JDs. Op
 
 Code may reject only objective cases: unsafe/invalid URL, confirmed dead posting, exact source identity already handled, current employer, explicit hard constraint, or the exact application URL/attempt already recorded. Company/title cooldown hints, similar titles, inferred seniority, keyword overlap, and CV-to-JD fit go to the agent.
 
-The agent reviews the viable queue and records `apply`, `watch`, or `skip`. Scores help explain a decision but never make it. Audit false positives and false eliminations on the first run. Propose reusable configuration changes and get approval before saving them.
+The agent reviews the viable queue and records `apply`, `watch`, or `skip`, confidence, strengths, gaps, unknowns, preference basis, and a plain-language reason. It then explicitly ranks the current `apply` queue. Before the decision becomes effective, store the expanded full JD with `review-evidence.mjs capture` and record the fingerprint-bound receipt after the report/tracker are final. Do not calculate a new semantic fit score; historical scores remain legacy diagnostics only. Audit false positives and false eliminations on the first run. Propose reusable configuration changes and get approval before saving them.
+
+The receipt binds the decision to `config/profile.yml`, `modes/_profile.md`, `modes/_custom.md`, `cv.md`, `article-digest.md`, the captured JD, report, and tracker review fields. If any of them changes, the dashboard and verifier treat the old decision as pending re-review. This is a deterministic stale-input check, not a code opinion about whether the change matters.
 
 If the queue is starved, show which counts fell at each stage. Offer one change at a time in this order:
 
@@ -106,22 +114,62 @@ source coverage -> title variants -> industry -> location -> recency -> strictne
 
 Do not silently relax work authorization, blocked companies, current-employer, user no-go, unsafe-source, or application-approval rules.
 
+## Employer context and high-stakes roles
+
+Every role being prepared receives a light employer success brief before CV writing. Use the complete JD, official company/team context, and one current priority/source when it materially changes the message. Identify:
+
+- explicit requirements and likely first 6-12 month outcomes;
+- the people, customers, partners, or executives the role must influence;
+- the primary role family and three signals the first page must communicate;
+- likely hiring doubts, matching evidence, honest gaps, and unknowns;
+- which points come from sources and which are agent inference.
+
+Use the role-family guidance in `modes/heuristics/recruiter-side.md` and the contract in `docs/cv-tailoring-policy.md`. Do not apply a technical-CV formula to product, sales/GTM, programme/public-impact, strategy/consulting, or founder/operator roles.
+
+The user may mark a role **high stakes** in chat or on the dashboard. Any job link supplied directly by the user starts high stakes by default unless they say it is standard. Persist that state in the existing dashboard-feedback ledger; do not create a second tracker. Most discovered roles remain standard applications. A repeatable saved campaign pack remains V1 work.
+
+Immediately hydrate and review a high-stakes role before standard queued roles. If the decision is `apply`, put it at the front of application preparation and assign the top available apply rank, normally Rank 1; re-rank existing apply roles coherently. When several roles are high stakes, compare them and use the top consecutive ranks. If the decision is `watch` or `skip`, record that honestly—priority does not force an apply decision.
+
+Once a user-supplied role has a job number, record its default before or during review:
+
+```powershell
+node job-feedback.mjs record --job=N --company="Company" --title="Role" --action=mark_high_stakes --url="https://example.com/job"
+```
+
+Resolve that receipt after the deeper work is reflected in the review/CV artifacts. A user can reverse it in chat or with `Return to standard` on the dashboard.
+
+For a high-stakes role:
+
+1. Research the company, team, strategy, culture, current priorities, and selection context more deeply.
+2. When lawfully available, inspect a small set of public profiles or biographies of successful people at the same or adjacent level. Extract recurring experience signals and proof patterns, not personal identities, wording, or protected traits.
+3. Build a positioning brief with the three promises to lead with, material gaps, bridge language, and evidence worth recovering from the user.
+4. Ask only targeted questions that could materially improve this application. A missing line in the old CV is not proof the work never happened.
+5. Produce the role CV and useful application narrative. Recommend a portfolio/case study, LinkedIn, website, GitHub, or public-bio change only when it could materially help this coveted role.
+6. Draft any public-profile change separately. Never publish or modify a social/profile surface without separate user approval.
+
+The goal is to earn a conversation, not maximize a keyword score. ApplyCue can improve the application but cannot promise an interview.
+
 ## First application batch
 
-Select the first five genuine matches, or fewer if fewer fit. Prepare each role fully; do not pad the batch with junk.
+Select the first five ranked genuine matches, or fewer if fewer fit. Process viable high-stakes roles first, then fill the remaining batch from the ranked standard queue. Prepare each role fully; do not pad the batch with junk.
 
 For every role:
 
 1. Read the full live JD.
-2. Explain why it fits the user's intent and evidence.
-3. Draft the role CV from the baseline plus confirmed profile facts.
-4. Mark claims as sourced, reframed, or new/unconfirmed. Ask for material confirmation; do not hard-reject useful marketing language merely because wording is new.
-5. Save durable Markdown and HTML, then generate PDF and DOCX.
-6. Verify the files open and belong to this company/role.
-7. Show company, role, URL, CV filename, and unresolved form answers.
-8. Obtain explicit approval for this named application.
-9. Follow `modes/apply.md`, including the application-attempt receipt.
-10. Mark `Applied` only on confirmed success. An unknown outcome remains unresolved and must not be retried automatically.
+2. Store the expanded JD and create a current review receipt; do not reuse a stale decision.
+3. Build the employer success brief and choose the primary role family; deepen it when the user marked the role high stakes.
+4. Explain why it fits the user's intent and evidence.
+5. Ask targeted questions for material work that may be missing from the old CV. Save confirmed additions in the approved user evidence layer; do not demand a metric or document when the user can accurately describe the work.
+6. Draft the role CV from the baseline, confirmed profile facts, recovered evidence, employer brief, and role-family positioning.
+7. Mark claims internally as sourced, reframed, or new/unconfirmed. Ask once for material confirmation; do not hard-reject useful marketing language merely because wording is new, and do not put provenance labels in the finished CV.
+8. Save durable Markdown and HTML with the current job, JD, decision, and review-receipt metadata, then generate PDF and DOCX.
+9. Record the four-file bundle with `cv-bundle.mjs record`, then run `cv-bundle.mjs check` against the exact PDF or DOCX proposed for upload. A changed file or review input makes the old bundle stale.
+10. Inspect the live application form without filling. Ask for missing answers; save a reusable answer with `application-preflight.mjs approve-answer` only after explicit approval, and never save passwords, OTPs, payment data, tokens, or identity-document numbers.
+11. Record every currently visible field with `application-preflight.mjs record`. It must return `ready` against the current job, review, exact CV, and approved-answer fingerprint.
+12. Show company, role, URL, exact verified CV filename, and any unresolved form answers.
+13. Obtain explicit approval for this named application.
+14. Follow `modes/apply.md`, including the application-attempt receipt.
+15. Finish the attempt immediately. `confirmed` updates the matching tracker row to `Applied` and rebuilds its derived index; `unknown`, `failed`, and `abandoned` remain attempt evidence without pretending the application succeeded. An unknown outcome must not be retried automatically.
 
 ## Dashboard and learning loop
 
@@ -131,9 +179,15 @@ Run:
 npm run dashboard
 ```
 
-The browser dashboard reads `data/applications.md` and shows scanned, reviewed, shortlisted, applied/active, rejected, and skipped counts plus posting/report/CV links. Thumbs feedback writes `data/job-feedback.jsonl` only.
+The browser dashboard reads `data/applications.md` and shows stored scan volume plus agent-reviewed, shortlisted, applied, rejected, and skipped counts and links to the original posting, saved full JD, agent review, tailored PDF, and tailored DOCX. `Decision` (`pending|apply|watch|skip`), agent `Rank`/`Confidence`, lifecycle `Status`, and internal `Origin` are separate; never count `Evaluated` as shortlisted by itself. Tracker-derived current counts exclude non-current `Origin` rows; scan history is not yet attributed by run. Origin is internal metadata and the dashboard shows a badge only for imported/history rows, so do not ask a new user where a row came from when there is no imported history.
 
-Thumbs-down without a reason is `needs_reason`. The agent should ask a short follow-up in chat and use the answer to propose future tuning. Feedback never rewrites preferences automatically.
+The dashboard uses stage-aware actions instead of thumbs: `Mark high stakes`/`Return to standard` for preparation depth, `Prepare application` or `Ignore` before preparation, `Inspect application form` or `Request CV change` after a verified CV exists, and `Approve & apply` only after a current ready preflight. Each action is appended to `data/job-feedback.jsonl`; it never mutates the tracker or preferences itself. The default dashboard order and `node job-feedback.mjs pending` put viable high-stakes work first. At status/dashboard handoff, process each receipt through the existing review, CV, preflight, tracker, and attempt owners, then resolve the receipt. Resolving a priority receipt acknowledges the work but does not erase the selected priority state.
+
+Treat `Ignore` as a user stop, not a weak negative signal. It blocks application while pending. Record the resulting skip through the existing review/tracker owner and resolve the action, or dismiss it only after the user explicitly withdraws it.
+
+A CV-change request must contain the user's note. It blocks application start until the agent updates the job-specific CV, regenerates and records a different verified bundle, and resolves the request against that new bundle fingerprint. If the user explicitly withdraws the request, resolve it with `--dismissed-by-user`. Do not resolve a request merely because it was read.
+
+`Approve & apply` is explicit named approval for the receipt's exact company, role, selected CV bundle/file, and inspected form. Start that attempt with `--approval-receipt=<id>` instead of restating chat approval. The dashboard does not submit by itself; the agent still follows the application mode, records the attempt, and captures the outcome. Feedback notes may suggest one-job action or reusable tuning, but never rewrite preferences automatically.
 
 After the first few ApplyCue applications, offer to search approved email for earlier/ongoing application confirmations and import them into the same history. This is not a pre-first-run blocker; the dashboard should make imported history visible.
 
@@ -158,8 +212,13 @@ npm run scan
 node verify-pipeline.mjs
 npm run tracker -- query --limit 20
 npm run dashboard
+node job-feedback.mjs pending
 node generate-docx.mjs <tailored.md> <tailored.docx>
+node cv-bundle.mjs check --job=N --cv=<selected.pdf-or-docx>
+node application-preflight.mjs answers
+node application-preflight.mjs check --job=N --company=<company> --title=<role> --url=<url> --cv=<selected.pdf-or-docx>
 node application-attempt.mjs check --job=N
+node review-evidence.mjs check --job=N
 npm run check
 ```
 

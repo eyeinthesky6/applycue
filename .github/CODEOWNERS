@@ -1,5 +1,5 @@
 # CODEOWNERS — auto-requests maintainer review on sensitive paths.
-# Last matching pattern wins. See MAINTAINERS.md for the team + ladder.
+# Last matching pattern wins. See MAINTAINERS.md for current ownership.
 #
 # Scope principle: gate what CI can't catch (a bad change here passes the
 # tests silently) + the catastrophic updater + governance docs. Code that
@@ -13,6 +13,7 @@
 /CONTRIBUTING.md       @eyeinthesky6
 /MAINTAINERS.md        @eyeinthesky6
 /ARCHITECTURE.md       @eyeinthesky6
+/docs/ARCHITECTURE.md  @eyeinthesky6
 /.github/CODEOWNERS    @eyeinthesky6
 
 # Agent behavior & the multi-CLI contract (prompt layer — CI-blind)
@@ -22,7 +23,7 @@
 /OPENCODE.md           @eyeinthesky6
 /GEMINI.md             @eyeinthesky6
 
-# Scoring & the system/user data contract (CI-blind; silent-danger)
+# Agent decision behavior & the system/user data contract (CI-blind; silent-danger)
 /modes/_shared.md      @eyeinthesky6
 /DATA_CONTRACT.md      @eyeinthesky6
 

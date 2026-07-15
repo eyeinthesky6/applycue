@@ -4,7 +4,7 @@
      THIS FILE IS AUTO-UPDATABLE. Don't put personal data here.
      
      Your customizations go in modes/_profile.md (never auto-updated).
-     This file contains system rules, scoring logic, and tool config
+     This file contains system rules, review logic, and tool config
      that improve with each ApplyCue release.
      ============================================================ -->
 
@@ -27,31 +27,38 @@ The files below are the **ONLY** sources for user-facing content (CV, cover lett
 **RULE: Read _profile.md AFTER this file. User customizations in _profile.md override defaults here.**
 **RULE: NEVER claim the user authored a project, repo, library, tool, framework, or open-source artefact unless explicitly attributed to them in cv.md or article-digest.md.** Tool-of-trade conflation (user uses X → user built X) is the most common fabrication pattern and is forbidden.
 **RULE: Keywords get reformulated, never fabricated.** Reorder, reframe, emphasise — but never invent. If a claim isn't backed by an in-scope file, ask the user. If no answer, omit. Silence on a topic beats manufactured detail.
+**RULE: The supplied CV is not assumed complete.** If a JD exposes useful work that may have been omitted or forgotten, ask a focused question. A clear user confirmation is valid evidence; save it in `cv.md`, `article-digest.md`, or the approved profile layer before using it. An exact metric or documentary proof is not required. Never invent precision.
 
 ---
 
-## Scoring System
+## Agent Review Contract
 
-The evaluation uses 6 blocks (A-F) with a global score of 1-5:
+Do not calculate a global CV-to-JD fit score for new reviews. Keyword overlap and old numeric scores may be shown as legacy diagnostics, but they cannot shortlist, reject, rank, or trigger artifact generation.
 
-| Dimension | What it measures |
-|-----------|-----------------|
-| Match con CV | Skills, experience, proof points alignment |
-| North Star alignment | How well the role fits the user's target archetypes (from _profile.md) |
-| Comp | Salary vs market (5=top quartile, 1=well below) |
-| Cultural signals | Company culture, growth, stability, remote policy |
-| Red flags | Blockers, warnings (negative adjustments) |
-| **Global** | Weighted average of above |
+Before every final role review, re-read the confirmed user intent in `config/profile.yml` and `modes/_profile.md`, plus approved feedback/tuning that exists. If a missing preference could materially change the decision, keep the role pending and ask the user. Do not silently infer or save it.
 
-**Score interpretation:**
-- 4.5+ → Strong match, recommend applying immediately
-- 4.0-4.4 → Good match, worth applying
-- 3.5-3.9 → Decent but not ideal, apply only if specific reason
-- Below 3.5 → Recommend against applying (see Ethical Use in AGENTS.md)
+Every completed review records:
+
+| Field | Meaning |
+|-------|---------|
+| Decision | `apply`, `watch`, or `skip` |
+| Rank | Explicit relative order among the current `apply` queue; positive integer, otherwise `—` until the queue is compared |
+| Confidence | `high`, `medium`, or `low`; historical unknowns use `unknown` |
+| Strengths | Candidate evidence that maps to material JD needs |
+| Gaps | Real weaknesses or trade-offs; distinguish blockers from manageable gaps |
+| Unknowns | Missing JD, candidate, compensation, location, or company evidence |
+| Preference basis | Confirmed user preferences that materially affected the decision |
+| Reason | Plain-language explanation of the decision |
+
+Rank is assigned after comparing the viable `apply` roles together. It is not derived from text similarity or a score. Application artifacts are prepared for `apply`; `watch` and `skip` keep the report unless the user asks for artifacts.
+
+High stakes is explicit user priority, not evidence of fit. Review a high-stakes role before the standard queue. If it earns `apply`, assign it the top available apply rank and re-rank the remaining apply queue coherently; several high-stakes roles take the top consecutive ranks after comparison. If it earns `watch` or `skip`, do not force it into the apply queue.
+
+Every current final decision must be bound to the expanded full JD and the current confirmed inputs. Save the complete visible JD with `node review-evidence.mjs capture ... --confirmed-complete`; after the report and tracker decision/rank/confidence are final, run `node review-evidence.mjs record ...`. A missing or stale receipt makes the effective decision `pending` without erasing the old record. Do not create a receipt from a card, email snippet, collapsed preview, or closed page.
 
 ## Posting Legitimacy (Block G)
 
-Block G assesses whether a posting is likely a real, active opening. It does NOT affect the 1-5 global score -- it is a separate qualitative assessment.
+Block G assesses whether a posting is likely a real, active opening. It remains a separate qualitative assessment and does not become a semantic fit formula.
 
 **Three tiers:**
 - **High Confidence** -- Real, active opening (most signals positive)
@@ -97,8 +104,8 @@ After detecting archetype, read `modes/_profile.md` for the user's specific fram
 ### NEVER
 
 1. Invent experience or metrics
-2. Modify cv.md or portfolio files
-3. Submit applications on behalf of the candidate
+2. Modify cv.md, evidence, portfolio, or public profiles without the user's approval
+3. Submit an application without named approval for that company, role, form, and selected CV
 4. Share phone number in generated messages
 5. Recommend comp below market rate
 6. Generate a PDF without reading the JD first
@@ -109,7 +116,7 @@ After detecting archetype, read `modes/_profile.md` for the user's specific fram
 ### ALWAYS
 
 0. **Cover letter:** If the form allows it, ALWAYS include one. Same visual design as CV. JD quotes mapped to proof points. 1 page max.
-1. Read cv.md, _profile.md, and article-digest.md (if exists) before evaluating
+1. Read cv.md, config/profile.yml, _profile.md, and article-digest.md (if exists) before evaluating; state the material preference basis in the review
 1b. **First evaluation of each session:** Run `node cv-sync-check.mjs`. If warnings, notify user.
 2. Detect the role archetype and adapt framing per _profile.md
 3. Cite exact lines from CV when matching
@@ -119,7 +126,7 @@ After detecting archetype, read `modes/_profile.md` for the user's specific fram
 7. Be direct and actionable -- no fluff
 8. Native tech English for generated text. Short sentences, action verbs, no passive voice.
 8b. Case study URLs in PDF Professional Summary (recruiter may only read this).
-9. **Tracker additions as TSV** -- NEVER edit applications.md directly. Write TSV in `batch/tracker-additions/`.
+9. **Tracker additions as TSV** -- NEVER edit applications.md directly. Write TSV in `batch/tracker-additions/`. Keep semantic `Decision`, agent `Rank`/`Confidence`, lifecycle `Status`, and internal `Origin` separate; a newly reviewed row has `Origin=current`, and `Evaluated` alone does not mean shortlisted.
 10. **Include `**URL:**` in every report header.**
 
 ### Tools
@@ -130,8 +137,8 @@ After detecting archetype, read `modes/_profile.md` for the user's specific fram
 | WebFetch | Fallback for extracting JDs from static pages |
 | Playwright | Verify offers (browser_navigate + browser_snapshot). **NEVER 2+ agents with Playwright in parallel.** |
 | Read | cv.md, _profile.md, article-digest.md, cv-template.html |
-| Write | Temporary HTML for PDF, applications.md, reports .md |
-| Edit | Update tracker |
+| Write | Durable CV HTML/Markdown, reports, and tracker-addition TSV files |
+| Edit | User-approved profile/config changes only |
 | Canva MCP | Optional visual CV generation. Duplicate base design, edit text, export PDF. Requires `cv.canva_resume_design_id` in profile.yml. |
 | Bash | `node generate-pdf.mjs` |
 
@@ -169,7 +176,7 @@ If `voice-dna.md` exists in the project root, it is a writing guardrail for gene
 
 **Check `_profile.md` first.** If a `## Writing Style` section exists there, use it directly — do not re-scan the writing-samples files. Re-scanning is only needed when new samples are added or the user explicitly asks to recalibrate.
 
-**When to apply:** Before generating any text the user will send or publish — cover letters, LinkedIn outreach, application form answers, follow-up emails, executive summaries, profile blurbs. Does NOT apply to internal evaluation reports (A–F blocks, scores, analysis).
+**When to apply:** Before generating any text the user will send or publish — cover letters, LinkedIn outreach, application form answers, follow-up emails, executive summaries, profile blurbs. Does NOT apply to internal evaluation reports (A–G review analysis).
 
 **If no cached style in `_profile.md`:** Read all files in `writing-samples/`, **skipping any file named `README.md`**. If no user-provided samples are found, skip style calibration and gently note — once, without pressure — that adding a writing sample (e.g. a past cover letter, a LinkedIn About section, any professional writing) would help tailor outputs to their voice. If samples exist, extract the markers below and write the result to `_profile.md` under `## Writing Style` so future sessions skip this step.
 

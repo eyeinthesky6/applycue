@@ -2,6 +2,8 @@
 
 Process job URLs stored in `data/pipeline.md`. The user adds URLs at any time and then executes `/applycue pipeline` to process them all.
 
+When the current conversation makes clear that a URL came directly from the user, treat it as **high stakes** unless they said standard. Scanner-written entries remain standard. Carry the priority through review and CV preparation, then persist it through `job-feedback.mjs` once the role has a job number. Do not guess that an old unattributed inbox row was manually supplied.
+
 ## Liveness sweep
 
 **Run this before processing any URLs.** Entries added by the scanner in headless/batch mode carry `**Verification:** unconfirmed (batch mode)` because Playwright was unavailable at scan time — they were never checked for liveness. Without a sweep, dead postings reach evaluation one tab at a time, burning time and tokens on phantom roles (a single inbox of 8 stale URLs produces 8 wasted evaluations).
@@ -23,17 +25,15 @@ This complements — does not replace — the per-URL liveness gate in `auto-pip
    a. Claim the next sequential `REPORT_NUM` atomically by running `node reserve-report-num.mjs` (and release the sentinel using `node reserve-report-num.mjs --release <num>` after the report is written)
    b. **Extract JD** using Playwright (browser_navigate + browser_snapshot) → WebFetch → WebSearch
    c. If the URL is not accessible → mark as `- [!]` with a note and continue
-   d. **Execute full auto-pipeline**: Evaluation A-F → Report .md → PDF (if score >= `auto_pdf_score_threshold`) → Tracker
-   e. **Move from "Pending" to "Processed"**: `- [x] #NNN | URL | Company | Role | Score/5 | PDF ✅/❌`
+   d. **Execute full auto-pipeline**: A-G review → agent `apply|watch|skip` decision → Report .md → PDF/DOCX only for `apply` → Tracker
+   e. **Move from "Pending" to "Processed"**: `- [x] #NNN | URL | Company | Role | Decision | Rank | PDF ✅/❌`
 
-   **About the PDF gate (configurable):** Read `config/profile.yml` → `auto_pdf_score_threshold`. If the key does not exist, default to `3.0` (this mode's original gate). If the evaluation score is less than the threshold, skip PDF generation: write the report normally, show in the header `**PDF:** not generated — run /applycue pdf {company-slug} to create on demand`, and mark PDF ❌ in the tracker. If the score is ≥ threshold, generate the PDF as usual.
-
-   **Tuning it:** Generating a tailored PDF costs ~30–60s per entry (Playwright launch + HTML render) and produces files that often go unused — most roles score in the 2.x/3.x range and never reach the application stage. Raise `auto_pdf_score_threshold` (e.g. `4.0`) to write only the report for marginal offers and produce the PDF on demand via `/applycue pdf {slug}`; set `0` to generate one for every offer. Both modes (Path A `/applycue pipeline` and Path B `batch/batch-runner.sh`) read the same key, so behavior is identical regardless of which path processes an offer.
+   **Artifact gate:** Semantic fit scores do not control this flow. Prepare the CV/application bundle for `apply`. Keep `watch` and `skip` report-only unless the user asks. After all viable roles are reviewed, compare the `apply` queue and assign explicit ranks before presenting the shortlist.
 3. **If there are 3+ pending URLs**, launch agents in parallel (Agent tool with `run_in_background`) to maximize speed — at most one agent per pending URL. Each is a **single-pass worker**: it evaluates its one URL and must **not** spawn further subagents or invoke other skills; its company/comp research stays inline and bounded (see `modes/_shared.md` → Subagent delegation). This keeps a pipeline run from fanning out into a recursive agent swarm.
 4. **At the end**, show summary table:
 
 ```
-| # | Company | Role | Score | PDF | Recommended action |
+| Rank | Company | Role | Decision | Confidence | PDF | Reason |
 ```
 
 ## Format of pipeline.md
@@ -47,8 +47,8 @@ This complements — does not replace — the per-URL liveness gate in `auto-pip
 - [!] https://private.url/job — Error: login required
 
 ## Processed
-- [x] #143 | https://jobs.example.com/posting/789 | Acme Corp | AI PM | 4.2/5 | PDF ✅
-- [x] #144 | https://boards.greenhouse.io/xyz/jobs/012 | BigCo | SA | 2.1/5 | PDF ❌
+- [x] #143 | https://jobs.example.com/posting/789 | Acme Corp | AI PM | apply | Rank 1 | PDF ✅
+- [x] #144 | https://boards.greenhouse.io/xyz/jobs/012 | BigCo | SA | skip | — | PDF ❌
 ```
 
 Pending lines are variable-width. The rawest form is a bare pasted URL,

@@ -34,7 +34,6 @@ RETRY_FAILED=false
 RESUME_PAUSED=false
 START_FROM=0
 MAX_RETRIES=2
-MIN_SCORE=0
 SKIP_PDF=false
 MODEL=""  # empty = let claude -p use the Claude Max default
 RATE_LIMIT_SLEEP=300
@@ -42,11 +41,6 @@ BATCH_PAUSED=false
 STATUS_ONLY=false
 WATCH_MODE=false
 LIMIT=0
-
-# Return success for non-negative integer or decimal strings.
-is_decimal_number() {
-  [[ "$1" =~ ^[0-9]+([.][0-9]+)?$ ]]
-}
 
 usage() {
   cat <<'USAGE'
@@ -63,7 +57,6 @@ Options:
   --start-from N       Start from offer ID N (skip earlier IDs)
   --limit N            Max number of offers to process in this run
   --max-retries N      Max retry attempts per offer (default: 2)
-  --min-score N        Skip PDF/tracker for offers scoring below N (default: 0 = off)
   --skip-pdf           Skip PDF generation entirely (write ❌ in tracker PDF column)
   --rate-limit-sleep N Seconds to wait before retrying a rate-limited worker
                        (default: 300)
@@ -106,7 +99,6 @@ while [[ $# -gt 0 ]]; do
     --start-from) START_FROM="$2"; shift 2 ;;
     --limit) LIMIT="$2"; shift 2 ;;
     --max-retries) MAX_RETRIES="$2"; shift 2 ;;
-    --min-score) MIN_SCORE="$2"; shift 2 ;;
     --skip-pdf) SKIP_PDF=true; shift ;;
     --rate-limit-sleep)
       [[ $# -ge 2 ]] || { echo "ERROR: --rate-limit-sleep requires an argument"; exit 1; }
@@ -123,11 +115,6 @@ done
 
 if ! [[ "$RATE_LIMIT_SLEEP" =~ ^[0-9]+$ ]]; then
   echo "ERROR: --rate-limit-sleep must be a non-negative integer (seconds)."
-  exit 1
-fi
-
-if ! is_decimal_number "$MIN_SCORE"; then
-  echo "ERROR: --min-score must be a non-negative number."
   exit 1
 fi
 
@@ -193,7 +180,7 @@ check_status_prerequisites() {
 # Initialize state file if it doesn't exist
 init_state() {
   if [[ ! -f "$STATE_FILE" ]]; then
-    printf 'id\turl\tstatus\tstarted_at\tcompleted_at\treport_num\tscore\terror\tretries\n' > "$STATE_FILE"
+    printf 'id\turl\tstatus\tstarted_at\tcompleted_at\treport_num\tlegacy_score\terror\tretries\n' > "$STATE_FILE"
   fi
 }
 
@@ -330,7 +317,7 @@ next_report_num_unlocked() {
 # Update or insert state for an offer.
 # Caller must hold STATE_LOCK_DIR while this runs.
 update_state_unlocked() {
-  local id="$1" url="$2" status="$3" started="$4" completed="$5" report_num="$6" score="$7" error="$8" retries="$9"
+  local id="$1" url="$2" status="$3" started="$4" completed="$5" report_num="$6" legacy_score="$7" error="$8" retries="$9"
 
   if [[ ! -f "$STATE_FILE" ]]; then
     init_state
@@ -347,7 +334,7 @@ update_state_unlocked() {
     [[ "$sid" == "id" ]] && continue  # skip header
     if [[ "$sid" == "$id" ]]; then
       printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$id" "$url" "$status" "$started" "$completed" "$report_num" "$score" "$error" "$retries" >> "$tmp"
+        "$id" "$url" "$status" "$started" "$completed" "$report_num" "$legacy_score" "$error" "$retries" >> "$tmp"
       found=true
     else
       printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
@@ -357,7 +344,7 @@ update_state_unlocked() {
 
   if [[ "$found" == "false" ]]; then
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "$id" "$url" "$status" "$started" "$completed" "$report_num" "$score" "$error" "$retries" >> "$tmp"
+      "$id" "$url" "$status" "$started" "$completed" "$report_num" "$legacy_score" "$error" "$retries" >> "$tmp"
   fi
 
   mv "$tmp" "$STATE_FILE"
@@ -538,25 +525,12 @@ process_offer() {
   completed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
   if [[ $exit_code -eq 0 ]]; then
-    # Try to extract score from worker output
-    local score="-"
-    local score_match
-   score_match=$(sed -nE 's/.*"score":[[:space:]]*([0-9.]+).*/\1/p' "$log_file" 2>/dev/null | head -1 || true)
-    if [[ -n "$score_match" ]]; then
-      score="$score_match"
-    fi
-
-    # Check min-score gate
-    if is_decimal_number "$score" && awk -v min="$MIN_SCORE" 'BEGIN{exit !(min > 0)}'; then
-      if awk -v score="$score" -v min="$MIN_SCORE" 'BEGIN{exit !(score < min)}'; then
-        update_state "$id" "$url" "skipped" "$started_at" "$completed_at" "$report_num" "$score" "below-min-score" "$retries"
-        echo "    ⏭️  Skipped (score: $score < min-score: $MIN_SCORE)"
-        return 0
-      fi
-    fi
-
-    update_state "$id" "$url" "completed" "$started_at" "$completed_at" "$report_num" "$score" "-" "$retries"
-    echo "    ✅ Completed (score: $score, report: $report_num)"
+    # The worker records its apply/watch/skip judgment, evidence and confidence
+    # in the report/tracker addition. Cross-role rank is assigned by the main
+    # agent after all workers finish. The old score state field stays as `-`
+    # solely so interrupted historical batch files remain readable.
+    update_state "$id" "$url" "completed" "$started_at" "$completed_at" "$report_num" "-" "-" "$retries"
+    echo "    ✅ Completed (report: $report_num; awaiting queue rank)"
   elif [[ "$terminal_failure_recorded" == "false" ]]; then
     if (( retries < MAX_RETRIES )); then
       retries=$((retries + 1))
@@ -592,18 +566,12 @@ print_summary() {
   fi
 
   local total=0 completed=0 skipped=0 failed=0 pending=0
-  local score_sum=0 score_count=0
 
-  while IFS=$'\t' read -r sid _ sstatus _ _ _ sscore _ _; do
+  while IFS=$'\t' read -r sid _ sstatus _ _ _ _ _ _; do
     [[ "$sid" == "id" ]] && continue
     total=$((total + 1))
     case "$sstatus" in
-      completed) completed=$((completed + 1))
-        if is_decimal_number "$sscore"; then
-          score_sum=$(awk -v sum="$score_sum" -v score="$sscore" 'BEGIN{print sum + score}' 2>/dev/null || echo "$score_sum")
-          score_count=$((score_count + 1))
-        fi
-        ;;
+      completed) completed=$((completed + 1)) ;;
       skipped) skipped=$((skipped + 1)) ;;
       failed) failed=$((failed + 1)) ;;
       *) pending=$((pending + 1)) ;;
@@ -612,11 +580,6 @@ print_summary() {
 
   echo "Total: $total | Completed: $completed | Skipped: $skipped | Failed: $failed | Pending: $pending"
 
-  if (( score_count > 0 )); then
-    local avg
-    avg=$(awk -v sum="$score_sum" -v count="$score_count" 'BEGIN{printf "%.1f", sum / count}' 2>/dev/null || echo "N/A")
-    echo "Average score: $avg/5 ($score_count scored)"
-  fi
 }
 
 print_status_table() {
@@ -626,7 +589,6 @@ print_status_table() {
   fi
 
   local total=0 completed=0 processing=0 failed=0 pending=0 skipped=0 rate_limited=0 paused_rate_limit=0
-  local score_sum=0 score_count=0
 
   # Read first line to skip header
   local header=true
@@ -642,13 +604,7 @@ print_status_table() {
     sreport="${sreport%$'\r'}"
     total=$((total + 1))
     case "$sstatus" in
-      completed)
-        completed=$((completed + 1))
-        if is_decimal_number "$sscore"; then
-          score_sum=$(awk -v sum="$score_sum" -v score="$sscore" 'BEGIN{print sum + score}' 2>/dev/null || echo "$score_sum")
-          score_count=$((score_count + 1))
-        fi
-        ;;
+      completed) completed=$((completed + 1)) ;;
       processing) processing=$((processing + 1)) ;;
       failed) failed=$((failed + 1)) ;;
       skipped) skipped=$((skipped + 1)) ;;
@@ -660,17 +616,12 @@ print_status_table() {
 
   echo "=== Batch Progress ==="
   echo "Total: $total | Completed: $completed | Processing: $processing | Failed: $failed | Pending: $pending | Skipped: $skipped | Rate Limited: $rate_limited | Paused: $paused_rate_limit"
-  if (( score_count > 0 )); then
-    local avg
-    avg=$(awk -v sum="$score_sum" -v count="$score_count" 'BEGIN{printf "%.1f", sum / count}' 2>/dev/null || echo "N/A")
-    echo "Average score: $avg/5 ($score_count scored)"
-  fi
   echo ""
 
   # Format the per-job table:
-  # Columns: ID, Status, Report, Score, Target (URL or Error Message)
-  printf "%-4s | %-17s | %-6s | %-5s | %-40s\n" "ID" "Status" "Report" "Score" "URL / Error"
-  printf "%-4s+%-19s+%-8s+%-7s+%-42s\n" "----" "-------------------" "--------" "-------" "------------------------------------------"
+  # Columns: ID, Status, Report, Target (URL or Error Message)
+  printf "%-4s | %-17s | %-6s | %-40s\n" "ID" "Status" "Report" "URL / Error"
+  printf "%-4s+%-19s+%-8s+%-42s\n" "----" "-------------------" "--------" "------------------------------------------"
 
   header=true
   while IFS=$'\t' read -r sid surl sstatus sstarted scompleted sreport sscore serror sretries || [[ -n "$sid" ]]; do
@@ -691,7 +642,7 @@ print_status_table() {
     if (( ${#target} > 50 )); then
       target="${target:0:47}..."
     fi
-    printf "%-4s | %-17s | %-6s | %-5s | %-50s\n" "$sid" "$sstatus" "$sreport" "$sscore" "$target"
+    printf "%-4s | %-17s | %-6s | %-50s\n" "$sid" "$sstatus" "$sreport" "$target"
   done < "$STATE_FILE"
 }
 
@@ -929,4 +880,3 @@ main() {
 }
 
 main "$@"
-

@@ -98,5 +98,5 @@ If you have a live demo/dashboard (check profile.yml), offer access in applicati
 - Specify timezone overlap in free-text fields
 
 **In evaluations (scoring):**
-- Remote dimension for hybrid outside your country: score **3.0** (not 1.0)
-- Only score 1.0 if JD says "must be on-site 4-5 days/week, no exceptions"
+- Hybrid outside your country is a relocation/trade-off question for agent review, not a fit-score penalty.
+- Treat "must be on-site 4-5 days/week, no exceptions" as a hard constraint only when it conflicts with a confirmed user preference.

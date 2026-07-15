@@ -3,7 +3,7 @@
  * analyze-patterns.mjs — Rejection Pattern Detector for ApplyCue
  *
  * Parses applications.md + all linked reports, extracts dimensions
- * (archetype, seniority, remote, gaps, scores), classifies outcomes,
+ * (archetype, seniority, remote, decisions, gaps), classifies outcomes,
  * and outputs structured JSON with actionable patterns.
  *
  * Run: node analyze-patterns.mjs          (JSON to stdout)
@@ -27,9 +27,17 @@ const REPORTS_DIR = join(APPLYCUE, 'reports');
 const MACHINE_SUMMARY_FIELDS = new Set([
   'company',
   'role',
-  'score',
   'legitimacy_tier',
   'archetype',
+  'decision',
+  'rank',
+  'strengths',
+  'gaps',
+  'unknowns',
+  'preference_basis',
+  'reason',
+  // Legacy report fields remain readable during migration.
+  'score',
   'final_decision',
   'hard_stops',
   'soft_gaps',
@@ -119,27 +127,28 @@ function runSelfTest() {
 \`\`\`yaml
 company: "Acme"
 role: "Staff AI Engineer"
-score: 4.4
 legitimacy_tier: "High Confidence"
 archetype: "AI Platform / LLMOps Engineer"
-final_decision: "Apply"
-hard_stops: []
-soft_gaps:
-  - "No direct healthcare domain experience"
-top_strengths:
+decision: "apply"
+rank: 1
+strengths:
   - "Production evaluation pipelines"
-risk_level: "Medium"
-confidence: "High"
-next_action: "Follow up on ticket #42 with tailored CV"
+gaps:
+  - "No direct healthcare domain experience"
+unknowns: []
+preference_basis:
+  - "Target AI platform leadership"
+reason: "Strong evidence for the core role needs"
+confidence: "high"
 \`\`\`
 `);
 
   const failures = [];
   if (!summary) failures.push('summary was not parsed');
-  if (summary?.score !== 4.4) failures.push('numeric score was not parsed');
-  if (!Array.isArray(summary?.hard_stops) || summary.hard_stops.length !== 0) failures.push('empty list was not parsed');
-  if (summary?.soft_gaps?.[0] !== 'No direct healthcare domain experience') failures.push('list item was not parsed');
-  if (summary?.next_action !== 'Follow up on ticket #42 with tailored CV') failures.push('hash-containing scalar field was not parsed');
+  if (summary?.decision !== 'apply') failures.push('decision was not parsed');
+  if (!Array.isArray(summary?.unknowns) || summary.unknowns.length !== 0) failures.push('empty list was not parsed');
+  if (summary?.gaps?.[0] !== 'No direct healthcare domain experience') failures.push('list item was not parsed');
+  if (summary?.reason !== 'Strong evidence for the core role needs') failures.push('reason was not parsed');
 
   if (failures.length > 0) {
     console.error(`Machine Summary parser self-test failed: ${failures.join('; ')}`);
@@ -194,7 +203,7 @@ function parseReport(reportPath) {
     report.role = normalizeScalar(machineSummary.role) || report.role;
     report.archetype = normalizeScalar(machineSummary.archetype) || report.archetype;
     report.legitimacyTier = normalizeScalar(machineSummary.legitimacy_tier) || report.legitimacyTier;
-    report.finalDecision = normalizeScalar(machineSummary.final_decision) || report.finalDecision;
+    report.finalDecision = normalizeScalar(machineSummary.decision) || normalizeScalar(machineSummary.final_decision) || report.finalDecision;
     report.domain = normalizeScalar(machineSummary.domain) || report.domain;
     report.seniority = normalizeScalar(machineSummary.seniority) || report.seniority;
     report.remote = normalizeScalar(machineSummary.remote) || report.remote;
@@ -202,7 +211,9 @@ function parseReport(reportPath) {
     report.riskLevel = normalizeScalar(machineSummary.risk_level) || report.riskLevel;
     report.confidence = normalizeScalar(machineSummary.confidence) || report.confidence;
     report.nextAction = normalizeScalar(machineSummary.next_action) || report.nextAction;
-    report.topStrengths = normalizeList(machineSummary.top_strengths);
+    report.topStrengths = normalizeList(machineSummary.strengths).length
+      ? normalizeList(machineSummary.strengths)
+      : normalizeList(machineSummary.top_strengths);
 
     if (typeof machineSummary.score === 'number') {
       report.scores.global = machineSummary.score;
@@ -213,6 +224,9 @@ function parseReport(reportPath) {
     }
     for (const softGap of normalizeList(machineSummary.soft_gaps)) {
       report.gaps.push({ description: softGap, severity: 'soft gap', mitigation: '' });
+    }
+    for (const gap of normalizeList(machineSummary.gaps)) {
+      report.gaps.push({ description: gap, severity: 'review gap', mitigation: '' });
     }
   }
 
@@ -391,30 +405,6 @@ function analyze() {
     funnel[s] = (funnel[s] || 0) + 1;
   }
 
-  // --- Score comparison by outcome ---
-  const scoresByOutcome = { positive: [], negative: [], self_filtered: [], pending: [] };
-  for (const e of enriched) {
-    if (e.score > 0) scoresByOutcome[e.outcome].push(e.score);
-  }
-
-  const scoreStats = (arr) => {
-    if (arr.length === 0) return { avg: 0, min: 0, max: 0, count: 0 };
-    const avg = arr.reduce((a, b) => a + b, 0) / arr.length;
-    return {
-      avg: Math.round(avg * 100) / 100,
-      min: Math.min(...arr),
-      max: Math.max(...arr),
-      count: arr.length,
-    };
-  };
-
-  const scoreComparison = {
-    positive: scoreStats(scoresByOutcome.positive),
-    negative: scoreStats(scoresByOutcome.negative),
-    self_filtered: scoreStats(scoresByOutcome.self_filtered),
-    pending: scoreStats(scoresByOutcome.pending),
-  };
-
   // --- Archetype breakdown ---
   const archetypeMap = new Map();
   for (const e of enriched) {
@@ -479,19 +469,6 @@ function analyze() {
     conversionRate: data.total > 0 ? Math.round((data.positive / data.total) * 100) : 0,
   })).sort((a, b) => b.total - a.total);
 
-  // --- Score threshold analysis ---
-  const positiveScores = scoresByOutcome.positive.filter(s => s > 0);
-  const minPositiveScore = positiveScores.length > 0 ? Math.min(...positiveScores) : 0;
-  const scoreThreshold = {
-    recommended: minPositiveScore > 0 ? Math.floor(minPositiveScore * 10) / 10 : 3.5,
-    reasoning: positiveScores.length > 0
-      ? `Lowest score among positive outcomes is ${minPositiveScore}. No applications below this score led to progress.`
-      : 'Not enough positive outcome data to determine threshold.',
-    positiveRange: positiveScores.length > 0
-      ? `${Math.min(...positiveScores)} - ${Math.max(...positiveScores)}`
-      : 'N/A',
-  };
-
   // --- Tech stack gaps (from negative + self_filtered outcomes) ---
   const stackGapCounts = new Map();
   for (const e of enriched) {
@@ -537,15 +514,6 @@ function analyze() {
     });
   }
 
-  // Score threshold recommendation
-  if (minPositiveScore > 3.0) {
-    recommendations.push({
-      action: `Set minimum score threshold at ${scoreThreshold.recommended}/5 before generating PDFs`,
-      reasoning: `No positive outcomes below ${minPositiveScore}/5. Scores below this are wasted effort.`,
-      impact: 'medium',
-    });
-  }
-
   // Best archetype recommendation
   const bestArchetype = archetypeBreakdown.filter(a => a.total >= 2).sort((a, b) => b.conversionRate - a.conversionRate)[0];
   if (bestArchetype && bestArchetype.conversionRate > 0) {
@@ -583,12 +551,10 @@ function analyze() {
       },
     },
     funnel,
-    scoreComparison,
     archetypeBreakdown,
     blockerAnalysis,
     remotePolicy,
     companySizeBreakdown,
-    scoreThreshold,
     techStackGaps,
     recommendations,
   };
@@ -601,7 +567,7 @@ function printSummary(result) {
     return;
   }
 
-  const { metadata, funnel, scoreComparison, archetypeBreakdown, blockerAnalysis, remotePolicy, scoreThreshold, techStackGaps, recommendations } = result;
+  const { metadata, funnel, archetypeBreakdown, blockerAnalysis, remotePolicy, techStackGaps, recommendations } = result;
 
   console.log(`\n${'='.repeat(60)}`);
   console.log(`  Pattern Analysis — ${metadata.analysisDate}`);
@@ -616,15 +582,6 @@ function printSummary(result) {
     if (funnel[status]) {
       const pct = Math.round((funnel[status] / metadata.total) * 100);
       console.log(`  ${status.padEnd(15)} ${String(funnel[status]).padStart(3)} (${pct}%)`);
-    }
-  }
-
-  // Score comparison
-  console.log('\nSCORE BY OUTCOME');
-  console.log('-'.repeat(40));
-  for (const [group, stats] of Object.entries(scoreComparison)) {
-    if (stats.count > 0) {
-      console.log(`  ${group.padEnd(15)} avg ${stats.avg}/5  (${stats.count} entries, range ${stats.min}-${stats.max})`);
     }
   }
 
@@ -652,10 +609,6 @@ function printSummary(result) {
       console.log(`  ${g.skill.padEnd(20)} ${g.frequency}x`);
     }
   }
-
-  // Score threshold
-  console.log(`\nSCORE THRESHOLD: ${scoreThreshold.recommended}/5`);
-  console.log(`  ${scoreThreshold.reasoning}`);
 
   // Recommendations
   if (recommendations.length > 0) {

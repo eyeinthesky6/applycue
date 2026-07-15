@@ -1,8 +1,11 @@
 {
   "name": "applycue",
   "version": "0.1.0",
-  "description": "ApplyCue: an agent-led CV-to-offer pipeline.",
+  "description": "ApplyCue: a local, agent-led job-search and CV-to-application workflow.",
   "private": true,
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "packageManager": "pnpm@11.7.0",
   "scripts": {
     "test": "node test-all.mjs",
@@ -32,6 +35,10 @@
     "star": "node match-star.mjs",
     "archive": "node archive-posting.mjs",
     "application": "node application-attempt.mjs",
+    "application:preflight": "node application-preflight.mjs",
+    "feedback": "node job-feedback.mjs",
+    "review:evidence": "node review-evidence.mjs",
+    "cv:bundle": "node cv-bundle.mjs",
     "build:dashboard": "node build-dashboard.mjs",
     "dashboard": "node dashboard-server.mjs",
     "serve:dashboard": "node dashboard-server.mjs",
@@ -41,7 +48,7 @@
     "applycue",
     "ai",
     "job-search",
-    "cv-to-offer",
+    "cv-to-application",
     "claude-code",
     "opencode",
     "career",
@@ -58,7 +65,7 @@
     "docx": "^9.7.1",
     "dotenv": "^17.0.0",
     "js-yaml": "^4.1.1",
+    "jszip": "3.10.1",
     "playwright": "1.61.1"
-  },
-  "devDependencies": {}
+  }
 }

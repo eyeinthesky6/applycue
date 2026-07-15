@@ -3,8 +3,8 @@
  * dedup-tracker.mjs — Remove duplicate entries from applications.md
  *
  * Groups by normalized company, but only collapses exact tracker/report identity.
- * Keeps entry with highest score. If discarded entry had more advanced status,
- * preserves that status. Merges notes.
+ * Keeps the most advanced lifecycle row, then the newest row. If a discarded
+ * entry had more advanced status, preserves that status. Merges notes.
  *
  * Run: node ApplyCue/dedup-tracker.mjs [--dry-run]
  */
@@ -155,20 +155,6 @@ function roleMatch(a, b) {
 }
 
 /**
- * Parse a tracker score cell into a numeric value for keeper selection.
- *
- * Scores may include Markdown bolding or a `/5` suffix. Dedup only needs the
- * numeric part so it can keep the highest-scored duplicate row in a cluster.
- *
- * @param {string} s - Raw score cell such as `4.3/5` or `**4.3/5**`.
- * @returns {number} Parsed score, or 0 when no number is present.
- */
-function parseScore(s) {
-  const m = s.replace(/\*\*/g, '').match(/([\d.]+)/);
-  return m ? parseFloat(m[1]) : 0;
-}
-
-/**
  * Parse one Markdown table row from applications.md into a tracker object.
  *
  * Header and separator rows return null because they either lack enough cells
@@ -239,8 +225,14 @@ for (const [company, companyEntries] of groups) {
 
     if (cluster.length < 2) continue;
 
-    // Keep the one with highest score
-    cluster.sort((a, b) => parseScore(b.score) - parseScore(a.score));
+    // Semantic fit scores are not calibrated enough to choose which durable
+    // row survives. Preserve lifecycle progress first, then the newest exact
+    // identity record, with physical order as a deterministic final tie-break.
+    cluster.sort((a, b) =>
+      statusRank(b.status) - statusRank(a.status)
+      || String(b.date).localeCompare(String(a.date))
+      || a.lineIdx - b.lineIdx
+    );
     const keeper = cluster[0];
 
     // Check if any removed entry has more advanced status
@@ -272,7 +264,7 @@ for (const [company, companyEntries] of groups) {
       if (lineIdx !== undefined) {
         linesToRemove.add(lineIdx);
         removed++;
-        console.log(`🗑️  Remove #${dup.num} (${dup.company} — ${dup.role}, ${dup.score}) → kept #${keeper.num} (${keeper.score})`);
+        console.log(`🗑️  Remove #${dup.num} (${dup.company} — ${dup.role}, ${dup.status}) → kept #${keeper.num} (${keeper.status})`);
       }
     }
   }

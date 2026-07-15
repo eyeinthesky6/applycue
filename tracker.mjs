@@ -25,10 +25,13 @@
  *   node tracker.mjs sync [--check]             # (re)build applications.db from applications.md
  *                                               # --check: diagnose only, no write; exit 1 if issues found
  *   node tracker.mjs query [--status Applied] [--company acme] [--role designer]
+ *                          [--decision apply] [--origin current]
  *                          [--since 2026-01-01] [--id N] [--limit 20] [--json]
  *   node tracker.mjs history --id N             # status transition log observed across syncs
  *   node tracker.mjs export [--out FILE]        # inverse: applications.db → canonical markdown (stdout by default)
  *   node tracker.mjs delete --num N [--dry-run] # remove one application row from applications.md + reindex
+ *   node tracker.mjs status --num N --status Applied [--company Acme --title "Product Lead"]
+ *   node tracker.mjs migrate-metadata [--current-ids 6] [--legacy-ids 1-5] [--write]
  *
  * query/history auto-resync when applications.md changed since the last sync,
  * so the index can never serve stale reads.
@@ -39,6 +42,7 @@ import { createHash } from 'crypto';
 import { dirname, resolve, join, basename } from 'path';
 import { pathToFileURL } from 'url';
 import yaml from 'js-yaml';
+import { detectColumns, normalizeConfidence, normalizeDecision, normalizeOrigin, normalizeRank, parseTrackerRow, resolveColumns } from './tracker-parse.mjs';
 
 const MD_PATH = process.env.APPLYCUE_TRACKER || 'data/applications.md';
 const DB_PATH = process.env.APPLYCUE_TRACKER_DB
@@ -51,8 +55,9 @@ if (resolve(MD_PATH) === resolve(DB_PATH)) {
   process.exit(1);
 }
 const STATES_PATH = 'templates/states.yml';
-const HEADER = '| # | Date | Company | Role | Score | Status | PDF | Report | Notes |';
-const SEPARATOR = '|---|------|---------|------|-------|--------|-----|--------|-------|';
+const HEADER = '| # | Date | Company | Role | Score | Status | Decision | Rank | Confidence | Origin | PDF | Report | Notes |';
+const SEPARATOR = '|---|------|---------|------|-------|--------|----------|------|------------|--------|-----|--------|-------|';
+const CANONICAL_COLMAP = { num: 1, date: 2, company: 3, role: 4, score: 5, status: 6, decision: 7, rank: 8, confidence: 9, origin: 10, pdf: 11, report: 12, notes: 13 };
 
 // ── node:sqlite loading ─────────────────────────────────────────────
 
@@ -90,6 +95,10 @@ function openDb(DatabaseSync) {
       role    TEXT NOT NULL,
       score   TEXT NOT NULL DEFAULT '—',
       status  TEXT NOT NULL,
+      decision TEXT NOT NULL DEFAULT 'pending',
+      rank     TEXT NOT NULL DEFAULT '—',
+      confidence TEXT NOT NULL DEFAULT 'unknown',
+      origin   TEXT NOT NULL DEFAULT 'legacy_unknown',
       pdf     TEXT NOT NULL DEFAULT '❌',
       report  TEXT NOT NULL DEFAULT '—',
       notes   TEXT NOT NULL DEFAULT ''
@@ -108,6 +117,11 @@ function openDb(DatabaseSync) {
     CREATE INDEX IF NOT EXISTS idx_apps_company ON applications(company);
     CREATE INDEX IF NOT EXISTS idx_events_app ON status_events(app_id);
   `);
+  const columns = new Set(db.prepare('PRAGMA table_info(applications)').all().map((column) => column.name));
+  if (!columns.has('decision')) db.exec("ALTER TABLE applications ADD COLUMN decision TEXT NOT NULL DEFAULT 'pending'");
+  if (!columns.has('rank')) db.exec("ALTER TABLE applications ADD COLUMN rank TEXT NOT NULL DEFAULT '—'");
+  if (!columns.has('confidence')) db.exec("ALTER TABLE applications ADD COLUMN confidence TEXT NOT NULL DEFAULT 'unknown'");
+  if (!columns.has('origin')) db.exec("ALTER TABLE applications ADD COLUMN origin TEXT NOT NULL DEFAULT 'legacy_unknown'");
   return db;
 }
 
@@ -157,18 +171,20 @@ function repairPlaceholder(cell) {
 // ── Markdown parsing ────────────────────────────────────────────────
 
 function parseMarkdownRows(text, diag) {
+  const lines = text.split('\n');
+  const colmap = resolveColumns(lines);
+  const maxIdx = Math.max(...Object.values(colmap));
   const rows = [];
-  for (const line of text.split('\n')) {
+  for (const line of lines) {
     if (!line.trim().startsWith('|')) continue;
-    let cells = line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
-    if (cells.length < 2) continue;
-    if (cells[0] === '#' || /^[-: ]*$/.test(cells.join(''))) continue; // header / separator
-    if (cells.length > 9) {
-      cells = [...cells.slice(0, 8), cells.slice(8).join(' | ')]; // stray pipes → notes
+    let parts = line.trim().split('|').map(c => c.trim());
+    if (parts.length > maxIdx + 2 && colmap.notes === maxIdx) {
+      parts[colmap.notes] = parts.slice(colmap.notes, -1).join(' | ');
+      parts = [...parts.slice(0, colmap.notes + 1), ''];
       if (diag) diag.strayPipes++;
     }
-    while (cells.length < 9) cells.push('');
-    rows.push(cells);
+    const row = parseTrackerRow(parts.join('|'), colmap);
+    if (row) rows.push(row);
   }
   return rows;
 }
@@ -183,19 +199,67 @@ export function removeRowByNum(content, num) {
   const target = String(num).trim();
   let removedCount = 0;
   let report = null;
-  const kept = content.split('\n').filter((line) => {
+  const lines = content.split('\n');
+  const colmap = resolveColumns(lines);
+  const kept = lines.filter((line) => {
     const t = line.trim();
     if (!t.startsWith('|')) return true; // non-table line — keep verbatim
-    const cells = t.replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
-    if (cells[0] === '#' || /^[-: ]*$/.test(cells.join(''))) return true; // header / separator
-    if (cells[0] === target) {
+    const row = parseTrackerRow(t, colmap);
+    if (row && String(row.num) === target) {
       removedCount++;
-      if (report === null) report = cells[7] || null; // report column (index 7)
+      if (report === null) report = row.report || null;
       return false;
     }
     return true;
   });
   return { removed: removedCount > 0, removedCount, report, newContent: kept.join('\n') };
+}
+
+function normalizedIdentity(value) {
+  return String(value || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Update one exact tracker row's lifecycle status while preserving every other
+ * row and field. Pure: the caller owns validation, persistence, and reindexing.
+ */
+export function updateStatusByNum(content, num, status, { company = '', title = '' } = {}) {
+  const target = String(num || '').trim();
+  if (!/^\d+$/.test(target)) throw new Error('Application number must be a positive integer');
+  const canonicalStatus = String(status || '').trim();
+  if (!canonicalStatus) throw new Error('A canonical application status is required');
+
+  const lines = String(content).split('\n');
+  const colmap = resolveColumns(lines);
+  if (!colmap || colmap.status == null) throw new Error('Tracker has no recognizable Status column');
+  const matches = [];
+  for (let index = 0; index < lines.length; index++) {
+    const row = parseTrackerRow(lines[index], colmap);
+    if (row && String(row.num) === target) matches.push({ index, row });
+  }
+  if (matches.length === 0) throw new Error(`No application numbered ${target} in the tracker`);
+  if (matches.length > 1) throw new Error(`Application number ${target} is duplicated in the tracker`);
+
+  const { index, row } = matches[0];
+  if (company && normalizedIdentity(row.company) !== normalizedIdentity(company)) {
+    throw new Error(`Tracker job ${target} company does not match the application attempt`);
+  }
+  if (title && normalizedIdentity(row.role) !== normalizedIdentity(title)) {
+    throw new Error(`Tracker job ${target} title does not match the application attempt`);
+  }
+
+  const cells = markdownCells(lines[index]);
+  cells[colmap.status - 1] = canonicalStatus;
+  lines[index] = markdownRow(cells);
+  return {
+    jobId: target,
+    company: row.company,
+    title: row.role,
+    previousStatus: row.status,
+    status: canonicalStatus,
+    changed: row.status !== canonicalStatus,
+    newContent: lines.join('\n'),
+  };
 }
 
 // Parse + normalize the markdown into index-ready rows. The markdown itself is
@@ -210,8 +274,8 @@ function parseTracker(states) {
   let maxId = 0;
   const apps = [];
 
-  for (const cells of rows) {
-    let [idRaw, date, company, role, score, status, pdf, report, notes] = cells;
+  for (const row of rows) {
+    let { num: idRaw, date, company, role, score, status, decision, rank, confidence, origin, pdf, report, notes } = row;
 
     const before = [score, pdf, report].join('|');
     score = repairPlaceholder(score);
@@ -247,7 +311,7 @@ function parseTracker(states) {
 
     if (!DATE_RE.test(date)) diag.badDate++; // kept as-is — flagged, not destroyed
 
-    apps.push({ id, pos: apps.length, date, company, role, score: score || '—', status, pdf: pdf || '❌', report: report || '—', notes });
+    apps.push({ id, pos: apps.length, date, company, role, score: score || '—', status, decision, rank, confidence, origin, pdf: pdf || '❌', report: report || '—', notes });
   }
   for (const app of apps) if (app.id === 0) app.id = ++maxId;
 
@@ -285,8 +349,8 @@ function syncIndex(db, states) {
   db.exec('PRAGMA defer_foreign_keys = ON'); // full rebuild — FKs settle at commit
   try {
     db.exec('DELETE FROM applications');
-    const insertApp = db.prepare('INSERT INTO applications (id, pos, date, company, role, score, status, pdf, report, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-    for (const a of apps) insertApp.run(a.id, a.pos, a.date, a.company, a.role, a.score, a.status, a.pdf, a.report, a.notes);
+    const insertApp = db.prepare('INSERT INTO applications (id, pos, date, company, role, score, status, decision, rank, confidence, origin, pdf, report, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    for (const a of apps) insertApp.run(a.id, a.pos, a.date, a.company, a.role, a.score, a.status, a.decision, a.rank, a.confidence, a.origin, a.pdf, a.report, a.notes);
 
     // Status history: events persist across rebuilds, keyed by id. An app whose
     // status changed since the last sync gets a new event; rows that left the
@@ -354,9 +418,26 @@ function flagValue(args, flag) {
   return kv ? kv.split('=').slice(1).join('=') : null;
 }
 
-function rowToMarkdown(r) {
+function rowToMarkdown(r, colmap = CANONICAL_COLMAP) {
   const clean = (v) => String(v ?? '').replace(/\|/g, '│').replace(/\r?\n/g, ' ');
-  return `| ${r.id} | ${clean(r.date)} | ${clean(r.company)} | ${clean(r.role)} | ${clean(r.score)} | ${clean(r.status)} | ${clean(r.pdf)} | ${clean(r.report)} | ${clean(r.notes)} |`;
+  const width = Math.max(...Object.values(colmap));
+  const parts = Array(width + 1).fill('');
+  const set = (key, value) => { if (colmap[key] != null) parts[colmap[key]] = clean(value); };
+  set('num', r.displayId ?? r.id ?? r.num);
+  set('date', r.date);
+  set('company', r.company);
+  set('role', r.role);
+  set('location', r.location || '—');
+  set('score', r.score);
+  set('status', r.status);
+  set('decision', r.decision);
+  set('rank', r.rank);
+  set('confidence', r.confidence);
+  set('origin', r.origin);
+  set('pdf', r.pdf);
+  set('report', r.report);
+  set('notes', r.notes);
+  return `| ${parts.slice(1).join(' | ')} |`;
 }
 
 async function query(args) {
@@ -377,6 +458,22 @@ async function query(args) {
   if (company) { where.push('company LIKE ?'); params.push(`%${company}%`); }
   const role = flagValue(args, '--role');
   if (role) { where.push('role LIKE ?'); params.push(`%${role}%`); }
+  const decision = flagValue(args, '--decision');
+  if (decision) {
+    const normalized = normalizeDecision(decision);
+    if (normalized === 'pending' && String(decision).trim().toLowerCase() !== 'pending') {
+      console.error('Error: --decision must be pending, apply, watch, or skip'); process.exit(1);
+    }
+    where.push('decision = ?'); params.push(normalized);
+  }
+  const origin = flagValue(args, '--origin');
+  if (origin) {
+    const normalized = normalizeOrigin(origin);
+    if (normalized === 'legacy_unknown' && !['legacy_unknown', 'unknown'].includes(String(origin).trim().toLowerCase())) {
+      console.error('Error: --origin must be current, legacy_import, mail_import, or legacy_unknown'); process.exit(1);
+    }
+    where.push('origin = ?'); params.push(normalized);
+  }
   const since = flagValue(args, '--since');
   if (since) {
     if (!DATE_RE.test(since)) { console.error('Error: --since must be YYYY-MM-DD'); process.exit(1); }
@@ -385,7 +482,7 @@ async function query(args) {
   const id = flagValue(args, '--id');
   if (id) { where.push('id = ?'); params.push(parseInt(id, 10)); }
 
-  let sql = 'SELECT id, date, company, role, score, status, pdf, report, notes FROM applications'
+  let sql = 'SELECT id, date, company, role, score, status, decision, rank, confidence, origin, pdf, report, notes FROM applications'
     + (where.length ? ' WHERE ' + where.join(' AND ') : '') + ' ORDER BY id DESC';
   const limit = parseInt(flagValue(args, '--limit') || '0', 10);
   if (limit > 0) { sql += ' LIMIT ?'; params.push(limit); }
@@ -426,12 +523,24 @@ async function exportMd(args) {
   const db = openDb(DatabaseSync);
   ensureFresh(db, loadStates());
   const rows = db.prepare('SELECT * FROM applications ORDER BY pos').all();
+  const sourceLines = existsSync(MD_PATH) ? readFileSync(MD_PATH, 'utf-8').split('\n') : [];
+  const sourceColmap = detectColumns(sourceLines) || CANONICAL_COLMAP;
+  const sourceHeaderIndex = sourceLines.findIndex((line) => detectColumns([line]));
+  const sourceHeader = sourceHeaderIndex >= 0 ? sourceLines[sourceHeaderIndex] : HEADER;
+  const sourceSeparator = sourceHeaderIndex >= 0 && /^\|[-:| ]+\|?$/.test(sourceLines[sourceHeaderIndex + 1] || '')
+    ? sourceLines[sourceHeaderIndex + 1]
+    : SEPARATOR;
+  const displayIdById = new Map();
+  for (const line of sourceLines) {
+    const parsed = parseTrackerRow(line, sourceColmap);
+    if (parsed) displayIdById.set(parsed.num, line.split('|')[sourceColmap.num]?.trim() || String(parsed.num));
+  }
   const out = [
     '# Applications Tracker',
     '',
-    HEADER,
-    SEPARATOR,
-    ...rows.map(rowToMarkdown),
+    sourceHeader,
+    sourceSeparator,
+    ...rows.map((row) => rowToMarkdown({ ...row, displayId: displayIdById.get(row.id) }, sourceColmap)),
     '',
   ].join('\n');
 
@@ -510,13 +619,184 @@ async function deleteApp(args) {
   if (report) console.error(`Note: report file may now be orphaned — ${report}`);
 }
 
-const COMMANDS = { sync, query, history, export: exportMd, delete: deleteApp };
+async function setStatus(args) {
+  const num = flagValue(args, '--num');
+  const requestedStatus = flagValue(args, '--status');
+  if (!num || !requestedStatus) {
+    console.error('Usage: node tracker.mjs status --num <N> --status <canonical status> [--company <company> --title <role>] [--dry-run]');
+    process.exit(1);
+  }
+  if (!existsSync(MD_PATH)) {
+    console.error(`Error: ${MD_PATH} not found — no application status can be updated.`);
+    process.exit(1);
+  }
+
+  const states = loadStates();
+  const canonicalStatus = normalizeStatus(requestedStatus, states);
+  if (!canonicalStatus) {
+    console.error(`Error: unknown status "${requestedStatus}". Valid statuses: ${states.labels.join(', ')}`);
+    process.exit(1);
+  }
+  const original = readFileSync(MD_PATH, 'utf-8');
+  const result = updateStatusByNum(original, num, canonicalStatus, {
+    company: flagValue(args, '--company') || '',
+    title: flagValue(args, '--title') || '',
+  });
+  const printable = { ...result };
+  delete printable.newContent;
+  if (args.includes('--dry-run')) {
+    console.log(JSON.stringify({ ...printable, dryRun: true }));
+    return;
+  }
+
+  if (result.changed) writeFileAtomic(MD_PATH, result.newContent);
+  try {
+    const DatabaseSync = await loadSqlite();
+    const db = openDb(DatabaseSync);
+    syncIndex(db, states);
+  } catch (error) {
+    if (result.changed) writeFileAtomic(MD_PATH, original);
+    throw new Error(`Tracker status update was rolled back because reindexing failed: ${error.message}`);
+  }
+  console.log(JSON.stringify(printable));
+}
+
+function parseIdSelection(raw, flag) {
+  const ids = new Set();
+  if (!raw) return ids;
+  for (const token of String(raw).split(',').map((part) => part.trim()).filter(Boolean)) {
+    const range = token.match(/^(\d+)-(\d+)$/);
+    if (range) {
+      const start = Number(range[1]);
+      const end = Number(range[2]);
+      if (start <= 0 || end < start || end - start > 10000) {
+        console.error(`Error: invalid ${flag} range "${token}"`); process.exit(1);
+      }
+      for (let id = start; id <= end; id++) ids.add(id);
+      continue;
+    }
+    if (!/^\d+$/.test(token) || Number(token) <= 0) {
+      console.error(`Error: ${flag} accepts comma-separated IDs or ranges, for example 1-5,9`); process.exit(1);
+    }
+    ids.add(Number(token));
+  }
+  return ids;
+}
+
+function markdownCells(line) {
+  const cells = String(line).trim().split('|').map((value) => value.trim());
+  if (cells[0] === '') cells.shift();
+  if (cells[cells.length - 1] === '') cells.pop();
+  return cells;
+}
+
+function markdownRow(cells) {
+  return `| ${cells.join(' | ')} |`;
+}
+
+/**
+ * Add the review metadata contract without guessing which old rows belong to
+ * the current run. Existing semantic decisions and origins are preserved;
+ * missing ranks/confidence become unranked/unknown rather than inferred from a
+ * legacy score.
+ */
+async function migrateMetadata(args) {
+  if (!existsSync(MD_PATH)) {
+    console.error(`Error: ${MD_PATH} not found — nothing to migrate.`); process.exit(1);
+  }
+  const currentIds = parseIdSelection(flagValue(args, '--current-ids'), '--current-ids');
+  const legacyIds = parseIdSelection(flagValue(args, '--legacy-ids'), '--legacy-ids');
+  for (const id of currentIds) {
+    if (legacyIds.has(id)) { console.error(`Error: row ${id} cannot be both current and legacy.`); process.exit(1); }
+  }
+
+  const original = readFileSync(MD_PATH, 'utf-8');
+  const lines = original.split('\n');
+  const oldColmap = detectColumns(lines);
+  if (!oldColmap) { console.error(`Error: ${MD_PATH} has no recognizable tracker header.`); process.exit(1); }
+  const headerIndex = lines.findIndex((line) => detectColumns([line]));
+  const parsedRows = new Map();
+  for (let index = 0; index < lines.length; index++) {
+    const row = parseTrackerRow(lines[index], oldColmap);
+    if (row) parsedRows.set(index, row);
+  }
+  const knownIds = new Set([...parsedRows.values()].map((row) => row.num));
+  for (const id of [...currentIds, ...legacyIds]) {
+    if (!knownIds.has(id)) { console.error(`Error: tracker row ${id} does not exist.`); process.exit(1); }
+  }
+
+  const headerCells = markdownCells(lines[headerIndex]);
+  const separatorCells = markdownCells(lines[headerIndex + 1] || '');
+  if (headerCells.findIndex((value) => value.trim().toLowerCase() === 'status') < 0) {
+    console.error('Error: tracker header has no Status column.'); process.exit(1);
+  }
+
+  const valueFor = (field, row) => {
+    if (field === 'decision') return normalizeDecision(row.decision, row);
+    if (field === 'rank') return normalizeRank(row.rank);
+    if (field === 'confidence') return normalizeConfidence(row.confidence);
+    if (currentIds.has(row.num)) return 'current';
+    if (legacyIds.has(row.num)) return 'legacy_import';
+    return normalizeOrigin(row.origin, { hasOriginColumn: oldColmap.origin != null });
+  };
+  const addColumn = (label, field, afterLabel, separator) => {
+    if (headerCells.some((value) => value.trim().toLowerCase() === field)) return;
+    const afterIndex = headerCells.findIndex((value) => value.trim().toLowerCase() === afterLabel);
+    if (afterIndex < 0) { console.error(`Error: cannot place ${label}; ${afterLabel} column is missing.`); process.exit(1); }
+    headerCells.splice(afterIndex + 1, 0, label);
+    if (separatorCells.length > 0) separatorCells.splice(afterIndex + 1, 0, separator);
+    for (const [index, row] of parsedRows) {
+      const cells = markdownCells(lines[index]);
+      cells.splice(afterIndex + 1, 0, valueFor(field, row));
+      lines[index] = markdownRow(cells);
+    }
+  };
+
+  addColumn('Decision', 'decision', 'status', '----------');
+  addColumn('Rank', 'rank', 'decision', '------');
+  addColumn('Confidence', 'confidence', 'rank', '------------');
+  addColumn('Origin', 'origin', 'confidence', '--------');
+  lines[headerIndex] = markdownRow(headerCells);
+  if (separatorCells.length > 0) lines[headerIndex + 1] = markdownRow(separatorCells);
+
+  const finalColmap = detectColumns(lines);
+  for (const [index, originalRow] of parsedRows) {
+    const cells = markdownCells(lines[index]);
+    const currentRow = parseTrackerRow(lines[index], finalColmap) || originalRow;
+    cells[finalColmap.decision - 1] = normalizeDecision(currentRow.decision, currentRow);
+    cells[finalColmap.rank - 1] = normalizeRank(currentRow.rank);
+    cells[finalColmap.confidence - 1] = normalizeConfidence(currentRow.confidence);
+    if (currentIds.has(originalRow.num)) cells[finalColmap.origin - 1] = 'current';
+    else if (legacyIds.has(originalRow.num)) cells[finalColmap.origin - 1] = 'legacy_import';
+    else cells[finalColmap.origin - 1] = normalizeOrigin(currentRow.origin);
+    lines[index] = markdownRow(cells);
+  }
+
+  const migrated = lines.join('\n');
+  const afterColmap = detectColumns(lines);
+  const afterRows = lines.map((line) => parseTrackerRow(line, afterColmap)).filter(Boolean);
+  const counts = afterRows.reduce((acc, row) => {
+    acc[row.origin] = (acc[row.origin] || 0) + 1;
+    return acc;
+  }, {});
+  console.error(`Metadata migration: ${afterRows.length} row(s); ${counts.current || 0} current, ${counts.legacy_import || 0} imported, ${counts.legacy_unknown || 0} unclassified history.`);
+  if (!args.includes('--write')) {
+    console.error('(dry run — add --write to back up and update the tracker)');
+    return;
+  }
+  if (migrated === original) { console.error('No metadata changes needed.'); return; }
+  copyFileSync(MD_PATH, MD_PATH + '.metadata.bak');
+  writeFileAtomic(MD_PATH, migrated);
+  console.error(`Updated ${MD_PATH}; backup: ${MD_PATH}.metadata.bak`);
+}
+
+const COMMANDS = { sync, query, history, export: exportMd, delete: deleteApp, status: setStatus, 'migrate-metadata': migrateMetadata };
 
 async function main() {
   const [command, ...args] = process.argv.slice(2);
   const fn = COMMANDS[command];
   if (!fn) {
-    console.log('Usage: node tracker.mjs <sync|query|history|export|delete> [flags]');
+    console.log('Usage: node tracker.mjs <sync|query|history|export|delete|status|migrate-metadata> [flags]');
     console.log('See the header comment of this file for examples, or docs/SCRIPTS.md.');
     process.exit(command ? 1 : 0);
   }

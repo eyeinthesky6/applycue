@@ -4,6 +4,7 @@ The recovery review is now consolidated into:
 
 - [Product decision](PRODUCT_DECISION.md)
 - [Architecture](ARCHITECTURE.md)
+- [ApplyCue/Career-Ops integration plan](2026-07-14_applycue-career-ops-integration_architectural_review.md)
 - [Removal and reorganization record](REMOVALS_AND_REORGANIZATION.md)
 - [Pivot history](pivot-history.md)
 

@@ -57,7 +57,7 @@ Before applying, check if the update might affect the user's customizations:
 3. **Check for archetype changes**: If `_shared.md` has changes in the "Archetype Detection" section, and `_profile.md` references archetype names, warn the user:
    > "⚠️ The scoring system or archetypes were updated. Your customizations in `_profile.md` may reference outdated archetype names. I'll review them after the update."
 4. **Check for scoring changes**: If the "Scoring System" section changed, note it:
-   > "ℹ️ The scoring system was updated. Scores in future evaluations may differ slightly from previous ones."
+   > "ℹ️ The review contract was updated. New decisions may include different evidence or confidence fields; historical scores remain unchanged."
 5. **Check for new mode files**: If new modes were added (files in `modes/` that don't exist locally), mention them:
    > "✨ New modes available: {list}. Run `/applycue` to see all commands."
 

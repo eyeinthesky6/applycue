@@ -1,154 +1,52 @@
-# Mode: patterns -- Rejection Pattern Detector
+# Mode: patterns -- Outcome Pattern Review
 
 ## Purpose
 
-Analyze all tracked applications to find patterns in outcomes and surface actionable insights. Identifies what's working (archetypes, remote policies, score ranges) and what's wasting time (geo-restricted roles, stack mismatches, low-score applications).
+Analyze tracked outcomes to learn which role shapes, sources, companies, locations, decisions, and recurring gaps are producing useful applications or traction. Historical fit scores may remain readable but are not analyzed and never become a threshold.
 
 ## Inputs
 
-- `data/applications.md` — Application tracker
-- `reports/` — Individual evaluation reports
-- `config/profile.yml` — User profile (for recommendation context)
-- `modes/_profile.md` — User archetypes and framing
-- `portals.yml` — Portal config (for filter update recommendations)
+- `data/applications.md` -- canonical tracker
+- `reports/` -- evidence-backed role reviews
+- `data/job-feedback.jsonl` -- user job actions, CV-change notes, and explained reusable feedback
+- `config/profile.yml` and `modes/_profile.md` -- confirmed preference context
+- `portals.yml` -- source configuration
 
-## Minimum Threshold
+## Minimum evidence
 
-Before running analysis, check: does `data/applications.md` have at least 5 entries with status beyond "Evaluated" (i.e., Applied, Responded, Interview, Offer, Rejected, Discarded, SKIP)?
+Require at least five rows beyond a pending evaluation. If there are fewer, report the count and wait for more outcomes. An application is useful workflow evidence; a response/interview/offer is stronger market evidence. Do not describe every applied row as a successful match.
 
-If not, tell the user:
-> "Not enough data yet -- {N}/5 applications have progressed beyond evaluation. Keep applying and come back when you have more outcomes to analyze."
-
-Exit gracefully.
-
-## Step 1 — Run Analysis Script
-
-Execute:
+## Run
 
 ```bash
 node analyze-patterns.mjs
 ```
 
-Parse the JSON output. It contains:
+Use its funnel, archetype, blocker, remote-policy, company-size, gap, and recommendation outputs. If it returns an error, show the error and stop.
 
-| Key | Contents |
-|-----|----------|
-| `metadata` | Total entries, date range, analysis date, counts by outcome |
-| `funnel` | Count per status stage (evaluated, applied, interview, offer, etc.) |
-| `scoreComparison` | Avg/min/max score per outcome group (positive, negative, self_filtered, pending) |
-| `archetypeBreakdown` | Per-archetype: total, positive, negative, self_filtered, conversion rate |
-| `blockerAnalysis` | Most frequent hard blockers: geo-restriction, stack-mismatch, seniority, onsite |
-| `remotePolicy` | Per-policy bucket: total, positive, negative, conversion rate |
-| `companySizeBreakdown` | Per-size bucket: startup, scaleup, enterprise |
-| `scoreThreshold` | Recommended minimum score + reasoning |
-| `techStackGaps` | Most frequent tech gaps in negative outcomes |
-| `recommendations` | Top 5 actionable items with reasoning and impact level |
+## Report
 
-If the script returns `error`, display the error message and exit.
+Write `reports/pattern-analysis-{YYYY-MM-DD}.md` with:
 
-## Step 2 — Generate Report
+1. evidence count and date range;
+2. conversion funnel;
+3. archetype and role-shape outcomes;
+4. source and remote-policy outcomes when evidence exists;
+5. recurring blockers/gaps and user-feedback disagreements;
+6. proposed changes, each tied to evidence and expected effect.
 
-Write the report to `reports/pattern-analysis-{YYYY-MM-DD}.md`.
+Do not report score averages, score floors, or PDF thresholds. Low sample sizes and changing rubrics make those numbers misleading.
 
-### Report Structure
+## Preference change boundary
 
-```markdown
-# Pattern Analysis -- {YYYY-MM-DD}
+Present recommendations to the user before changing `portals.yml`, `config/profile.yml`, or `modes/_profile.md`. Feedback can propose a preference, title, geography, source, or framing change; it cannot save one automatically. State exactly which confirmed preference would change and what future decisions it affects.
 
-**Applications analyzed:** {total}
-**Date range:** {from} to {to}
-**Outcomes:** {positive} positive, {negative} negative, {self_filtered} self-filtered, {pending} pending
-
----
-
-## Conversion Funnel
-
-Show each status with count and percentage of total. Use a simple table:
-
-| Stage | Count | % |
-|-------|-------|---|
-| Evaluated | X | X% |
-| Applied | X | X% |
-| ... | | |
-
-## Score vs Outcome
-
-| Outcome | Avg Score | Min | Max | Count |
-|---------|-----------|-----|-----|-------|
-| Positive | X.X/5 | X.X | X.X | X |
-| Negative | ... | | | |
-| Self-filtered | ... | | | |
-| Pending | ... | | | |
-
-## Archetype Performance
-
-Table with each archetype, total applications, positive outcomes, conversion rate.
-Highlight the best-performing archetype and the worst.
-
-## Top Blockers
-
-Frequency table of recurring hard blockers (geo-restriction, stack-mismatch, etc.).
-Note the percentage of all applications affected by each.
-
-## Remote Policy Patterns
-
-Table showing conversion rate by remote policy bucket (global, regional, geo-restricted, hybrid/onsite).
-
-## Tech Stack Gaps
-
-List of most common missing skills in negative/self-filtered outcomes with frequency.
-
-## Recommended Score Threshold
-
-State the data-driven minimum score and reasoning.
-
-## Recommendations
-
-Number the top recommendations (from the script output). For each:
-1. **[IMPACT]** Action to take
-   Reasoning behind the recommendation.
-```
-
-## Step 3 — Present Summary
-
-Show the user a condensed version with:
-1. One-line stat summary (X applications, Y% applied, Z% positive outcome)
-2. Top 3 findings (most impactful patterns)
-3. Link to full report
-
-Example:
-> **Pattern Analysis Complete** (24 applications, Apr 7-8)
->
-> Key findings:
-> - Geo-restricted roles are 0% conversion (7 of 24) -- stop evaluating US/Canada-only postings
-> - Regional/global remote roles convert at 57-67% -- these are your sweet spot
-> - No positive outcomes below 4.2/5 -- consider this your score floor
->
-> Full report: `reports/pattern-analysis-2026-04-08.md`
-
-## Step 4 — Offer to Apply Recommendations
-
-Ask the user if they want to act on any recommendations:
-
-> "Want me to apply any of these recommendations? I can:
-> - Update `portals.yml` to filter out geo-restricted roles
-> - Set a score threshold in `_profile.md` for PDF generation
-> - Adjust archetype targeting based on what's converting
->
-> Just say which ones, or 'all' to apply everything."
-
-If the user agrees:
-- For portal filter changes: edit `portals.yml`
-- For profile/archetype changes: edit `modes/_profile.md` (NEVER `_shared.md`)
-- For score threshold: add to `config/profile.yml` under a `patterns` key
-
-## Outcome Classification
-
-For reference, outcomes are classified as:
+## Outcome classes
 
 | Status | Outcome |
 |--------|---------|
-| Interview, Offer, Responded, Applied | **Positive** (invested effort or got traction) |
-| Rejected, Discarded | **Negative** (company said no or offer closed) |
-| SKIP, NO APLICAR | **Self-filtered** (user decided not to apply) |
-| Evaluated | **Pending** (no action taken yet) |
+| Responded, Interview, Offer | market traction |
+| Applied | application completed; outcome still pending |
+| Rejected, Discarded | negative/closed outcome |
+| SKIP | agent/user self-filtered |
+| Evaluated | decision or action pending |

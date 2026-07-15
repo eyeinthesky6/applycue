@@ -26,7 +26,8 @@ Bad code gates: fuzzy title fit, company/title cooldown guesses, semantic CV-to-
 | CV | `modes/pdf.md`, `generate-pdf.mjs`, `generate-docx.mjs`, LaTeX helpers |
 | application | `modes/apply.md`, agent browser tools, `application-attempt.mjs` |
 | history | `data/applications.md`, `tracker.mjs`, merge/reconcile tools |
-| dashboard | `dashboard-server.mjs` |
+| dashboard rendering and HTTP boundary | `dashboard-server.mjs` |
+| dashboard action/approval receipts | `job-feedback.mjs` |
 | user workflow | `skills/applycue/SKILL.md` |
 
 ## Change method

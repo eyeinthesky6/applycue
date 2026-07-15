@@ -34,7 +34,7 @@ Read `cv.md` for:
 - Professional summary (profile introduction source)
 - All achievement bullets across all roles (achievement selection pool)
 
-Read `article-digest.md` if it exists — supplementary proof points and metrics take precedence over cv.md where they overlap.
+Read `article-digest.md` if it exists — supplementary proof points and metrics take precedence over cv.md where they overlap. User-confirmed work recovered for this role may be used after it is saved in the approved evidence layer; the supplied CV is not assumed exhaustive.
 
 Read `modes/_profile.md` if it exists — the candidate's personalization file. It captures their target roles, adaptive framing and archetypes, exit narrative, cross-cutting advantage, proof points, comp targets, negotiation scripts, location policy, and any voice or writing-style rules they have added. Its rules **govern the letter's voice and structure and override the generic defaults in this mode**, so the candidate's personalization is never lost.
 
@@ -190,14 +190,14 @@ Wait for all four answers before proceeding to Step 7.
 
 ---
 
-## Step 7 — Achievement selection (from cv.md only)
+## Step 7 — Achievement selection (from approved evidence)
 
-Select 4-5 achievement bullets from `cv.md` only (`article-digest.md` may be read for context but is not a source of achievement bullets):
-1. Read all bullet points across all roles in cv.md
-2. Score each against the JD's top 3-4 required competencies
-3. Pick the 4-5 highest-scoring, with at least one metric per bullet
-4. Use the exact wording and metrics from cv.md — never paraphrase or invent
-5. Apply keyword mirroring from Step 4 to the vocabulary around each bullet (not the metrics)
+Select 4-5 achievements from `cv.md`, `article-digest.md`, the approved profile layer, and any role-specific evidence the user confirmed and saved:
+1. Read the complete approved evidence pool.
+2. Compare each item with the employer success brief, role family, and top 3-4 requirements using agent judgment, not a text score.
+3. Pick the 4-5 strongest proof points. Use exact metrics where they exist; a confirmed qualitative outcome or scope statement is valid when no exact number survives.
+4. Preserve the underlying fact while rewriting for clarity, role relevance, and the selected tone. Never invent evidence or precision.
+5. Apply keyword mirroring from Step 4 naturally.
 
 Format: `**Bold lead phrase,** one sentence of impact with metric.`
 

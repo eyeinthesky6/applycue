@@ -4,6 +4,8 @@ Date: 2026-07-06
 
 Updated: 2026-07-08
 
+Status: research and design input. The consolidated runtime currently uses agent-managed `portals.yml`, root providers, and browser/connectors; it does not generate or approve a typed source-plan artifact. Source-plan and source-quality work is tracked in the [current integration plan](2026-07-14_applycue-career-ops-integration_architectural_review.md).
+
 ## Decision
 
 ApplyCue discovery should build in layers:

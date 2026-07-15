@@ -39,13 +39,14 @@ body:
     attributes:
       label: Area
       options:
-        - Evaluation / Scoring
-        - PDF Generation
-        - Portal Scanner
-        - Dashboard TUI
-        - Batch Processing
+        - Discovery / provider
+        - Agent review / workflow
+        - CV and document generation
+        - Browser dashboard
+        - Application / preflight / tracking
+        - Plugin / connector
         - Language / i18n
-        - Documentation
+        - Installation / documentation
         - Other
     validations:
       required: true

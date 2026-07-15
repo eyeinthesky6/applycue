@@ -30,11 +30,12 @@ Make the merged product understandable and runnable: one ApplyCue runtime, one s
 
 ## Re-homed from ApplyCue donor work
 
-- browser dashboard with progress cards, filters, links, and thumbs feedback;
+- browser dashboard with progress cards, filters, original-JD/CV links, stage-aware user actions, and local CV-change notes;
 - DOCX renderer;
 - application-attempt state and unknown-submit protection;
 - agent-first CV plus approved portfolio/public-profile discovery;
 - baseline-before-rewrite and visible stage counts;
+- separate semantic decision, lifecycle status, and imported-history provenance so old `Evaluated` rows cannot inflate the current shortlist;
 - claim-source confirmation as a signal rather than a hard moral gate;
 - external-agent ownership of fuzzy fit and CV writing.
 
@@ -64,3 +65,5 @@ The independent branch/worktree is retained as private donor/reference history, 
 ## Rollback
 
 Every removed component remains recoverable from Git history and the donor worktree. Restoration must be feature-specific and attach to an existing root owner; restoring the complete second control plane is explicitly rejected.
+
+The authoritative retain/port/replace/defer/reject matrix and its acceptance gates are in [`2026-07-14_applycue-career-ops-integration_architectural_review.md`](2026-07-14_applycue-career-ops-integration_architectural_review.md).

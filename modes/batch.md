@@ -49,11 +49,12 @@ batch/
       <headless-cmd> "Process this job. URL: {url}. JD: /tmp/batch-jd-{id}.txt. Report: {num}. ID: {id}"
       ```
 
-   e. Update `batch-state.tsv` (completed/failed + score + report_num)
+   e. Update `batch-state.tsv` (completed/failed + report_num; the legacy score field remains `-`)
    f. Log to `logs/{report_num}-{id}.log`
    g. Chrome: go back → next job
 5. **Pagination**: If no more jobs → click "Next" → repeat
 6. **End**: Merge `tracker-additions/` → `applications.md` + summary
+7. For every merged final decision, store the full JD and record/check its fingerprint-bound review receipt. A worker result is not application-ready until this passes.
 
 ### What to watch during a run
 
@@ -82,7 +83,7 @@ Options:
 ## batch-state.tsv Format
 
 ```text
-id	url	status	started_at	completed_at	report_num	score	error	retries
+id	url	status	started_at	completed_at	report_num	legacy_score	error	retries
 1	https://...	completed	2026-...	2026-...	002	4.2	-	0
 2	https://...	failed	2026-...	2026-...	-	-	Error msg	1
 3	https://...	pending	-	-	-	-	-	0
@@ -109,6 +110,8 @@ The worker produces:
 2. PDF in `output/`
 3. Tracker line in `batch/tracker-additions/{id}.tsv`
 4. Result JSON via stdout
+
+The conductor owns the post-merge `review-evidence.mjs record` step because the receipt must bind the canonical tracker row, not an unmerged worker TSV.
 
 ## Error handling
 

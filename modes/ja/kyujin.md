@@ -171,8 +171,8 @@ Report を保存し tracker に記録した後、report file に `## Cover Lette
 
 **How to generate the draft:**
 
-1. `cv.md` を読む。JD の top requirements に最も relevant な achievement bullets を 4 つ選ぶ（exact wording、real metrics only）
-2. `config/profile.yml` を読む。candidate name、current role、years of experience を抽出する
+1. Approved candidate evidence を読み、employer success brief と role family に最も relevant な achievements を 4 つ選ぶ。Exact metrics がある場合は使うが、metric がないことだけを理由に confirmed work を捨てない
+2. `config/profile.yml` と `modes/_profile.md` を読み、candidate identity と confirmed positioning を抽出する
 3. Role title と JD mission language に基づく 2-sentence opening を書く
 4. `cv.md` summary から 1-paragraph profile intro を書き、JD domain に合わせる
 5. "Problems / Why this company / Approach" section は placeholder にする。ここは user input が必要
@@ -194,11 +194,11 @@ Report を保存し tracker に記録した後、report file に `## Cover Lette
 **Profile introduction**
 {1 paragraph from cv.md summary, adapted to JD domain and required competencies}
 
-**Key achievements** *(selected from cv.md -- exact wording preserved)*
-- **{lead from cv.md},** {impact sentence with metric}.
-- **{lead from cv.md},** {impact sentence with metric}.
-- **{lead from cv.md},** {impact sentence with metric}.
-- **{lead from cv.md},** {impact sentence with metric}.
+**Key achievements** *(selected from approved candidate evidence)*
+- **{lead},** {evidence-backed impact or scope statement}.
+- **{lead},** {evidence-backed impact or scope statement}.
+- **{lead},** {evidence-backed impact or scope statement}.
+- **{lead},** {evidence-backed impact or scope statement}.
 
 **Problems I will solve** *(placeholder -- requires company research + your input)*
 > To be completed: what challenges does {company} face that you'd address? How would you approach them?

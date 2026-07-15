@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Congrats on the new role! Your story helps others see what's possible.
+        Congrats on the new role! Share only what you are comfortable making public. Do not attach your CV, contact details, application answers, or employer correspondence.
   - type: input
     id: role
     attributes:
@@ -23,7 +23,7 @@ body:
     attributes:
       label: Your story
       description: How did ApplyCue help? What features made the difference?
-      placeholder: "e.g., I evaluated 50+ listings, the scoring helped me focus on 3 real matches, generated tailored CVs for each..."
+      placeholder: "e.g., ApplyCue reviewed full JDs, helped me focus on three genuine matches, and prepared role-specific CVs..."
     validations:
       required: true
   - type: dropdown
@@ -31,13 +31,13 @@ body:
     attributes:
       label: Most useful feature
       options:
-        - A-F Evaluation scoring
-        - PDF / CV generation
-        - Portal scanner
-        - Interview prep (STAR stories)
-        - Batch processing
-        - Follow-up tracker
-        - Ghost job detection (Block G)
+        - Full-JD agent review and shortlist
+        - Role-specific PDF / DOCX CV
+        - Source discovery
+        - Dashboard and application tracking
+        - Application preflight and reusable answers
+        - High-stakes role preparation
+        - Posting legitimacy review
         - Other
     validations:
       required: true

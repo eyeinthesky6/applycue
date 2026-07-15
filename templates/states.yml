@@ -5,6 +5,11 @@
 # Rule: The status field in applications.md must contain EXACTLY
 # one of these values (case-insensitive). No markdown bold (**),
 # no dates, no extra text. Dates go in the date column.
+#
+# Decision is the agent's semantic choice. Rank orders the current apply queue.
+# Confidence records uncertainty without turning it into a numeric fit score.
+# Status is the application lifecycle. Origin is internal provenance; the
+# dashboard only labels non-current rows.
 
 states:
   - id: evaluated
@@ -54,3 +59,37 @@ states:
     aliases: [no_aplicar, no aplicar, skip, monitor]
     description: Doesn't fit, don't apply
     dashboard_group: skip
+
+decisions:
+  - id: pending
+    label: Pending review
+    description: No final agent decision has been recorded
+  - id: apply
+    label: Apply
+    description: Shortlisted for preparation or application
+  - id: watch
+    label: Watch
+    description: Keep for a later condition or user choice
+  - id: skip
+    label: Skip
+    description: Agent decided not to proceed
+
+confidence:
+  - id: high
+    description: Full JD and preference evidence support a stable decision
+  - id: medium
+    description: Decision is useful but contains a material gap or assumption
+  - id: low
+    description: Important evidence is missing; surface the unknown to the user
+  - id: unknown
+    description: Historical row or review confidence was not recorded
+
+origins:
+  - id: current
+    description: Produced in the current ApplyCue runtime
+  - id: legacy_import
+    description: Imported from earlier tracker history
+  - id: mail_import
+    description: Imported from mailbox application evidence
+  - id: legacy_unknown
+    description: Predates provenance metadata and still needs classification

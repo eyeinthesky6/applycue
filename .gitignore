@@ -6,6 +6,10 @@ data/pipeline.md
 data/scan-history.tsv
 data/job-feedback.jsonl
 data/application-attempts.jsonl
+data/application-answers.jsonl
+data/application-preflights.jsonl
+data/application-preflight-input.json
+data/review-receipts.jsonl
 data/pdf-index.tsv
 data/parser-output/**/*.json
 !data/parser-output/.gitkeep

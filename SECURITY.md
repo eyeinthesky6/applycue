@@ -4,7 +4,10 @@
 
 Do not open a public issue for security vulnerabilities.
 
-For now, report security issues privately to the repository owner through the GitHub account that owns this repository. Add a dedicated security email before any public launch.
+Use [GitHub private vulnerability reporting](https://github.com/eyeinthesky6/applycue/security/advisories/new).
+Do not include a real CV, application history, credentials, browser session data,
+or other candidate information unless it is essential to reproduce the issue;
+prefer a synthetic fixture.
 
 Include:
 
@@ -26,7 +29,9 @@ Security issues in the following are in scope:
 
 ## Out Of Scope
 
-- Issues in third-party dependencies.
+- Vulnerabilities that exist only in an upstream dependency and are already
+  covered by that dependency's own advisory process. ApplyCue-specific exposure
+  or unsafe use of a dependency remains in scope.
 - Issues requiring physical access to the user's machine.
 - Social engineering attacks.
 - Public job-board or ATS behavior outside ApplyCue's control.

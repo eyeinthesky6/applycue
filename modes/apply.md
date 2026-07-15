@@ -16,10 +16,10 @@ Interactive mode for when the candidate is filling out an application form in Ch
 2. IDENTIFY    → Extract company + role from the page
 3. SEARCH      → Match against existing reports in reports/
 4. LOAD        → Read full report + Section G (if it exists)
-5. PREFLIGHT   → Confirm posting liveness + company/role match before drafting
+5. INSPECT     → Confirm posting liveness + company/role match without filling
 6. ANALYZE     → Identify ALL visible form questions
 7. GENERATE    → For each question, generate a personalized response
-8. APPROVE     → Get explicit approval for this named company + role
+8. PREFLIGHT   → Record resolved visible fields, then get named approval
 9. ATTEMPT     → Start receipt, fill/upload, and stop before submit unless approved
 10. RECONCILE  → Record confirmed, unknown, failed, or abandoned outcome
 ```
@@ -37,12 +37,14 @@ Before generating any application answers, verify that the form still points to 
    - active posting evidence: title/role + job description or form fields + submit/apply path
    - closed posting evidence: expired/closed/no longer accepting applications, missing JD with only nav/footer, hard redirect to generic careers/search, or 404/410
 4. Compare the visible company and role against the matched report.
+4b. Run `node review-evidence.mjs check --job={tracker number}`. If it reports missing or stale evidence, stop and re-review the full live JD against the current preferences/CV before generating answers. `application-attempt.mjs start` enforces this again.
+4c. Run `node cv-bundle.mjs check --job={tracker number} --cv="{exact PDF or DOCX selected for upload}"`. If it reports missing or stale evidence, regenerate/record the bundle or select the verified file. Do not accept Markdown, HTML, or a similarly named unverified file as the upload.
 5. If company or title changed materially, stop before drafting and ask:
    "The form appears to be for [visible company] — [visible role], but the matched report is [report company] — [report role]. Do you want me to re-evaluate, adapt with this mismatch, or stop?"
 6. If the posting appears closed, refuse to generate final copy unless the candidate explicitly overrides with a known reason.
 7. If liveness cannot be verified because the candidate only pasted questions or a screenshot, state that limitation and ask the candidate to confirm the company, role, and active posting before drafting.
 
-Do not continue to Step 6 until this preflight is resolved.
+Do not continue to Step 6 until this inspection is resolved. After Steps 6–7 resolve the visible fields, record the durable preflight described in Step 8. The start command enforces that second gate.
 
 **Applying to several roles in one sitting?** This preflight verifies the single form in front of you. Before a multi-role session — especially against scanner entries marked `**Verification:** unconfirmed (batch mode)` — run the `pipeline` mode **Liveness sweep** first (`node check-liveness.mjs --file <urls>`). It drops the dead postings from `data/pipeline.md` in one batch so you never open a tab on an expired role.
 
@@ -93,6 +95,14 @@ For each field, preserve the application form contract:
 
 Never invent answers for legal, demographic, work-authorization, visa/sponsorship, salary, disability, veteran, background-check, relocation, or self-identification fields. If the answer is not present in `config/profile.yml` or visible context, mark it as needing candidate confirmation and provide the safest question to ask the candidate.
 
+For a reusable question, ask once. Save it only when the user explicitly approves reuse:
+
+```text
+node application-preflight.mjs approve-answer --field="notice_period" --value="<approved answer>" --alias="<visible question>" --actor=codex --approved-by-user
+```
+
+Use `--replace` only after the user approves changing an existing value. Passwords, OTPs, tokens, payment data, and identity-document numbers are one-off inputs and the helper refuses to store them.
+
 
 ## Step 7 — Generate responses
 
@@ -111,7 +121,7 @@ For each question, generate the response following:
 ```text
 ## Responses for [Company] — [Role]
 
-Based on: Report #NNN | Score: X.X/5 | Archetype: [type]
+Based on: Report #NNN | Decision: apply | Rank: N | Confidence: high/medium/low | Archetype: [type]
 
 ---
 
@@ -130,19 +140,46 @@ Notes:
 - [Personalization suggestions the candidate should review]
 ```
 
-## Step 8 — Approval and attempt receipt
+## Step 8 — Durable preflight, approval, and attempt receipt
 
-Before typing into a live form, show the final company, role, URL, CV filename and any answers that still need confirmation. Ask for one explicit approval that names this application. Approval for one role never carries to another role.
+Before asking for final approval, write `data/application-preflight-input.json` as a JSON array with one record for every currently visible form field. Do not put answer values in this file:
+
+```json
+[
+  {"field":"full_name","label":"Full name","type":"text","required":"yes","resolution":"profile","sourceRef":"candidate.full_name"},
+  {"field":"notice_period","label":"When can you join?","type":"text","required":"yes","resolution":"approved_answer","sourceRef":"notice_period"},
+  {"field":"resume","label":"Resume","type":"file","required":"yes","resolution":"selected_cv"},
+  {"field":"motivation","label":"Why this role?","type":"textarea","required":"unknown","resolution":"agent_draft"}
+]
+```
+
+Allowed resolutions are `profile`, `approved_answer`, `user_confirmed_once`, `agent_draft`, `selected_cv`, `approved_file`, and `missing`. `profile` uses a dot path from `config/profile.yml`; `approved_answer` uses the saved canonical field. Sensitive fields cannot use `agent_draft`. A one-off user answer needs a chat/evidence reference but its value is not stored.
+
+Record the host browser inspection. Company/title comparison remains the agent's judgment; the flag records that it was actually done. This command does not fill, upload, or submit:
+
+```text
+node application-preflight.mjs record --job={tracker number} --company="{company}" --title="{role}" --url="{application URL}" --visible-url="{current browser URL}" --visible-company="{company shown on page}" --visible-title="{role shown on page}" --cv="{exact verified PDF or DOCX}" --stage=application_form --liveness=active --actor=codex --tool=chrome --fields-file=data/application-preflight-input.json --evidence="{browser snapshot/reference}" --identity-confirmed-by-agent --all-visible-fields-captured --inspection-only
+```
+
+If it returns `pause`, resolve the listed reason and record a fresh inspection. A job page, closed/unknown posting, incomplete visible-field list, missing required answer, sensitive inferred answer, changed approved answer, changed CV/review, or receipt older than 30 minutes cannot start an attempt.
+
+Before typing into a live form, show the final company, role, URL, exact verified CV filename and any answers that still need confirmation. Ask for one explicit approval that names this application. Approval for one role never carries to another role. Approval may arrive in chat or through the dashboard's `Approve & apply` action; the latter is valid only for the exact CV bundle/file and live-form preflight recorded on that receipt.
 
 After approval, start a durable receipt:
 
 ```text
-node application-attempt.mjs start --job={tracker number} --company="{company}" --title="{role}" --url="{application URL}" --approved-by-user
+node application-attempt.mjs start --job={tracker number} --company="{company}" --title="{role}" --url="{application URL}" --cv="{exact verified PDF or DOCX}" --approved-by-user
+```
+
+For dashboard approval, use the action receipt instead of restating chat approval:
+
+```text
+node application-attempt.mjs start --job={tracker number} --company="{company}" --title="{role}" --url="{application URL}" --cv="{exact verified PDF or DOCX}" --approval-receipt={dashboard action id}
 ```
 
 Keep the returned `attemptId`. If the command says an earlier attempt is `started`, `unknown`, or `confirmed`, stop and reconcile it; do not click submit again.
 
-Fill fields and upload the exact CV shown to the user. A submission click is not proof of success.
+The started receipt binds the current review, JD fingerprint, CV-bundle fingerprint, selected upload hash, live-form preflight, approved-answer fingerprint, and approval source. An unresolved dashboard CV-change request blocks start. A preflight and dashboard approval can each be used only once; inspect and approve again before a retry. Fill fields and upload that exact CV. A submission click is not proof of success.
 
 ## Step 9 — Reconcile the outcome
 
@@ -151,7 +188,7 @@ Fill fields and upload the exact CV shown to the user. A submission click is not
 - `failed`: the form clearly rejected the submission;
 - `abandoned`: the user or agent intentionally stopped.
 
-Record it immediately:
+Record it immediately. The same command validates the attempt identity; for `confirmed`, it also updates the exact tracker row to `Applied` and rebuilds the derived tracker index. Other outcomes stay visible on that job without changing its lifecycle to Applied.
 
 ```text
 node application-attempt.mjs finish --attempt={attemptId} --outcome={confirmed|unknown|failed|abandoned} --evidence="{brief visible evidence}"
@@ -162,9 +199,9 @@ Never retry an `unknown` attempt until the agent checks the portal or confirmati
 ## Step 10 — Post-apply
 
 If the receipt is `confirmed`:
-1. Update status in `applications.md` from "Evaluated" to "Applied". Do not mark `unknown` as Applied.
-2. Update Section G of the report with the final responses
-3. Suggest next step: run the `contacto` mode (`/applycue contacto` where available) for LinkedIn outreach
+1. Verify the command returned `trackerStatus: Applied`; do not edit `applications.md` separately.
+2. Update Section G of the report with the final responses.
+3. Suggest next step: run the `contacto` mode (`/applycue contacto` where available) for LinkedIn outreach.
 
 ## Scroll handling
 

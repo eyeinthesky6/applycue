@@ -4,21 +4,14 @@ Export a tailored, ATS-optimized CV as a `.tex` file and compile it to PDF via `
 
 ## Pipeline
 
-1. Read `cv.md` as source of truth
-2. Read `config/profile.yml` for candidate identity and contact info
-3. Ask the user for the JD if not already in context (text or URL)
-4. Extract 15-20 keywords from the JD
-5. Detect JD language → CV language (EN default)
-6. Detect role archetype → adapt framing
-7. Rewrite Professional Summary injecting JD keywords (same rules as `pdf` mode — NEVER invent skills)
-8. Select top 3-4 most relevant projects for the offer
-9. Reorder experience bullets by JD relevance
-10. Inject keywords naturally into existing achievements
-11. Build a JSON payload (see schema below) and write to `/tmp/cv-{candidate}-{company}.json`
-12. Run: `node build-cv-latex.mjs /tmp/cv-{candidate}-{company}.json output/cv-{candidate}-{company}-{YYYY-MM-DD}.tex`
-13. Run: `node generate-latex.mjs output/cv-{candidate}-{company}-{YYYY-MM-DD}.tex output/cv-{candidate}-{company}-{YYYY-MM-DD}.pdf`
+1. Follow the evidence, complete-JD, employer-success-brief, role-family, targeted evidence-recovery, high-stakes, recruiter-risk, positioning, and six-second-clarity steps in `modes/pdf.md`. The content rules are shared; only rendering differs.
+2. Read `config/profile.yml` for candidate identity and contact information.
+3. Detect JD language → CV language (EN default).
+4. Build a JSON payload (see schema below) and write to `/tmp/cv-{candidate}-{company}.json`.
+5. Run: `node build-cv-latex.mjs /tmp/cv-{candidate}-{company}.json output/cv-{candidate}-{company}-{YYYY-MM-DD}.tex`.
+6. Run: `node generate-latex.mjs output/cv-{candidate}-{company}-{YYYY-MM-DD}.tex output/cv-{candidate}-{company}-{YYYY-MM-DD}.pdf`.
     *(Replace `{candidate}`, `{company}`, `{YYYY-MM-DD}` with actual values.)*
-14. Report: .tex path, .pdf path, file sizes, section count, keyword coverage %
+7. Report: .tex path, .pdf path, file sizes, section count, and keyword coverage.
 
 **Requires:** `tectonic` (preferred — `brew install tectonic`, auto-downloads packages) or `pdflatex` (MiKTeX / TeX Live) on PATH.
 

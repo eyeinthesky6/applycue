@@ -5,8 +5,10 @@ Read and display `data/applications.md`.
 **Tracker Format:**
 
 ```markdown
-| # | Date | Company | Role | Score | Status | PDF | Report | Notes |
+| # | Date | Company | Role | Score | Status | Decision | Rank | Confidence | Origin | PDF | Report | Notes |
 ```
+
+`Decision` is the agent's final semantic choice: `pending`, `apply`, `watch`, or `skip`. `Rank` explicitly orders current apply roles; `Confidence` is `high`, `medium`, `low`, or `unknown`. `Status` is the application lifecycle below. Do not use `Evaluated` as evidence that a role was shortlisted. `Origin` is internal provenance (`current`, `legacy_import`, `mail_import`, or `legacy_unknown`); mention it to the user only for imported/history rows. `Score` is a legacy compatibility cell; new reviews use `N/A`.
 
 Possible states: `Evaluated` → `Applied` → `Responded` → `Interview` → `Offer` / `Rejected` / `Discarded` / `SKIP`
 
@@ -19,11 +21,11 @@ Possible states: `Evaluated` → `Applied` → `Responded` → `Interview` → `
 - `Discarded` = discarded by candidate or offer closed
 - `SKIP` = doesn't fit, don't apply
 
-If the user asks to update a state, edit the corresponding row.
+If the user asks to update a state, edit `Status`. If the agent finishes a role review, record `Decision`, `Rank`, and `Confidence` separately.
 
 Also show statistics:
 - Total applications
 - Breakdown by state
-- Average score
+- Decision and confidence breakdown; ranked current apply queue
 - % with PDF generated
 - % with report generated

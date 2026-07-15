@@ -12,7 +12,7 @@
  * WHAT THIS DOES
  * For each `completed` / `skipped` entry in batch-state.tsv whose URL is still
  * sitting in pipeline.md "Pendientes", move that line to "Procesadas" with its
- * report link, score and PDF flag.
+ * report link, agent decision/rank and PDF flag.
  *
  * Idempotent: an entry already moved (no longer in Pendientes) is a no-op, and
  * an entry already present in Procesadas is dropped from Pendientes without a
@@ -88,17 +88,17 @@ if (!existsSync(PIPELINE_FILE)) {
 }
 
 // ---- parse batch-state.tsv ----
-// columns: id  url  status  started_at  completed_at  report_num  score  error  retries
-const DONE = new Map(); // url -> { reportNum, score }
+// columns: id  url  status  started_at  completed_at  report_num  legacy_score  error  retries
+const DONE = new Map(); // url -> { reportNum }
 for (const line of readFileSync(STATE_FILE, 'utf-8').split(/\r?\n/)) {
   if (!line.trim() || line.startsWith('id\t')) continue;
   const c = line.split('\t');
   if (c.length < 7) continue;
-  const [, url, status, , , reportNum, score] = c;
-  // "completed" and "skipped" (below --min-score) both produced a report.
+  const [, url, status, , , reportNum] = c;
+  // Historical skipped rows may still exist; completed rows are the current path.
   if (status !== 'completed' && status !== 'skipped') continue;
   if (!url || !url.trim()) continue;
-  DONE.set(url.trim(), { reportNum: (reportNum || '').trim(), score: (score || '').trim() });
+  DONE.set(url.trim(), { reportNum: (reportNum || '').trim() });
 }
 
 if (DONE.size === 0) {
@@ -129,16 +129,14 @@ function readReportField(reportFile, field) {
   } catch { return null; }
 }
 
-// State score is authoritative when numeric; otherwise fall back to the report.
-function resolveScore(stateScore, reportFile) {
-  if (/^\d+(?:\.\d+)?$/.test(stateScore)) return `${stateScore}/5`;
-  const rep = readReportField(reportFile, 'Score');
-  if (rep) {
-    const num = rep.match(/(\d+(?:\.\d+)?)/);
-    if (num) return `${num[1]}/5`;
-    if (/n\/?a/i.test(rep)) return 'N/A';
-  }
-  return 'N/A';
+function resolveDecision(reportFile) {
+  const decision = String(readReportField(reportFile, 'Decision') || 'pending').trim().toLowerCase();
+  return ['apply', 'watch', 'skip'].includes(decision) ? decision : 'pending';
+}
+
+function resolveRank(reportFile) {
+  const rank = String(readReportField(reportFile, 'Rank') || '—').trim();
+  return /^\d+$/.test(rank) ? `Rank ${rank}` : '—';
 }
 
 function resolvePdf(reportFile) {
@@ -187,7 +185,7 @@ if (procStart >= 0) {
   for (let i = procStart + 1; i < procEnd; i++) {
     const m = lines[i].match(/^- \[x\]\s+(.+)$/i);
     if (!m) continue;
-    // "[num](path) | url | company | role | score | PDF x" — url is field 2
+    // "[num](path) | url | company | role | decision | rank | PDF x" — URL is field 2
     const parts = m[1].split('|').map(s => s.trim());
     if (parts[1]) procUrls.add(parts[1]);
   }
@@ -223,13 +221,14 @@ for (let i = pendStart + 1; i < pendEnd; i++) {
   const parts = body.split('|').map(s => s.trim());
   const company = parts[1] || '';
   const role = parts[2] || '';
-  const score = resolveScore(done.score, reportFile);
+  const decision = resolveDecision(reportFile);
+  const rank = resolveRank(reportFile);
   const pdf = resolvePdf(reportFile);
   const num = parseInt(done.reportNum, 10);
 
   const reportLink = normalizeReportLink(`[${num}](reports/${reportFile})`, dirname(PIPELINE_FILE), APPLYCUE);
-  movedProcLines.push(`- [x] ${reportLink} | ${url} | ${company} | ${role} | ${score} | PDF ${pdf}`);
-  moved.push({ url, company, role, num, score });
+  movedProcLines.push(`- [x] ${reportLink} | ${url} | ${company} | ${role} | ${decision} | ${rank} | PDF ${pdf}`);
+  moved.push({ url, company, role, num, decision, rank });
   procUrls.add(url);
   removeIdx.add(i);
 }
@@ -282,7 +281,7 @@ const newCount = (() => {
 
 const realMoves = moved.filter(m => !m.dup);
 console.log(`🔄 ${realMoves.length} processed entr${realMoves.length === 1 ? 'y' : 'ies'} moved Pendientes → Procesadas:`);
-for (const m of realMoves) console.log(`   + #${m.num} ${m.company} — ${m.role} (${m.score})`);
+for (const m of realMoves) console.log(`   + #${m.num} ${m.company} — ${m.role} (${m.decision}, ${m.rank})`);
 const dups = moved.filter(m => m.dup);
 if (dups.length) console.log(`🧹 ${dups.length} stale Pendientes entr${dups.length === 1 ? 'y' : 'ies'} dropped (already in Procesadas).`);
 console.log(`📋 Pendientes now: ${newCount} entr${newCount === 1 ? 'y' : 'ies'}`);

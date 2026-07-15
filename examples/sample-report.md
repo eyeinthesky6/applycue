@@ -2,7 +2,9 @@
 
 **Date:** 2026-04-01
 **Archetype:** AI Platform / LLMOps Engineer
-**Score:** 4.2/5
+**Decision:** apply
+**Rank:** 1
+**Confidence:** medium
 **URL:** https://jobs.example.com/acme-ai-senior-engineer
 **PDF:** output/cv-candidate-acme-ai-2026-04-01.pdf
 

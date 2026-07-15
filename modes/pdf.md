@@ -2,27 +2,30 @@
 
 ## Full pipeline
 
-1. Read `cv.md` as the source of truth
-2. Ask the user for the JD if it is not in context (text or URL)
-3. Extract 15-20 keywords from the JD
-4. Detect JD language → CV language (EN default)
-5. Detect company location → paper format:
+1. Read `cv.md`, `article-digest.md` (if present), `config/profile.yml`, and `modes/_profile.md` as the approved candidate evidence and positioning sources.
+2. Ask the user for the JD if it is not in context (text or URL), then hydrate and read the complete live JD.
+3. Build the employer success brief in `modes/heuristics/recruiter-side.md` from the JD and bounded company context. Keep sourced facts, agent inference, and unknowns separate.
+4. Detect the primary role family (technical, product, sales/GTM, operations/programme/public impact, strategy/consulting, or founder/operator). Use one secondary family only for a genuine hybrid.
+5. If the employer brief exposes material evidence that may simply be absent from the old CV, ask the user a short set of targeted questions. A confirmed recollection is usable evidence after it is saved in the approved user evidence layer; documentary proof and an exact metric are not required.
+6. If the user marked the role high stakes, deepen the brief with company/team priorities and a small public pattern review of comparable successful people at the same or adjacent level. Extract recurring signals, not identities or protected traits. Offer social/portfolio changes only when they could materially help this role.
+7. Extract 15-20 useful phrases from the JD for ATS parsing and human recognition; do not treat overlap as a fit score.
+8. Detect JD language → CV language (EN default).
+9. Detect company location → paper format:
    - US/Canada → `letter`
    - Rest of the world → `a4`
-6. Detect role archetype → adapt framing
-7. Build an internal recruiter-side risk map from the JD using `modes/heuristics/recruiter-side.md`: likely doubts, matching evidence, and which document section should address each doubt
-8. Rewrite Professional Summary by injecting JD keywords + exit narrative bridge ("Built and sold a business. Now applying systems thinking to [JD domain].")
-9. Select top 3-4 most relevant projects for the job
-10. Reorder experience bullets by JD relevance and by the risk map: strongest matching evidence first
-11. Build competency grid from JD requirements (6-8 keyword phrases)
-12. Inject keywords naturally into existing achievements (NEVER invent)
-13. Apply the six-second clarity gate from `modes/heuristics/recruiter-side.md`: top third must make target role, strongest fit, and proof obvious
-14. Generate full HTML from template + personalized content
-15. Read `name` from `config/profile.yml` → normalize to kebab-case lowercase (e.g. "John Doe" → "john-doe") → `{candidate}`
-16. Write the tailored content to `output/cv-{candidate}-{company}.md` and the matching HTML to `output/cv-{candidate}-{company}.html`. These are durable source artifacts, not temporary files.
-17. Execute: `node generate-pdf.mjs output/cv-{candidate}-{company}.html output/cv-{candidate}-{company}-{YYYY-MM-DD}.pdf --format={letter|a4} --report={report number}` — `{report number}` is the NNN from the report filename/link (e.g. `008` for `reports/008-acme-….md`), not the tracker `#` column. Pass it whenever the application has (or will have) a report; it records the PDF↔report linkage in `data/pdf-index.tsv` so the dashboard can open the exact PDF. Omit it only for one-off CVs with no tracker entry.
-18. Execute: `node generate-docx.mjs output/cv-{candidate}-{company}.md output/cv-{candidate}-{company}-{YYYY-MM-DD}.docx`.
-19. Report both document paths, PDF page count, and keyword coverage. Before applying, verify the selected upload file opens and belongs to the named company/role.
+10. Build the recruiter-side risk map: likely doubts, matching evidence, gaps, and which document section should address each doubt.
+11. Choose the three promises the first page should communicate and write the Professional Summary around the employer's expected outcomes, the user's role-family positioning, and the strongest evidence. Do not merely inject keywords or force one generic exit-story sentence into every CV.
+12. Select the most relevant experience, decisions, outcomes, and 2-4 projects/case studies for the role family. Important confirmed work recovered from the user may be added even when it was absent from the supplied CV.
+13. Reorder and rewrite bullets by employer outcome and recruiter risk. Preserve the underlying fact, but allow substantial changes in emphasis, structure, vocabulary, and connective language. Use a confirmed qualitative result when no exact metric survives.
+14. Build a competency grid from 6-8 truthful requirements and phrases the employer will recognize.
+15. Apply the six-second clarity gate from `modes/heuristics/recruiter-side.md`: the top third must make the target outcome, role family, strongest fit, and proof obvious.
+16. Generate full HTML from template + personalized content.
+17. Read `name` from `config/profile.yml` → normalize to kebab-case lowercase (e.g. "John Doe" → "john-doe") → `{candidate}`.
+18. Write the tailored content to `output/cv-{candidate}-{company}.md` and the matching HTML to `output/cv-{candidate}-{company}.html`. These are durable source artifacts, not temporary files. For a tracked application, the Markdown must start with `applycue-cv-source-v1` frontmatter containing the tracker job id, company, role, job URL, `decision: apply`, current review receipt id, decision-context fingerprint, and JD-content fingerprint. Put the same identity fields in ApplyCue HTML meta tags. The rendered CV body does not show this metadata.
+19. Execute: `node generate-pdf.mjs output/cv-{candidate}-{company}.html output/cv-{candidate}-{company}-{YYYY-MM-DD}.pdf --format={letter|a4} --report={report number}` — `{report number}` is the NNN from the report filename/link (e.g. `008` for `reports/008-acme-….md`), not the tracker `#` column. Pass it whenever the application has (or will have) a report; it records the legacy PDF↔report linkage in `data/pdf-index.tsv`. Omit it only for one-off CVs with no tracker entry.
+20. Execute: `node generate-docx.mjs output/cv-{candidate}-{company}.md output/cv-{candidate}-{company}-{YYYY-MM-DD}.docx`. The generator removes source frontmatter from visible content and writes the role/review identity into DOCX metadata.
+21. For a tracked application, record the complete bundle: `node cv-bundle.mjs record --job={tracker number} --md=<md> --html=<html> --pdf=<pdf> --docx=<docx> --actor=codex --format={letter|a4}`. This verifies all four files, stores their hashes, and binds them to the current JD and agent decision.
+22. Choose the actual upload file and run `node cv-bundle.mjs check --job={tracker number} --cv=<selected PDF or DOCX>`. Report both document paths, the selected upload path, PDF page count, and keyword coverage. Do not request application approval while the check is missing or stale.
 
 ## ATS Rules (clean parsing)
 
@@ -63,14 +66,14 @@
 6. Education & Certifications
 7. Skills (languages + technical)
 
-## Keyword injection strategy (ethical, truth-based)
+## Evidence-aware marketing strategy
 
 Examples of legitimate reformulation:
 - JD says "RAG pipelines" and CV says "LLM workflows with retrieval" → change to "RAG pipeline design and LLM orchestration workflows"
 - JD says "MLOps" and CV says "observability, evals, error handling" → change to "MLOps and observability: evals, error handling, cost monitoring"
 - JD says "stakeholder management" and CV says "collaborated with team" → change to "stakeholder management across engineering, operations, and business"
 
-**NEVER add skills that the candidate does not have. Only reword real experience using the exact JD vocabulary.**
+The old CV is not a completeness test. The agent may recover useful experience through targeted questions, add user-confirmed work to the approved evidence layer, and write it in a stronger role-specific form. Never add an employer, credential, skill, ownership claim, result, or precise metric the user has not confirmed.
 
 ## Template HTML
 
@@ -142,11 +145,9 @@ c. If mapping fails, show the user what was found and ask for guidance
 
 #### Step 3 — Generate tailored content
 
-Same content generation as the HTML flow (Steps 1-11 above):
-- Rewrite Professional Summary with JD keywords + exit narrative
-- Reorder experience bullets by JD relevance
-- Select top competencies from JD requirements
-- Inject keywords naturally (NEVER invent)
+Use the same employer-brief, role-family, targeted evidence-recovery, risk-map,
+positioning, and content-selection steps as the HTML flow above. Preserve the
+underlying confirmed facts while adapting emphasis and language to the role.
 
 **IMPORTANT — Character budget rule:** Each replacement text MUST be approximately the same length as the original text it replaces (within ±15% character count). If tailored content is longer, condense it. The Canva design has fixed-size text boxes — longer text causes overlapping with adjacent elements. Count the characters in each original element from Step 2 and enforce this budget when generating replacements.
 

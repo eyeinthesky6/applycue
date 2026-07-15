@@ -5,8 +5,12 @@ The canonical executable flow is `skills/applycue/SKILL.md`.
 In one line:
 
 ```text
-install -> greet -> exact CV baseline -> approved evidence discovery -> coherent story confirmation -> intent -> baseline source run -> full-JD agent review -> first five real matches -> PDF/DOCX -> named approval -> attempt receipt -> confirmed tracking -> dashboard feedback
+install -> greet -> exact CV baseline -> approved evidence discovery -> coherent story confirmation -> intent -> baseline source run -> full-JD agent review -> first five real matches -> employer success brief + role-family positioning -> targeted recovery of missing work -> verified PDF/DOCX -> dashboard review/CV-change loop -> live-form preflight -> exact named approval -> attempt receipt -> confirmed tracking -> dashboard outcome
 ```
+
+For every application, the employer brief separates what the employer stated, sourced company context, agent inference, and unknowns. The old CV is not treated as a complete inventory; the agent asks focused questions when forgotten work could materially strengthen the application.
+
+The user may mark a role high stakes in chat or on the dashboard. A job link supplied directly by the user defaults to high stakes unless they say standard; agent/scanner discoveries default to standard. The agent flow then adds deeper bounded company/context research, a small public success-pattern review when available, a positioning brief, and optional draft social/portfolio recommendations. The flag is durable in the existing feedback ledger; V1 adds a repeatable saved campaign pack. Public profile changes always require separate user approval.
 
 Code owns objective mechanics and integrity. The agent owns semantic review and writing. The user owns access, material facts, scope changes, and every application/send approval.
 

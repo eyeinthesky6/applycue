@@ -6,7 +6,7 @@
  * 1. All statuses are canonical (per states.yml)
  * 2. No duplicate company+role entries
  * 3. All report links point to existing files
- * 4. Scores match format X.XX/5 or N/A or DUP
+ * 4. Legacy score cells remain readable (X.XX/5, N/A, DUP, or em dash)
  * 5. All rows have proper pipe-delimited format
  * 6. No pending TSVs in tracker-additions/ (only in merged/ or archived/)
  * 7. states.yml canonical IDs for cross-system consistency
@@ -17,6 +17,11 @@
 import { readFileSync, readdirSync, existsSync, mkdirSync, unlinkSync, statSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { CONFIDENCES, DECISIONS, ORIGINS, parseTrackerRow, resolveColumns } from './tracker-parse.mjs';
+import { cvBundleFreshnessForJob } from './cv-bundle.mjs';
+import { reviewFreshnessForRow } from './review-evidence.mjs';
+import { validateAttemptPreflightLink } from './application-preflight.mjs';
+import { assertNoBlockingJobActions } from './job-feedback.mjs';
 
 const APPLYCUE = dirname(fileURLToPath(import.meta.url));
 // Support both layouts: data/applications.md (boilerplate) and applications.md (original).
@@ -68,51 +73,11 @@ if (!existsSync(APPS_FILE)) {
 const content = readFileSync(APPS_FILE, 'utf-8');
 const lines = content.split('\n');
 
-// Map columns by header name so the checks work whether the tracker uses the
-// original 9-column layout or a customized one with an extra column (e.g. a
-// Location column after Role). Fixed-position indexing would otherwise read
-// Location where Score is expected and flag false errors. Falls back to the
-// legacy fixed layout when no recognizable header row is found.
-const LEGACY_COLMAP = { num: 1, date: 2, company: 3, role: 4, score: 5, status: 6, pdf: 7, report: 8, notes: 9 };
-const HEADER_ALIASES = {
-  '#': 'num', 'num': 'num', 'date': 'date', 'company': 'company', 'empresa': 'company',
-  'role': 'role', 'puesto': 'role', 'location': 'location', 'score': 'score',
-  'status': 'status', 'pdf': 'pdf', 'report': 'report', 'notes': 'notes',
-};
-function detectColumns(allLines) {
-  for (const line of allLines) {
-    if (!line.startsWith('|')) continue;
-    const cells = line.split('|').map(s => s.trim().toLowerCase());
-    if (!cells.includes('company') || !cells.includes('role')) continue;
-    const map = {};
-    cells.forEach((c, i) => { if (HEADER_ALIASES[c] != null) map[HEADER_ALIASES[c]] = i; });
-    if (['num', 'company', 'role', 'score', 'status'].every(k => map[k] != null)) return map;
-  }
-  return null;
-}
-const COLMAP = detectColumns(lines) || LEGACY_COLMAP;
+// Shared header-name mapping keeps every reader on the same tracker contract.
+const COLMAP = resolveColumns(lines);
 const MAX_IDX = Math.max(...Object.values(COLMAP));
 
-const entries = [];
-for (const line of lines) {
-  if (!line.startsWith('|')) continue;
-  const parts = line.split('|').map(s => s.trim());
-  if (parts.length <= MAX_IDX) continue;
-  const num = parseInt(parts[COLMAP.num]);
-  if (isNaN(num)) continue;
-  entries.push({
-    num,
-    date: parts[COLMAP.date],
-    company: parts[COLMAP.company],
-    role: parts[COLMAP.role],
-    location: COLMAP.location != null ? parts[COLMAP.location] : '',
-    score: parts[COLMAP.score],
-    status: parts[COLMAP.status],
-    pdf: parts[COLMAP.pdf],
-    report: parts[COLMAP.report],
-    notes: COLMAP.notes != null ? (parts[COLMAP.notes] || '') : '',
-  });
-}
+const entries = lines.map((line) => parseTrackerRow(line, COLMAP)).filter(Boolean);
 
 console.log(`\n📊 Checking ${entries.length} entries in applications.md\n`);
 
@@ -141,6 +106,132 @@ for (const e of entries) {
   }
 }
 if (badStatuses === 0) ok('All statuses are canonical');
+
+// Decision is semantic; Status is application lifecycle. Evaluated alone must
+// never be treated as shortlisted. Origin is provenance and only non-current
+// rows are labelled in the dashboard.
+let badMetadata = 0;
+if (COLMAP.decision == null || COLMAP.rank == null || COLMAP.confidence == null || COLMAP.origin == null) {
+  warn('Tracker predates Decision/Rank/Confidence/Origin metadata; run `node tracker.mjs migrate-metadata` and classify current/imported IDs before relying on dashboard counts');
+} else {
+  for (const e of entries) {
+    const parts = e.raw.split('|').map((value) => value.trim().toLowerCase());
+    const rawDecision = parts[COLMAP.decision] || '';
+    const rawRank = parts[COLMAP.rank] || '';
+    const rawConfidence = parts[COLMAP.confidence] || '';
+    const rawOrigin = parts[COLMAP.origin] || '';
+    if (!DECISIONS.includes(rawDecision)) { error(`#${e.num}: Invalid decision "${rawDecision}"`); badMetadata++; }
+    if (rawRank !== '—' && !/^[1-9]\d*$/.test(rawRank)) { error(`#${e.num}: Rank must be a positive integer or —`); badMetadata++; }
+    if (!CONFIDENCES.includes(rawConfidence)) { error(`#${e.num}: Invalid confidence "${rawConfidence}"`); badMetadata++; }
+    if (!ORIGINS.includes(rawOrigin)) { error(`#${e.num}: Invalid origin "${rawOrigin}"`); badMetadata++; }
+    if (rawOrigin === 'current' && rawDecision === 'apply' && rawRank === '—') {
+      warn(`#${e.num}: Current apply decision is waiting for an explicit cross-role agent rank`);
+    }
+  }
+}
+if (badMetadata === 0 && COLMAP.decision != null && COLMAP.rank != null && COLMAP.confidence != null && COLMAP.origin != null) ok('All review metadata is canonical');
+
+// A stored semantic decision is effective only while its deterministic review
+// inputs still match the fingerprint-bound receipt.
+let badReviewReceipts = 0;
+const completedApplicationStatuses = new Set(['applied', 'responded', 'interview', 'offer', 'rejected']);
+for (const entry of entries.filter((item) => item.origin === 'current' && item.decision !== 'pending' && !completedApplicationStatuses.has(item.status.toLowerCase()))) {
+  const review = reviewFreshnessForRow(APPLYCUE, entry, { trackerPath: APPS_FILE });
+  if (review.state !== 'current') {
+    error(`#${entry.num}: Review is ${review.state}; effective decision is pending (${review.issues.join('; ')})`);
+    badReviewReceipts++;
+  }
+}
+if (badReviewReceipts === 0) ok('All current final decisions have fresh full-JD review receipts');
+
+// A current row that claims its CV is prepared must point to one complete,
+// fingerprint-bound MD/HTML/PDF/DOCX bundle. Shortlisted rows without a CV yet
+// may remain in preparation; application-attempt.mjs enforces the bundle gate.
+let badCvBundles = 0;
+for (const entry of entries.filter((item) =>
+  item.origin === 'current' && item.decision === 'apply' && item.pdf.includes('✅') &&
+  !completedApplicationStatuses.has(item.status.toLowerCase()))) {
+  const bundle = await cvBundleFreshnessForJob(APPLYCUE, entry.num, { trackerPath: APPS_FILE });
+  if (bundle.state !== 'current') {
+    error(`#${entry.num}: Prepared CV bundle is ${bundle.state} (${bundle.issues.join('; ')})`);
+    badCvBundles++;
+  } else {
+    try {
+      assertNoBlockingJobActions(APPLYCUE, entry.num, bundle.manifest.bundleFingerprint);
+    } catch (feedbackError) {
+      error(feedbackError.message);
+      badCvBundles++;
+    }
+  }
+}
+if (badCvBundles === 0) ok('All current prepared apply decisions have verified CV bundles and no unresolved user stop/change actions');
+
+// Attempt receipts and tracker lifecycle must agree for the same current job.
+// Unknown/failed/abandoned attempts never prove an application was accepted;
+// confirmed attempts must be reflected in the canonical lifecycle.
+let badAttemptReconciliation = 0;
+const attemptsPath = join(APPLYCUE, 'data', 'application-attempts.jsonl');
+const latestAttemptById = new Map();
+const startedAttemptById = new Map();
+if (existsSync(attemptsPath)) {
+  for (const line of readFileSync(attemptsPath, 'utf8').split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      const event = JSON.parse(line);
+      if (event?.attemptId && event?.jobId) {
+        latestAttemptById.set(String(event.attemptId), event);
+        if (event.outcome === 'started') startedAttemptById.set(String(event.attemptId), event);
+      }
+    } catch {
+      error('Application attempt ledger contains malformed JSON');
+      badAttemptReconciliation++;
+    }
+  }
+}
+
+const preflightsById = new Map();
+const preflightsPath = join(APPLYCUE, 'data', 'application-preflights.jsonl');
+if (existsSync(preflightsPath)) {
+  for (const line of readFileSync(preflightsPath, 'utf8').split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      const receipt = JSON.parse(line);
+      if (receipt?.id) preflightsById.set(String(receipt.id), receipt);
+    } catch {
+      error('Application preflight ledger contains malformed JSON');
+      badAttemptReconciliation++;
+    }
+  }
+}
+for (const start of startedAttemptById.values()) {
+  const preflight = preflightsById.get(String(start.preflightReceiptId || ''));
+  if (!preflight) {
+    error(`#${start.jobId}: Application attempt ${start.attemptId} has no matching preflight receipt`);
+    badAttemptReconciliation++;
+    continue;
+  }
+  const preflightIssues = validateAttemptPreflightLink(start, preflight);
+  if (preflightIssues.length > 0) {
+    error(`#${start.jobId}: Application attempt ${start.attemptId} disagrees with its live-form preflight (${preflightIssues.join('; ')})`);
+    badAttemptReconciliation++;
+  }
+}
+const latestAttemptByJob = new Map();
+for (const event of latestAttemptById.values()) latestAttemptByJob.set(String(event.jobId), event);
+for (const entry of entries.filter((item) => item.origin === 'current')) {
+  const attempt = latestAttemptByJob.get(String(entry.num));
+  if (!attempt) continue;
+  const lifecycleComplete = completedApplicationStatuses.has(entry.status.toLowerCase());
+  if (attempt.outcome === 'confirmed' && !lifecycleComplete) {
+    error(`#${entry.num}: Confirmed application attempt disagrees with tracker status "${entry.status}"`);
+    badAttemptReconciliation++;
+  }
+  if (['started', 'unknown', 'failed', 'abandoned'].includes(attempt.outcome) && lifecycleComplete) {
+    error(`#${entry.num}: ${attempt.outcome} application attempt cannot support tracker status "${entry.status}"`);
+    badAttemptReconciliation++;
+  }
+}
+if (badAttemptReconciliation === 0) ok('Application attempts agree with tracker lifecycle');
 
 // --- Check 2: Duplicates ---
 const companyRoleMap = new Map();
@@ -177,16 +268,16 @@ for (const e of entries) {
 }
 if (brokenReports === 0) ok('All report links valid');
 
-// --- Check 4: Score format ---
+// --- Check 4: Legacy score format ---
 let badScores = 0;
 for (const e of entries) {
   const s = e.score.replace(/\*\*/g, '').trim();
-  if (!/^\d+\.?\d*\/5$/.test(s) && s !== 'N/A' && s !== 'DUP') {
-    error(`#${e.num}: Invalid score format: "${e.score}"`);
+  if (!/^\d+\.?\d*\/5$/.test(s) && s !== 'N/A' && s !== 'DUP' && s !== '—') {
+    error(`#${e.num}: Invalid legacy score format: "${e.score}"`);
     badScores++;
   }
 }
-if (badScores === 0) ok('All scores valid');
+if (badScores === 0) ok('All legacy score cells readable');
 
 // --- Check 5: Row format ---
 let badRows = 0;

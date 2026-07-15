@@ -34,20 +34,23 @@ For each named role:
 
 1. Recheck liveness and exact company/role/URL.
 2. Skip current employer; ask for past employer.
-3. Generate and open role PDF/DOCX.
-4. Resolve material claim and form-answer questions.
-5. Show the final application package.
-6. Get explicit approval.
-7. Start `application-attempt.mjs` receipt.
-8. Fill/upload/submit through the approved agent browser.
-9. Record `confirmed`, `unknown`, `failed`, or `abandoned` immediately.
-10. Update tracker to Applied only for confirmed success.
+3. Generate role Markdown/HTML/PDF/DOCX, record the bundle, and open the PDF/DOCX.
+4. Inspect every currently visible form field without filling. Resolve material claim and form-answer questions; save reusable values only after explicit user approval.
+5. Run `review-evidence.mjs check`; stale inputs return the role to pending re-review.
+6. Run `cv-bundle.mjs check --job=N --cv=<selected PDF or DOCX>`; use only the exact verified upload.
+7. Record `application-preflight.mjs record` from the host browser's structural field snapshot. It must return `ready`; a changed answer/review/CV or a receipt older than 30 minutes needs a fresh inspection.
+8. Show the final application package.
+9. Get explicit approval.
+10. Start `application-attempt.mjs` with that `--cv` path; the receipt binds its hash, current preflight, and approved-answer fingerprint.
+11. Fill/upload/submit through the approved agent browser.
+12. Record `confirmed`, `unknown`, `failed`, or `abandoned` immediately.
+13. For confirmed success, verify the finish result says `trackerStatus: Applied`; do not perform a second manual tracker edit. Other outcomes remain visible attempt evidence.
 
 Never retry unknown without reconciliation and new approval.
 
 ## Feedback
 
-Open `npm run dashboard`. Read `data/job-feedback.jsonl` for unresolved thumbs-down. Ask why, summarize the reusable lesson, and get approval before changing user config.
+Open `npm run dashboard`, then run `node job-feedback.mjs pending` after the user finishes reviewing. Process `prepare`, `inspect_form`, `ignore`, and CV-change receipts through the existing owners. A CV-change request needs a regenerated verified bundle before resolution. A dashboard `approve_apply` receipt may replace chat approval only for its exact CV and preflight. Any reusable tuning still needs an explained diff and user approval before changing config.
 
 After a few ApplyCue applications, offer an approved mailbox pass for older confirmations and ongoing outcomes. It is useful history, not a first-run prerequisite.
 

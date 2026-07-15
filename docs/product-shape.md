@@ -8,7 +8,7 @@ It should not feel like a generic job board, a giant score report, or a collecti
 
 ## Interaction
 
-Chat is the primary control surface. The local browser dashboard is a brief evidence/feedback surface: counts, shortlist, links, filters, and thumbs. Feedback returns to the agent; it does not become a second autonomous brain.
+Chat is the primary control surface. The local browser dashboard is a brief evidence and consent surface: counts, shortlist, original-JD/CV links, filters, prepare/ignore actions, CV-change notes, and exact named apply approval after preflight. Actions return to the agent and never become a second autonomous brain, tracker, or submitter.
 
 ## Core decisions
 

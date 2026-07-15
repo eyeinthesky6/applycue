@@ -39,6 +39,6 @@ Paste the registry entry (one object), pinned to the exact reviewed commit:
 - [ ] No core-owned secrets in `requiredEnv`
 - [ ] Reads PUBLIC data or the user's OWN account only — no centralized infrastructure, no auto-submit, no blind-apply
 - [ ] No commercial / hosted-service / monetization wording (the project is free and local-first)
-- [ ] If it ships a skill: domain-scoped — does not instruct the agent to edit core files, change scoring, reveal secrets, or act outside its hooks
+- [ ] If it ships a skill: domain-scoped — does not instruct the agent to edit core decision behavior, reveal secrets, or act outside its hooks
 - [ ] `sha` is pinned to the exact reviewed commit
 - [ ] CI (`plugin-registry-validate`) is green

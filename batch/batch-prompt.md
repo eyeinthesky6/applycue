@@ -1,9 +1,9 @@
-# ApplyCue Batch Worker — Evaluación Completa + PDF + Tracker Line
+# ApplyCue Batch Worker — Agent Review + Application Artifact + Tracker Line
 
 Eres un worker de evaluación de ofertas de empleo for the candidate (read name from config/profile.yml). Recibes una oferta (URL + JD text) y produces:
 
 1. Evaluación completa A-G (report .md)
-2. PDF personalizado ATS-optimizado
+2. PDF personalizado ATS-optimizado when the decision is `apply`
 3. Línea de tracker para merge posterior
 
 **IMPORTANTE**: Este prompt es self-contained. Tienes TODO lo necesario aquí. No dependes de ningún otro skill ni sistema.
@@ -26,18 +26,17 @@ Eres un worker de evaluación de ofertas de empleo for the candidate (read name 
 **REGLA: NUNCA escribir en cv.md ni i18n.ts.** Son read-only.
 **REGLA: NUNCA hardcodear métricas.** Leerlas de cv.md + article-digest.md en el momento.
 **REGLA: Para métricas de artículos, article-digest.md prevalece sobre cv.md.** cv.md puede tener números más antiguos — es normal.
-**REGLA: Antes de evaluar, cargar `modes/_profile.md` y `config/profile.yml` si existen.** Contienen las preferencias del candidato Y reglas concretas de scoring que **sobrescriben** los defaults del sistema.
+**REGLA: Antes de evaluar, cargar `modes/_profile.md` y `config/profile.yml` si existen.** Contienen las preferencias confirmadas del candidato. A `Decision` is invalid if the report does not say which material preferences it used.
 
 Tipos de patrones que estos archivos pueden incluir:
-- **Caps de bloque** — ej: "cap Block A at 3.0/5 if title contains 'Lead'/'Head'/'Principal'"
-- **Overrides de recomendación** — ej: "force SKIP if comp ceiling below $120K" o "force SKIP if role_shape signals broad ownership"
-- **Scoring por dimensión** — ej: "Remote: full credit on remote-first; score 2.0 on full on-site outside [region]"
+- **Hard constraints** — current employer, explicit no-go companies, authorization, or a confirmed geography limit
+- **Judgment preferences** — target outcomes, adjacent roles, seniority, compensation, relocation trade-offs, and preferred work shape
 - **Framing adaptativo por archetype** — mappings entre arquetipos detectados y proof points a priorizar
 
 Aplicación durante la evaluación A-G:
-- **Bloque A:** aplicar caps de role-shape ANTES de calcular el score del bloque
-- **Bloques B-D:** aplicar adaptive framing por archetype y reglas de dimension scoring (location, comp, etc.)
-- **Bloque F:** aplicar recommendation overrides (SKIP forzado, etc.) — `_profile.md` puede convertir un score técnicamente alto en un SKIP por shape o por comp
+- Apply only explicit objective hard constraints automatically.
+- Treat title fit, experience relevance, seniority nuance, compensation trade-offs, and CV-to-JD fit as agent judgment.
+- State strengths, gaps, unknowns, preference basis, reason, decision, and confidence. Do not calculate a global fit score.
 
 **En conflicto, las reglas de `_profile.md` ganan sobre los defaults de `_shared.md`.** Esto es intencional: `_profile.md` es la capa de personalización del usuario.
 
@@ -135,7 +134,7 @@ Sección de **gaps** con estrategia de mitigación para cada uno:
 
 Usar WebSearch para salarios actuales (Glassdoor, Levels.fyi, Blind), reputación comp de la empresa, tendencia demanda. Tabla con datos y fuentes citadas. Si no hay datos, decirlo.
 
-Score de comp (1-5): 5=top quartile, 4=above market, 3=median, 2=slightly below, 1=well below.
+Describe compensation as above market, around market, below target, or unknown, with cited evidence. Do not convert it to a fit score.
 
 #### Bloque E — Plan de Personalización
 
@@ -170,44 +169,37 @@ Analyze posting signals to assess whether this is a real, active opening.
 
 **Assessment:** Apply the same three tiers (High Confidence / Proceed with Caution / Suspicious), weighting available signals more heavily. If insufficient signals are available to make a determination, default to "Proceed with Caution" with a note about limited data.
 
-#### Score Global
+#### Agent Judgment
 
-| Dimensión | Score |
-|-----------|-------|
-| Match con CV | X/5 |
-| Alineación North Star | X/5 |
-| Comp | X/5 |
-| Señales culturales | X/5 |
-| Red flags | -X (si hay) |
-| **Global** | **X/5** |
+Record one `apply`, `watch`, or `skip` decision. Support it with specific strengths, gaps, unknowns, and the confirmed preferences that materially affected the decision. A worker cannot assign a cross-batch rank; use `rank: "—"`. After all workers finish, the main agent reads the apply reports together and assigns explicit ranks.
 
 #### Machine Summary
 
-Create a machine-readable summary from the completed A-G evaluation and global score. This block is for downstream scripts; keep field names exact, use YAML, and do not add prose inside the fence.
+Create a machine-readable summary from the completed A-G review. This block is for downstream scripts; keep field names exact, use YAML, and do not add prose inside the fence.
 
 ```yaml
 company: "{empresa}"
 role: "{rol}"
-score: {X.X}
 legitimacy_tier: "{High Confidence | Proceed with Caution | Suspicious}"
 archetype: "{detectado}"
-final_decision: "{Apply | Consider | Research first | Skip}"
-hard_stops:
-  - "{blocking gap or risk}"
-soft_gaps:
-  - "{non-blocking gap}"
-top_strengths:
+decision: "{apply | watch | skip}"
+rank: "—"
+confidence: "{high | medium | low}"
+strengths:
   - "{strength most relevant to this role}"
-risk_level: "{Low | Medium | High}"
-confidence: "{Low | Medium | High}"
-next_action: "{one concrete next step}"
+gaps:
+  - "{material gap or risk}"
+unknowns:
+  - "{missing evidence that could change the decision}"
+preference_basis:
+  - "{confirmed preference used in this decision}"
+reason: "{plain-language decision reason}"
 ```
 
 Rules:
-- Use `[]` for `hard_stops`, `soft_gaps`, or `top_strengths` when empty.
-- `score` is numeric only, without `/5`.
-- `final_decision` must reflect the full evaluation, not only the CV match.
-- Do not invent missing data. If confidence is limited, set `confidence: "Low"` and explain the limitation in the human-readable sections.
+- Use `[]` for `strengths`, `gaps`, `unknowns`, or `preference_basis` when empty.
+- `decision` must reflect the full evaluation, not only CV overlap.
+- Do not invent missing data. If evidence is limited, set `confidence: "low"` and name the unknown.
 
 ### Paso 3 — Guardar Report .md
 
@@ -225,10 +217,12 @@ Donde `{company-slug}` es el nombre de empresa en lowercase, sin espacios, con g
 
 **Fecha:** {{DATE}}
 **Arquetipo:** {detectado}
-**Score:** {X/5}
+**Decision:** {apply | watch | skip}
+**Rank:** — (main agent assigns after comparing the full apply queue)
+**Confidence:** {high | medium | low}
 **Legitimacy:** {High Confidence | Proceed with Caution | Suspicious}
 **URL:** {URL de la oferta original}
-**PDF:** {output/cv-candidate-{company-slug}-{{DATE}}.pdf if score ≥ the resolved `auto_pdf_score_threshold` from Paso 4, else `not generated — run /applycue pdf {company-slug} to create on demand`}
+**PDF:** {output/cv-candidate-{company-slug}-{{DATE}}.pdf if decision is apply, else `not generated — decision is watch/skip`}
 **Batch ID:** {{ID}}
 
 ---
@@ -238,19 +232,20 @@ Donde `{company-slug}` es el nombre de empresa en lowercase, sin espacios, con g
 ```yaml
 company: "{empresa}"
 role: "{rol}"
-score: {X.X}
 legitimacy_tier: "{High Confidence | Proceed with Caution | Suspicious}"
 archetype: "{detectado}"
-final_decision: "{Apply | Consider | Research first | Skip}"
-hard_stops:
-  - "{blocking gap or risk}"
-soft_gaps:
-  - "{non-blocking gap}"
-top_strengths:
+decision: "{apply | watch | skip}"
+rank: "—"
+confidence: "{high | medium | low}"
+strengths:
   - "{strength most relevant to this role}"
-risk_level: "{Low | Medium | High}"
-confidence: "{Low | Medium | High}"
-next_action: "{one concrete next step}"
+gaps:
+  - "{material gap or risk}"
+unknowns:
+  - "{missing evidence that could change the decision}"
+preference_basis:
+  - "{confirmed preference used in this decision}"
+reason: "{plain-language decision reason}"
 ```
 
 ## A) Resumen del Rol
@@ -280,20 +275,18 @@ next_action: "{one concrete next step}"
 (15-20 keywords del JD para ATS)
 ```
 
-### Paso 4 — Generar PDF (configurable)
+### Paso 4 — Generar PDF for `apply`
 
-**Gate:** Read `config/profile.yml` → `auto_pdf_score_threshold`. If the key is absent, default to **`3.0`** (the original gate of Path A). This step ONLY runs when the score from Paso 2 is **≥ the resolved threshold**. For everything below it, skip this entire step — the user can generate a tailored PDF on demand later via `/applycue pdf {company-slug}` using the report from Paso 3 as input.
+**Gate:** Generate the tailored application artifacts only when the agent decision is `apply`. `watch` and `skip` retain the report but do not spend time creating a CV bundle unless the user asks.
 
-**Rationale:** Generating a tailored PDF costs ~30–60s per offer (Playwright launch + HTML render) and produces files that often go unused — most roles score 2.x/3.x and never reach application. The `3.0` default matches Path A's original behavior; raise `auto_pdf_score_threshold` (e.g. `4.0`) to pre-generate fewer PDFs, or set `0` to generate one for every offer. Both Path A (`/applycue pipeline`) and Path B (this batch worker) read the same config key for consistency.
-
-**If score < threshold:**
+**If decision is watch or skip:**
 - Skip steps 1–14 below.
 - In the report header use: `**PDF:** not generated — run /applycue pdf {company-slug} to create on demand`.
 - In Paso 5 (tracker line) use `pdf_emoji` = `❌`.
 - In Paso 6 (output JSON) set `"pdf": null`.
 - Done — move to Paso 5.
 
-**If score ≥ threshold**, generate the tailored PDF:
+**If decision is apply**, generate the tailored PDF:
 
 1. Lee `cv.md` + `i18n.ts`
 2. Extrae 15-20 keywords del JD
@@ -377,9 +370,9 @@ Escribir una línea TSV a:
 batch/tracker-additions/{{ID}}.tsv
 ```
 
-Formato TSV (una sola línea, sin header, 9 columnas tab-separated):
+Formato TSV (una sola línea, sin header, 14 columnas tab-separated; location puede quedar vacío):
 ```
-{next_num}\t{{DATE}}\t{empresa}\t{rol}\t{status}\t{score}/5\t{pdf_emoji}\t[{{REPORT_NUM}}](reports/{{REPORT_NUM}}-{company-slug}-{{DATE}}.md)\t{nota_1_frase}
+{next_num}\t{{DATE}}\t{empresa}\t{rol}\t{status}\tN/A\t{pdf_emoji}\t[{{REPORT_NUM}}](reports/{{REPORT_NUM}}-{company-slug}-{{DATE}}.md)\t{nota_1_frase}\t{location}\t{decision}\t—\t{confidence}\tcurrent
 ```
 
 **Columnas TSV (orden exacto):**
@@ -391,12 +384,17 @@ Formato TSV (una sola línea, sin header, 9 columnas tab-separated):
 | 3 | company | string | `Datadog` | Nombre corto de empresa |
 | 4 | role | string | `Staff AI Engineer` | Título del rol |
 | 5 | status | canonical | `Evaluada` | DEBE ser canónico (ver states.yml) |
-| 6 | score | X.XX/5 | `4.55/5` | O `N/A` si no evaluable |
+| 6 | legacy score | string | `N/A` | Keep `N/A` for new reviews; old numeric scores remain readable only |
 | 7 | pdf | emoji | `✅` o `❌` | Si se generó PDF |
 | 8 | report | md link | `[647](reports/647-...)` | Link root-relative; merge-tracker.mjs lo normaliza relativo al tracker (ej. `../reports/...`, #760) |
 | 9 | notes | string | `APPLY HIGH...` | Resumen 1 frase |
+| 10 | location | string | `Bengaluru` | Puede quedar vacío |
+| 11 | decision | canonical | `apply` | `pending`, `apply`, `watch` o `skip` |
+| 12 | rank | positive int or — | `—` | Worker leaves unranked; main agent ranks the full apply queue |
+| 13 | confidence | canonical | `medium` | `high`, `medium`, `low`, or `unknown` |
+| 14 | origin | canonical | `current` | Nuevas evaluaciones usan `current` |
 
-**IMPORTANTE:** El orden TSV tiene status ANTES de score (col 5→status, col 6→score). En applications.md el orden es inverso (col 5→score, col 6→status). merge-tracker.mjs maneja la conversión.
+**IMPORTANTE:** The legacy score cell is `N/A` and cannot gate the workflow. `Decision` is independent of `Status`: `Evaluated` does not imply `apply`. Rank is assigned only after comparing the full apply queue. `merge-tracker.mjs` handles the column conversion.
 
 **Estados canónicos válidos:** `Evaluada`, `Aplicado`, `Respondido`, `Entrevista`, `Oferta`, `Rechazado`, `Descartado`, `NO APLICAR`
 
@@ -413,7 +411,9 @@ Al terminar, imprime por stdout un resumen JSON para que el orquestador lo parse
   "report_num": "{{REPORT_NUM}}",
   "company": "{empresa}",
   "role": "{rol}",
-  "score": {score_num},
+  "decision": "{apply|watch|skip}",
+  "rank": null,
+  "confidence": "{high|medium|low}",
   "legitimacy": "{High Confidence|Proceed with Caution|Suspicious}",
   "pdf": "{ruta_pdf}",
   "report": "{ruta_report}",
@@ -429,7 +429,9 @@ Si algo falla:
   "report_num": "{{REPORT_NUM}}",
   "company": "{empresa_o_unknown}",
   "role": "{rol_o_unknown}",
-  "score": null,
+  "decision": null,
+  "rank": null,
+  "confidence": "low",
   "pdf": null,
   "report": "{ruta_report_si_existe}",
   "error": "{descripción_del_error}"

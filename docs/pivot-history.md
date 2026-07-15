@@ -28,4 +28,4 @@ The result is not “Career-Ops plus ApplyCue running side by side.” It is one
 - independent branch/worktree: private donor and historical evidence, not user choice;
 - original Career-Ops checkout: upstream/reference and personalized historical operator, not the public ApplyCue product.
 
-Before open-source launch, publish one obvious `main` branch and ApplyCue release tags. Archive/confusing branches should not be presented as alternatives. Git history and LICENSE retain attribution.
+Before open-source launch, preserve the unrelated typed baseline under a dated archive branch, then promote the exact tested consolidated commit to the one obvious `main` branch. Do not combine the histories with an unrelated-history merge. ApplyCue release tags, Git history, `LICENSE`, and `NOTICE` retain attribution; archive branches are not presented as user choices.

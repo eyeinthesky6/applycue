@@ -46,7 +46,7 @@ Example JobSpy pass gate: at least 20 additional fresh, unique, relevant India l
 
 ## Not launch requirements
 
-- reverse ATS directory scanning;
+- reverse ATS directory scanning as a default or commercial dependency; the existing `scan:full` command remains an optional dormant coverage trial and normal scanning does not depend on it;
 - Docker;
 - Python/JobSpy;
 - embedded model SDKs;

@@ -15,6 +15,8 @@
  *      columns — Score/Status are NOT shifted, Location is populated.
  *   2. verify-pipeline reports a clean bill of health on that 10-column tracker.
  *   3. The original 9-column layout still works unchanged (back-compat).
+ *   4. Decision/Rank/Confidence/Origin columns are written by name without
+ *      inferring `Evaluated` as shortlisted.
  */
 
 import { execFileSync } from 'child_process';
@@ -85,9 +87,17 @@ const HEADER_9 = `# Applications Tracker
 | 1 | 2026-01-01 | Acme | Engineer | 4.0/5 | Applied | ✅ | — | seed row |
 `;
 
+const HEADER_14 = `# Applications Tracker
+
+| # | Date | Company | Role | Location | Score | Status | Decision | Rank | Confidence | Origin | PDF | Report | Notes |
+|---|------|---------|------|----------|-------|--------|----------|------|------------|--------|-----|--------|-------|
+| 1 | 2026-01-01 | Acme | Engineer | Remote | N/A | Evaluated | pending | — | unknown | current | ✅ | — | seed row |
+`;
+
 // TSV column order (status BEFORE score): num,date,company,role,status,score,pdf,report,notes[,location]
 const TSV_WITH_LOCATION = '2\t2026-02-02\tGlobex\tManager\tApplied\tN/A\t✅\t—\tnew row\tSingapore\n';
 const TSV_NO_LOCATION = '2\t2026-02-02\tGlobex\tManager\tApplied\tN/A\t✅\t—\tnew row\n';
+const TSV_WITH_REVIEW = '2\t2026-02-02\tGlobex\tManager\tEvaluated\tN/A\t✅\t—\tnew row\tSingapore\tapply\t1\thigh\tcurrent\n';
 
 // ── Test 1: 10-column tracker merges into the correct columns ──────────────
 {
@@ -139,6 +149,54 @@ const TSV_NO_LOCATION = '2\t2026-02-02\tGlobex\tManager\tApplied\tN/A\t✅\t—\
     pass('verify-pipeline clean on legacy 9-col tracker');
   } else {
     fail(`verify-pipeline clean on 9-col tracker (code ${verify.code})\n${verify.stdout}`);
+  }
+  rmSync(sb.dir, { recursive: true, force: true });
+}
+
+// ── Test 4: canonical metadata columns stay separate ───────────────────────
+{
+  const sb = makeSandbox(HEADER_14, { '2-globex.tsv': TSV_WITH_REVIEW });
+  const merge = runScript('merge-tracker.mjs', [], sb);
+  const verify = runScript('verify-pipeline.mjs', [], sb);
+  const row = dataRows(sb.tracker).find(l => l.includes('Globex'));
+  const cells = row ? row.split('|').map(s => s.trim()) : [];
+  if (merge.code === 0 && cells[7] === 'Evaluated' && cells[8] === 'apply' && cells[9] === '1' && cells[10] === 'high' && cells[11] === 'current') {
+    pass('canonical tracker writes lifecycle and review metadata into separate columns');
+  } else {
+    fail(`canonical metadata merge (code ${merge.code}) row: ${row}`);
+  }
+  if (verify.code === 1 && /All review metadata is canonical/.test(verify.stdout) && /Review is missing; effective decision is pending/.test(verify.stdout)) {
+    pass('verify-pipeline validates metadata and rejects a final decision without a review receipt');
+  } else {
+    fail(`verify-pipeline metadata validation (code ${verify.code})\n${verify.stdout}`);
+  }
+  rmSync(sb.dir, { recursive: true, force: true });
+}
+
+// Exact-record re-reviews use explicit review date, never the legacy score.
+{
+  const newerReview = '1\t2026-02-02\tAcme\tEngineer\tEvaluated\tN/A\t❌\t—\tnew explicit review\tRemote\twatch\t—\tmedium\tcurrent\n';
+  const sb = makeSandbox(HEADER_14, { '1-acme.tsv': newerReview });
+  const merge = runScript('merge-tracker.mjs', [], sb);
+  const row = dataRows(sb.tracker).find(l => l.includes('Acme')) || '';
+  if (merge.code === 0 && row.includes('| N/A | Evaluated | watch | — | medium |')) {
+    pass('newer explicit review replaces an exact record without a higher score');
+  } else {
+    fail(`newer score-free review did not replace exact record: ${row}`);
+  }
+  rmSync(sb.dir, { recursive: true, force: true });
+}
+
+{
+  const newerTracker = HEADER_14.replace('2026-01-01', '2026-03-01').replace('| pending | — | unknown |', '| apply | 1 | high |');
+  const staleHighScore = '1\t2026-02-01\tAcme\tEngineer\tEvaluated\t5.0/5\t❌\t—\tstale review\tRemote\tskip\t—\thigh\tcurrent\n';
+  const sb = makeSandbox(newerTracker, { '1-acme.tsv': staleHighScore });
+  const merge = runScript('merge-tracker.mjs', [], sb);
+  const row = dataRows(sb.tracker).find(l => l.includes('Acme')) || '';
+  if (merge.code === 0 && row.includes('| apply | 1 | high |') && !row.includes('stale review')) {
+    pass('older high-score review cannot overwrite a newer agent decision');
+  } else {
+    fail(`stale high-score review overwrote current metadata: ${row}`);
   }
   rmSync(sb.dir, { recursive: true, force: true });
 }

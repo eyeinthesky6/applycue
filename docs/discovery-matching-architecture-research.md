@@ -2,6 +2,8 @@
 
 Date: 2026-07-09
 
+Status: research input, not an implementation claim. Current owners and remaining discovery/review ports are recorded in the [ApplyCue/Career-Ops integration plan](2026-07-14_applycue-career-ops-integration_architectural_review.md).
+
 ## Decision
 
 ApplyCue should not depend on the user knowing every correct job title. The user gives seed roles, CVs, goals, constraints, and feedback. ApplyCue expands the search space, fetches jobs broadly, filters only hard blockers deterministically, and uses agent/LLM judgement for fuzzy relevance before CV generation and application.
@@ -112,7 +114,7 @@ ApplyCue implication:
 - Use lexical and deterministic filters for cheap blocking.
 - Use RapidFuzz/Fuse for dedupe, title similarity, company similarity, and local UI search.
 - Trial Sentence Transformers as an optional local Python sidecar for semantic retrieval/rerank over fetched jobs.
-- Keep semantic scores as backend diagnostics, not user-facing truth.
+- Do not create new semantic fit scores. Keep any historical score field only for backward-readable records.
 - Agent/LLM review should inspect borderline jobs and write reusable tuning signals.
 
 ## Tuning Loop

@@ -450,7 +450,7 @@ try {
 // ── 4. MERGED PRODUCT MODULES ───────────────────────────────────
 
 console.log('\n4. Merged product modules');
-for (const script of ['dashboard-server.test.mjs', 'generate-docx.test.mjs', 'application-attempt.test.mjs']) {
+for (const script of ['dashboard-server.test.mjs', 'job-feedback.test.mjs', 'generate-docx.test.mjs', 'application-attempt.test.mjs', 'application-preflight.test.mjs', 'review-evidence.test.mjs', 'cv-bundle.test.mjs']) {
   if (run(NODE, [script]) !== null) pass(`${script} passes`);
   else fail(`${script} failed`);
 }
@@ -475,7 +475,7 @@ const systemFiles = [
   'modes/oferta.md', 'modes/pdf.md', 'modes/scan.md',
   'modes/heuristics/recruiter-side.md',
   'templates/states.yml', 'templates/cv-template.html',
-  'dashboard-server.mjs', 'generate-docx.mjs', 'application-attempt.mjs',
+  'dashboard-server.mjs', 'job-feedback.mjs', 'generate-docx.mjs', 'application-attempt.mjs', 'application-preflight.mjs', 'review-evidence.mjs', 'cv-bundle.mjs',
   '.claude/skills/applycue/SKILL.md',
   '.opencode/skills/applycue/SKILL.md',
   '.qwen/skills/applycue/SKILL.md',
@@ -497,7 +497,8 @@ for (const f of systemFiles) {
 const userFiles = [
   'cv.md', 'config/profile.yml', 'modes/_profile.md', 'modes/_custom.md',
   'article-digest.md', 'portals.yml', 'data/applications.md',
-  'data/application-attempts.jsonl', 'data/job-feedback.jsonl',
+  'data/application-attempts.jsonl', 'data/review-receipts.jsonl', 'data/job-feedback.jsonl',
+  'data/application-answers.jsonl', 'data/application-preflights.jsonl', 'data/application-preflight-input.json',
   'data/pdf-index.tsv', 'config/plugins.yml', 'plugins.local/example.mjs',
   'plugins.lock',
 ];
@@ -514,25 +515,18 @@ for (const f of userFiles) {
 }
 
 const batchRunnerSource = readFile('batch/batch-runner.sh');
-const minScoreSkipIndex = batchRunnerSource.indexOf('update_state "$id" "$url" "skipped"');
-const minScoreReturnIndex = batchRunnerSource.indexOf('return 0', minScoreSkipIndex);
-const completedStateIndex = batchRunnerSource.indexOf('update_state "$id" "$url" "completed"', minScoreSkipIndex);
-if (
-  minScoreSkipIndex !== -1 &&
-  minScoreReturnIndex !== -1 &&
-  completedStateIndex !== -1 &&
-  minScoreSkipIndex < minScoreReturnIndex &&
-  minScoreReturnIndex < completedStateIndex
-) {
-  pass('Batch min-score gate returns before completed state update');
+if (!batchRunnerSource.includes('--min-score') &&
+    !batchRunnerSource.includes('below-min-score') &&
+    batchRunnerSource.includes('update_state "$id" "$url" "completed"')) {
+  pass('Batch completion has no semantic score gate');
 } else {
-  fail('Batch min-score gate can fall through to completed state update');
+  fail('Batch runner still gives semantic scores workflow authority');
 }
 
 if (/if \[\[ "\$status" == "completed" \|\| "\$status" == "skipped" \]\]/.test(batchRunnerSource)) {
-  pass('Batch resume treats min-score skipped offers as terminal');
+  pass('Batch resume still treats historical skipped offers as terminal');
 } else {
-  fail('Batch resume can reprocess min-score skipped offers');
+  fail('Batch resume can reprocess historical skipped offers');
 }
 
 if (/local total=0 completed=0 skipped=0 failed=0 pending=0/.test(batchRunnerSource) &&
@@ -544,20 +538,19 @@ if (/local total=0 completed=0 skipped=0 failed=0 pending=0/.test(batchRunnerSou
 }
 
 if (!/\bbc\b/.test(batchRunnerSource)) {
-  pass('Batch runner does not depend on bc for score arithmetic');
+  pass('Batch runner does not depend on bc arithmetic');
 } else {
-  fail('Batch runner still depends on bc for score arithmetic');
+  fail('Batch runner still depends on bc arithmetic');
 }
 
 if (
-  !/awk "BEGIN\{[^"]*\$MIN_SCORE/.test(batchRunnerSource) &&
-  !/awk "BEGIN\{[^"]*\$score/.test(batchRunnerSource) &&
-  !/awk "BEGIN\{[^"]*\$sscore/.test(batchRunnerSource) &&
-  /awk -v score="\$score" -v min="\$MIN_SCORE"/.test(batchRunnerSource)
+  !batchRunnerSource.includes('MIN_SCORE') &&
+  !/awk[^\n]*\$score/.test(batchRunnerSource) &&
+  !/awk[^\n]*\$sscore/.test(batchRunnerSource)
 ) {
-  pass('Batch runner passes score values to awk via -v');
+  pass('Batch runner has no score arithmetic or threshold comparison');
 } else {
-  fail('Batch runner interpolates score values into awk programs');
+  fail('Batch runner still performs score arithmetic');
 }
 
 // ── 6. PERSONAL DATA LEAK CHECK ─────────────────────────────────
@@ -682,8 +675,8 @@ try {
 console.log('\n7c. Updater merged product files');
 
 const updateSystemScript = readFile('update-system.mjs');
-if (['dashboard-server.mjs', 'generate-docx.mjs', 'application-attempt.mjs'].every(path => updateSystemScript.includes(`'${path}'`))) {
-  pass('update-system preserves merged dashboard, DOCX, and application receipt owners');
+if (['dashboard-server.mjs', 'job-feedback.mjs', 'generate-docx.mjs', 'application-attempt.mjs', 'application-preflight.mjs', 'review-evidence.mjs', 'cv-bundle.mjs'].every(path => updateSystemScript.includes(`'${path}'`))) {
+  pass('update-system preserves merged dashboard-action, DOCX, review-evidence, CV-bundle, preflight, and application receipt owners');
 } else {
   fail('update-system is missing a merged product owner');
 }
@@ -726,9 +719,10 @@ const canonicalApplyCueSkill = 'skills/applycue/SKILL.md';
 if (
   fileExists(canonicalApplyCueSkill) &&
   readFile(canonicalApplyCueSkill).includes('| improve or tailor CV | `cv` |') &&
-  readFile(canonicalApplyCueSkill).includes('PDF and DOCX')
+  readFile(canonicalApplyCueSkill).includes('PDF and DOCX') &&
+  readFile(canonicalApplyCueSkill).includes('cv-bundle.mjs check')
 ) {
-  pass(`${canonicalApplyCueSkill} routes CV work and requires PDF/DOCX output`);
+  pass(`${canonicalApplyCueSkill} routes CV work and requires a verified PDF/DOCX bundle`);
 } else {
   fail(`${canonicalApplyCueSkill} does not expose the canonical CV artifact workflow`);
 }
@@ -745,11 +739,15 @@ if (
   applyMode.includes('## Step 5 — Preflight gate') &&
   applyMode.includes("verify liveness with the agent's available browser tool") &&
   applyMode.includes('matching report has been loaded') &&
-  applyMode.includes('Do not continue to Step 6 until this preflight is resolved') &&
+  applyMode.includes('Do not continue to Step 6 until this inspection is resolved') &&
   applyMode.includes('never treat it as an automatic duplicate') &&
-  applyMode.includes('application-attempt.mjs start')
+  applyMode.includes('review-evidence.mjs check') &&
+  applyMode.includes('cv-bundle.mjs check') &&
+  applyMode.includes('application-preflight.mjs record') &&
+  applyMode.includes('application-attempt.mjs start') &&
+  applyMode.includes('--cv=')
 ) {
-  pass('apply mode includes liveness, identity, and attempt-receipt preflight gates');
+  pass('apply mode includes liveness, fresh-review, exact-CV, identity, and attempt-receipt preflight gates');
 } else {
   fail('apply mode missing the merged application preflight gates');
 }
@@ -1035,7 +1033,7 @@ try {
 
 // tracker.mjs delete: removeRowByNum removes the right row, preserves the rest.
 try {
-  const { removeRowByNum } = await import(pathToFileURL(join(ROOT, 'tracker.mjs')).href);
+  const { removeRowByNum, updateStatusByNum } = await import(pathToFileURL(join(ROOT, 'tracker.mjs')).href);
   const md = [
     '# Applications',
     '',
@@ -1058,6 +1056,31 @@ try {
     miss.removed === false && miss.newContent === md; // no-op on a missing number
   if (ok) pass('tracker.mjs removeRowByNum: removes the matching row, preserves header/separator/other rows, no-op on miss');
   else fail('tracker.mjs removeRowByNum behaves wrong');
+
+  const statusMd = [
+    '# Applications',
+    '',
+    '| # | Date | Company | Role | Score | Status | Decision | Rank | Confidence | Origin | PDF | Report | Notes |',
+    '|---|------|---------|------|-------|--------|----------|------|------------|--------|-----|--------|-------|',
+    '| 7 | 2026-07-14 | Acme | Product Lead | N/A | Evaluated | apply | 1 | high | current | ✅ | [7](reports/007.md) | prepared |',
+    '',
+  ].join('\n');
+  const statusUpdate = updateStatusByNum(statusMd, 7, 'Applied', { company: 'ACME', title: 'Product Lead' });
+  let rejectedStatusIdentity = false;
+  try {
+    updateStatusByNum(statusMd, 7, 'Applied', { company: 'Other', title: 'Product Lead' });
+  } catch (error) {
+    rejectedStatusIdentity = /company/i.test(error.message);
+  }
+  if (
+    statusUpdate.changed && statusUpdate.previousStatus === 'Evaluated' && statusUpdate.status === 'Applied' &&
+    statusUpdate.newContent.includes('| 7 | 2026-07-14 | Acme | Product Lead | N/A | Applied | apply | 1 | high | current | ✅ | [7](reports/007.md) | prepared |') &&
+    rejectedStatusIdentity
+  ) {
+    pass('tracker.mjs updateStatusByNum updates one exact lifecycle cell and rejects identity drift');
+  } else {
+    fail('tracker.mjs updateStatusByNum does not preserve the exact tracker identity/row contract');
+  }
 } catch (e) {
   fail(`tracker.mjs removeRowByNum test crashed: ${e.message}`);
 }
@@ -2812,8 +2835,8 @@ try {
       }
 
       const searchRows = deduped.split('\n').filter(l => l.includes('Data Engineer, Search'));
-      if (searchRows.length === 1 && searchRows[0].includes('4.1/5') && searchRows[0].includes('Applied')) {
-        pass('dedup-tracker handles duplicate tracker numbers using row-local line indexes');
+      if (searchRows.length === 1 && searchRows[0].includes('3.1/5') && searchRows[0].includes('Applied')) {
+        pass('dedup-tracker preserves lifecycle progress over a higher legacy score');
       } else {
         fail(`dedup-tracker duplicate-number handling broken: ${searchRows.length} Search rows`);
       }
@@ -2836,16 +2859,15 @@ try {
   try {
     mkdirSync(join(rebuildTmp, 'data'));
     const tracker = join(rebuildTmp, 'data', 'applications.md');
-    // Keeper row #50 has the higher score AND no trailing pipe; dup #51 carries a
-    // more-advanced status (both below Applied, so the advanced-status safety
-    // guard doesn't block the collapse), so dedup promotes #50's status and
-    // rewrites the row — exercising rebuildRow() on a no-trailing-pipe row.
+    // Exact duplicates have the same lifecycle. The newer #50 row has a lower
+    // legacy score and no trailing pipe; recency must beat score and its notes
+    // must survive.
     writeFileSync(tracker,
       '# Applications Tracker\n\n' +
       '| # | Date | Company | Role | Score | Status | PDF | Report | Notes |\n' +
       '|---|------|---------|------|-------|--------|-----|--------|-------|\n' +
-      '| 50 | 2026-02-01 | Globex | Widget Engineer | 4.5/5 | Rejected | ❌ | [50](../reports/050-widget.md) | KEEPER_NOTE_SENTINEL\n' +
-      '| 51 | 2026-02-02 | Globex | Widget Engineer | 3.0/5 | Evaluated | ❌ | [50](../reports/050-widget.md) | exact duplicate record |\n');
+      '| 50 | 2026-02-02 | Globex | Widget Engineer | 3.0/5 | Evaluated | ❌ | [50](../reports/050-widget.md) | KEEPER_NOTE_SENTINEL\n' +
+      '| 51 | 2026-02-01 | Globex | Widget Engineer | 4.5/5 | Evaluated | ❌ | [50](../reports/050-widget.md) | exact duplicate record |\n');
 
     const r = run(NODE, ['dedup-tracker.mjs'], { env: { ...process.env, APPLYCUE_TRACKER: tracker } });
     if (r === null) {
@@ -2854,7 +2876,7 @@ try {
       const out = readFileSync(tracker, 'utf-8');
       const keeperRow = out.split('\n').find(l => l.includes('| 50 |'));
       if (keeperRow && keeperRow.includes('KEEPER_NOTE_SENTINEL') && keeperRow.includes('Evaluated')) {
-        pass('dedup row rebuild preserves the notes column on rows without a trailing pipe');
+        pass('dedup keeps the newer exact record and preserves no-trailing-pipe notes');
       } else {
         fail(`dedup row rebuild dropped notes / status on no-trailing-pipe row: "${keeperRow}"`);
       }
@@ -2917,7 +2939,7 @@ try {
   ];
   const cmLoc = resolveColumns(withLocation);
   const rowLoc = parseTrackerRow(withLocation[2], cmLoc);
-  if (rowLoc && rowLoc.score === '4.5/5' && rowLoc.status === 'Applied' && rowLoc.location === 'Berlin') {
+  if (rowLoc && rowLoc.score === '4.5/5' && rowLoc.status === 'Applied' && rowLoc.location === 'Berlin' && rowLoc.decision === 'apply' && rowLoc.origin === 'legacy_unknown') {
     pass('tracker-parse maps columns by header — inserted Location column does not shift Score/Status');
   } else {
     fail(`tracker-parse mis-parsed a Location-column row: ${JSON.stringify(rowLoc)}`);
@@ -2929,10 +2951,22 @@ try {
     '| 8 | 2026-06-28 | Beta | PM | 3.0/5 | Evaluated | ❌ | [8](r.md) | n |',
   ];
   const rowLeg = parseTrackerRow(legacy[2], resolveColumns(legacy));
-  if (rowLeg && rowLeg.score === '3.0/5' && rowLeg.status === 'Evaluated' && rowLeg.location === undefined) {
+  if (rowLeg && rowLeg.score === '3.0/5' && rowLeg.status === 'Evaluated' && rowLeg.location === undefined && rowLeg.decision === 'pending' && rowLeg.origin === 'legacy_unknown') {
     pass('tracker-parse still parses the legacy fixed layout correctly');
   } else {
     fail(`tracker-parse broke the legacy layout: ${JSON.stringify(rowLeg)}`);
+  }
+
+  const canonical = [
+    '| # | Date | Company | Role | Score | Status | Decision | Rank | Confidence | Origin | PDF | Report | Notes |',
+    '|---|---|---|---|---|---|---|---|---|---|---|---|---|',
+    '| 10 | 2026-07-14 | Gamma | Lead | N/A | Evaluated | watch | — | medium | current | ✅ | — | explicit |',
+  ];
+  const rowCanonical = parseTrackerRow(canonical[2], resolveColumns(canonical));
+  if (rowCanonical?.decision === 'watch' && rowCanonical?.rank === '—' && rowCanonical?.confidence === 'medium' && rowCanonical?.origin === 'current') {
+    pass('tracker-parse keeps semantic review metadata and provenance separate');
+  } else {
+    fail(`tracker-parse lost review metadata: ${JSON.stringify(rowCanonical)}`);
   }
 
   // No header row → falls back to legacy map; header/separator/stray rows → null.
@@ -2956,8 +2990,8 @@ try {
   try {
     mkdirSync(join(locTmp, 'data'));
     const tracker = join(locTmp, 'data', 'applications.md');
-    // Two dup rows (same company+role) with a Location column. Keeper #60 has the
-    // higher score but the lower status; dedup must promote its Status cell.
+    // Two exact duplicate rows with a Location column. #61 has the more advanced
+    // lifecycle despite the lower legacy score, so it must survive.
     writeFileSync(tracker,
       '# Applications Tracker\n\n' +
       '| # | Date | Company | Role | Location | Score | Status | PDF | Report | Notes |\n' +
@@ -2970,10 +3004,9 @@ try {
       fail('dedup-tracker crashed on a Location-column tracker');
     } else {
       const out = readFileSync(tracker, 'utf-8');
-      const keeper = out.split('\n').find(l => l.includes('| 60 |'));
-      // Status cell promoted to Evaluated; Location (Berlin) and the score untouched.
-      if (keeper && keeper.includes('Berlin') && keeper.includes('4.5/5') && keeper.includes('Evaluated') && keeper.includes('LOC_SENTINEL')) {
-        pass('dedup-tracker promotes the Status cell (not a fixed index) on a Location-column tracker');
+      const keeper = out.split('\n').find(l => l.includes('| 61 |'));
+      if (keeper && keeper.includes('Berlin') && keeper.includes('3.0/5') && keeper.includes('Evaluated')) {
+        pass('dedup-tracker chooses lifecycle/recency, not score, with custom columns');
       } else {
         fail(`dedup-tracker mis-handled a Location-column row: "${keeper}"`);
       }
@@ -3286,6 +3319,18 @@ try {
   } else {
     fail('CLAUDE.md does not thinly import the canonical doctor-based onboarding instructions');
   }
+
+  const skillDoc = readFile('skills/applycue/SKILL.md');
+  const sharedMode = readFile('modes/_shared.md');
+  if (skillDoc.includes('confirm them before the first search') &&
+      skillDoc.includes('Re-read the saved preferences before every final role decision/rank') &&
+      skillDoc.includes('again before drafting a role CV or application answer') &&
+      sharedMode.includes('Do not calculate a global CV-to-JD fit score') &&
+      sharedMode.includes('Preference basis')) {
+    pass('canonical workflow fixes preference timing and score-free agent review');
+  } else {
+    fail('preference timing or score-free review contract is missing from canonical instructions');
+  }
 } catch (e) {
   fail(`Cold-start trigger test crashed: ${e.message}`);
 }
@@ -3332,6 +3377,45 @@ if (!sqliteAvailable) {
         } else {
           fail('sync/export modified applications.md (source of truth violated)');
         }
+      }
+
+      // 1b. Metadata migration is reviewable first, then explicit and backed up.
+      const beforeMigration = readFileSync(md, 'utf-8');
+      trackerRun(['migrate-metadata', '--current-ids', '2', '--legacy-ids', '1']);
+      if (readFileSync(md, 'utf-8') === beforeMigration) {
+        pass('metadata migration defaults to dry-run');
+      } else {
+        fail('metadata migration changed the tracker without --write');
+      }
+      trackerRun(['migrate-metadata', '--current-ids', '2', '--legacy-ids', '1', '--write']);
+      const migratedTracker = readFileSync(md, 'utf-8');
+      if (migratedTracker.includes('| Decision | Rank | Confidence | Origin |') && migratedTracker.includes('| apply | — | unknown | current |') && migratedTracker.includes('| pending | — | unknown | legacy_import |') && existsSync(md + '.metadata.bak')) {
+        pass('metadata migration classifies explicit IDs and creates a backup');
+      } else {
+        fail('metadata migration did not write the canonical review metadata contract');
+      }
+
+      // 1c. One lifecycle command updates the exact Markdown row and immediately
+      // rebuilds the derived index. Identity drift must fail without mutation.
+      const beforeStatusDryRun = readFileSync(md, 'utf-8');
+      const statusPreview = JSON.parse(trackerRun(['status', '--num', '1', '--status', 'Applied', '--company', 'ACME', '--title', 'Engineer', '--dry-run']) || '{}');
+      if (statusPreview.dryRun === true && statusPreview.previousStatus === 'Evaluated' && readFileSync(md, 'utf-8') === beforeStatusDryRun) {
+        pass('tracker status defaults to a truthful dry-run when requested');
+      } else {
+        fail('tracker status dry-run changed data or returned the wrong transition');
+      }
+      const statusResult = JSON.parse(trackerRun(['status', '--num', '1', '--status', 'Applied', '--company', 'ACME', '--title', 'Engineer']) || '{}');
+      const statusQuery = JSON.parse(trackerRun(['query', '--id', '1', '--json']) || '[]');
+      if (statusResult.status === 'Applied' && statusResult.changed === true && statusQuery[0]?.status === 'Applied' && readFileSync(md, 'utf-8').includes('| 1 | 2026-01-04 | Acme | Engineer | 4.2/5 | Applied |')) {
+        pass('tracker status updates the exact lifecycle row and reindexes immediately');
+      } else {
+        fail(`tracker status did not reconcile Markdown/index: ${JSON.stringify({ statusResult, statusQuery })}`);
+      }
+      const beforeIdentityFailure = readFileSync(md, 'utf-8');
+      if (trackerRun(['status', '--num', '1', '--status', 'Evaluated', '--company', 'Other', '--title', 'Engineer']) === null && readFileSync(md, 'utf-8') === beforeIdentityFailure) {
+        pass('tracker status rejects company/title identity drift without mutation');
+      } else {
+        fail('tracker status allowed identity drift or changed the tracker on failure');
       }
 
       // 2. Corruption is detected and normalized in the index ONLY.
@@ -3874,10 +3958,11 @@ try {
     '3\thttps://example.com/three\tskipped\t2026-01-01T00:00:00Z\t2026-01-01T00:00:01Z\t003\t3.5\tbelow-min-score\t0',
   ].join('\n') + '\n');
   const statusOnly = runBatch(['--status']) || '';
-  if (statusOnly.includes('Average score: 4.5/5 (1 scored)') && statusOnly.includes('bad);system("oops")')) {
-    pass('--status reads existing state without full batch prerequisites');
+  if (statusOnly.includes('=== Batch Progress ===') && statusOnly.includes('https://example.com/one') &&
+      !statusOnly.includes('Average score') && !statusOnly.includes('bad);system("oops")')) {
+    pass('--status reads existing state without prerequisites or score authority');
   } else {
-    fail(`--status prerequisite/score handling wrong: ${statusOnly}`);
+    fail(`--status prerequisite/review handling wrong: ${statusOnly}`);
   }
 
   try { rmSync(tmp, { recursive: true, force: true }); } catch {}

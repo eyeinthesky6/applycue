@@ -1,6 +1,6 @@
 # Batch Processing
 
-Process multiple job offers in parallel via headless workers. Each worker runs the full evaluation pipeline (A-F report + PDF + tracker line) autonomously. See the **Headless / Batch Mode** table in `AGENTS.md` for the correct command per CLI.
+Process multiple job offers via headless workers. Each worker reads the full JD and confirmed preferences, writes an A-G review plus `apply|watch|skip` decision/confidence, creates artifacts only for `apply`, and writes a tracker addition. The main agent compares completed apply reviews and assigns cross-role ranks.
 
 ## Quick Start
 
@@ -56,16 +56,16 @@ batch/
 
 1. **batch-runner.sh** reads `batch-input.tsv` and `batch-state.tsv` to determine which offers need processing.
 2. For each pending offer, it assigns a report number and launches a headless worker with `batch-prompt.md` as the system prompt (placeholders like `{{URL}}`, `{{REPORT_NUM}}` are resolved).
-3. Each worker evaluates the offer, writes a report to `reports/`, generates a PDF to `output/`, and writes a tracker TSV to `tracker-additions/`.
+3. Each worker reviews the offer, writes a report to `reports/`, generates application artifacts only for `apply`, and writes a tracker TSV to `tracker-additions/`.
 4. After all workers finish, batch-runner calls `merge-tracker.mjs` to merge TSVs into `data/applications.md`, `reconcile-pipeline.mjs` to move processed offers out of the `data/pipeline.md` inbox, and `verify-pipeline.mjs` to check integrity.
 
 ## Tracker Merge
 
 Workers write one TSV per offer to `batch/tracker-additions/`. The merge script (`npm run merge`) handles:
 
-- Deduplication by company + role fuzzy match and report number
-- Column order conversion (TSV has status before score; applications.md has score before status)
-- In-place updates when a re-evaluation scores higher than the existing entry
+- Deduplication by exact report/tracker identity only; similar company/title rows stay separate for agent review
+- Column order conversion (TSV keeps the legacy score cell as `N/A`). Optional TSV fields after notes are `location`, `decision`, `rank`, `confidence`, and `origin`; new rows default to `current`, while `Evaluated` without an explicit agent marker remains `pending`.
+- In-place updates for the same exact record when a newer explicit review arrives; lifecycle progress is preserved and score is ignored
 - Moving processed TSVs to `tracker-additions/merged/`
 
 Run `npm run merge` manually if you need to merge outside of a batch run.
@@ -74,7 +74,7 @@ Run `npm run merge` manually if you need to merge outside of a batch run.
 
 Batch mode reads offers from `batch-input.tsv`, but the `data/pipeline.md` inbox is a separate list. Without reconciliation, an offer evaluated by a batch run stays in the pipeline "Pendientes" section and gets surfaced again on the next scan or `/applycue pipeline` run -- producing duplicate reports.
 
-`reconcile-pipeline.mjs` (run as `npm run reconcile`) closes that gap: after the tracker merge, every `completed` or `skipped` offer in `batch-state.tsv` whose URL is still in pipeline "Pendientes" is moved to "Procesadas" with its report link and score (entries without a report file on disk are left in place). It is idempotent -- safe to run after every batch, or manually.
+`reconcile-pipeline.mjs` (run as `npm run reconcile`) closes that gap: after the tracker merge, every `completed` or historical `skipped` offer in `batch-state.tsv` whose URL is still in pipeline "Pendientes" is moved to "Procesadas" with its report link, decision/rank, and PDF state (entries without a report file on disk are left in place). It is idempotent -- safe to run after every batch, or manually.
 
 ## Resumability
 

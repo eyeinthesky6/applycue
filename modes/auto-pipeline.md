@@ -2,6 +2,8 @@
 
 When the user pastes a JD (text or URL) without an explicit sub-command, execute the ENTIRE pipeline in sequence:
 
+A job URL supplied directly by the user defaults to **high stakes** unless the user says it is standard. Start this workflow ahead of standard queued work and carry that priority through the employer brief, review, evidence questions, and CV. If the agent decides `apply`, place it at the top of application preparation and re-rank the apply queue; `watch` or `skip` remains valid. Once the role has a job number, persist it with the existing `job-feedback.mjs` priority action and resolve the receipt after the deeper work is reflected in the artifacts. Scanner-discovered URLs remain standard unless the user upgrades them. Priority never bypasses the liveness or application gates below.
+
 ## Step 0 — Extract JD
 
 If the input is a **URL** (not pasted JD text), follow this strategy to extract the content:
@@ -28,29 +30,35 @@ Before running any evaluation, confirm the posting is still live. The Step 0 Pla
 
 Do not continue to Step 1 until this gate is resolved.
 
-## Step 1 — A-G Evaluation
+## Step 1 — A-G Review and agent decision
 
 Execute the same as the `oferta` mode (read `modes/oferta.md` for all A-F blocks + Block G Posting Legitimacy).
 
 The evaluation inherits `oferta`'s bounded research budget. Company, compensation, and hiring-signal lookup must not invoke `deep-research`, must not spawn subagents, and must stop at the shared query cap instead of escalating into open-ended research.
+
+Re-read `config/profile.yml`, `modes/_profile.md`, and confirmed feedback before deciding. Record `apply`, `watch`, or `skip`, plus confidence, strengths, gaps, unknowns, preference basis, and a plain-language reason. Do not calculate or use a semantic fit score. When multiple roles are viable, compare the `apply` queue and give each an explicit rank.
 
 ## Step 2 — Save Report .md
 
 Save the full evaluation in `reports/{###}-{company-slug}-{YYYY-MM-DD}.md` (see format in `modes/oferta.md`).
 Include Block G in the saved report. Add **URL:** {url} and **Legitimacy:** {tier} to the report header.
 
-## Step 3 — Generate PDF
+Store the exact expanded JD through `review-evidence.mjs capture`; an email/card/snippet is not a valid full-JD capture.
 
-Read `config/profile.yml`. Check `cv.output_format`:
+## Step 3 — Generate application artifacts for `apply`
+
+If the decision is `watch` or `skip`, retain the review report and move to the tracker. Do not generate a role CV or form answers unless the user asks.
+
+If the decision is `apply`, read `config/profile.yml` and check `cv.output_format`:
 
 - If `"latex"`, execute the full pipeline from `modes/latex.md`
 - Otherwise (default), execute the full pipeline from `modes/pdf.md`
 
-## Step 4 — Agent decision and application draft
+Keep durable Markdown/HTML source, generate both PDF and DOCX, and verify that each chosen file opens and names the correct company and role.
 
-The numeric score is a diagnostic summary, not an application gate. After reading the full JD, the external agent decides `apply`, `watch`, or `skip` using the user's intent, CV, evidence, constraints, and feedback. Similar titles, keyword overlap, or a score threshold must never make the final decision.
+## Step 4 — Application draft for `apply`
 
-If the agent decides `apply`, generate a draft of responses for the application form:
+Generate a draft of responses for the application form only after an `apply` decision:
 
 1. **Extract form questions**: Use Playwright to navigate to the form and take a snapshot. If they cannot be extracted, use the generic questions.
 2. **Generate responses** following the tone (see below).
@@ -80,12 +88,14 @@ If the agent decides `apply`, generate a draft of responses for the application 
 - **Why this company?** → Mention something specific about the company. "I've been using [product] for [time/purpose]."
 - **Relevant experience?** → A quantified proof point. "Built [X] that [metric]. Sold the company in 2025."
 - **Good fit?** → "I sit at the intersection of [A] and [B], which is exactly where this role lives."
-- **How did you hear?** → Honest: "Found through [portal/scan], evaluated against my criteria, and it scored highest."
+- **How did you hear?** → Honest: "Found through [portal/scan] and selected after reviewing it against my criteria."
 
 **Language**: Always in the language of the JD (EN default). Apply `/tech-translate`.
 
 ## Step 5 — Update Tracker
 
-Record it in `data/applications.md` with all columns including Report and PDF as ✅.
+Write a tracker addition with `Score=N/A`, the explicit Decision, Rank, Confidence, `Origin=current`, Report, and the actual PDF state. Merge it through `merge-tracker.mjs`; do not hand-edit the canonical tracker.
+
+After merge, bind the tracker row, report, captured JD, confirmed preferences, and candidate evidence with `review-evidence.mjs record`, then require `review-evidence.mjs check` to pass. Until it passes, the role is pending re-review and application start is blocked.
 
 **If any step fails**, continue only where the remaining work is still valid and mark the failed step as pending. Never treat a missing full JD, missing approval, uncertain submit, or broken CV artifact as a successful application.

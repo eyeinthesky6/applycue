@@ -8,7 +8,7 @@
  * - Pipe-delimited (markdown table row): | col | col | ... |
  *
  * Dedup: exact report/tracker identity only. Similar titles stay for agent review.
- * If duplicate with higher score → update in-place, update report link
+ * If the same exact record is re-reviewed on a newer date → update in place
  * Validates status against states.yml (rejects non-canonical, logs warning)
  *
  * Run: node ApplyCue/merge-tracker.mjs [--dry-run] [--verify]
@@ -21,7 +21,7 @@ import { execFileSync } from 'child_process';
 import { createHash, randomUUID } from 'crypto';
 import { tmpdir } from 'os';
 import { normalizeReportLink as normalizeLink } from './tracker-links.mjs';
-import { LEGACY_COLMAP, detectColumns } from './tracker-parse.mjs';
+import { LEGACY_COLMAP, detectColumns, normalizeConfidence, normalizeDecision, normalizeOrigin, normalizeRank, parseTrackerRow } from './tracker-parse.mjs';
 
 const APPLYCUE = dirname(fileURLToPath(import.meta.url));
 // Support both layouts: data/applications.md (boilerplate) and applications.md (original).
@@ -406,21 +406,6 @@ function extractReportNum(reportStr) {
   return m ? parseInt(m[1]) : null;
 }
 
-/**
- * Parse a score cell into a numeric value for score-upgrade decisions.
- *
- * The merge path compares old and new scores to decide whether to update an
- * existing duplicate row. Markdown bolding and `/5` suffixes are presentation
- * details, so only the first numeric value is used.
- *
- * @param {string} s - Raw score cell such as `4.2/5`.
- * @returns {number} Parsed score, or 0 when no numeric value is present.
- */
-function parseScore(s) {
-  const m = s.replace(/\*\*/g, '').match(/([\d.]+)/);
-  return m ? parseFloat(m[1]) : 0;
-}
-
 // Column layout for the applications.md table. The tracker may use the original
 // 9-column layout, or a customized one with an extra/reordered column (e.g. a
 // Location column after Role). We map columns by header NAME rather than fixed
@@ -443,13 +428,28 @@ function cell(v) {
   return String(v ?? '').replace(/[\r\n]+/g, ' ').replace(/\s*\|\s*/g, ' / ').trim();
 }
 
-// Build a tracker row string matching the detected layout (with or without the
-// optional Location column) so writes round-trip through the same schema.
+// Build a tracker row string matching the detected header layout. Review
+// metadata is optional for backward compatibility, but once present every write
+// goes through this one builder so it cannot drift by column position.
 function buildRow(o) {
-  if (COLMAP.location != null) {
-    return `| ${o.num} | ${o.date} | ${cell(o.company)} | ${cell(o.role)} | ${cell(o.location) || '—'} | ${o.score} | ${o.status} | ${o.pdf} | ${o.report} | ${cell(o.notes)} |`;
-  }
-  return `| ${o.num} | ${o.date} | ${cell(o.company)} | ${cell(o.role)} | ${o.score} | ${o.status} | ${o.pdf} | ${o.report} | ${cell(o.notes)} |`;
+  const width = Math.max(...Object.values(COLMAP));
+  const parts = Array(width + 1).fill('');
+  const set = (key, value) => { if (COLMAP[key] != null) parts[COLMAP[key]] = cell(value); };
+  set('num', o.num);
+  set('date', o.date);
+  set('company', o.company);
+  set('role', o.role);
+  set('location', o.location || '—');
+  set('score', o.score);
+  set('status', o.status);
+  set('decision', normalizeDecision(o.decision, o));
+  set('rank', normalizeRank(o.rank));
+  set('confidence', normalizeConfidence(o.confidence));
+  set('origin', normalizeOrigin(o.origin || 'current'));
+  set('pdf', o.pdf);
+  set('report', o.report);
+  set('notes', o.notes);
+  return `| ${parts.slice(1).join(' | ')} |`;
 }
 
 /**
@@ -457,30 +457,13 @@ function buildRow(o) {
  *
  * Header/separator rows and malformed rows return null. Valid rows preserve the
  * original raw line so the merge logic can locate and replace the exact tracker
- * line when a higher-scored re-evaluation arrives.
+ * line when a newer explicit re-evaluation arrives.
  *
  * @param {string} line - One line from applications.md.
  * @returns {object|null} Parsed tracker row, or null for non-data rows.
  */
 function parseAppLine(line) {
-  const parts = line.split('|').map(s => s.trim());
-  const maxIdx = Math.max(...Object.values(COLMAP));
-  if (parts.length <= maxIdx) return null;
-  const num = parseInt(parts[COLMAP.num]);
-  if (isNaN(num) || num === 0) return null;
-  return {
-    num,
-    date: parts[COLMAP.date],
-    company: parts[COLMAP.company],
-    role: parts[COLMAP.role],
-    location: COLMAP.location != null ? parts[COLMAP.location] : '',
-    score: parts[COLMAP.score],
-    status: parts[COLMAP.status],
-    pdf: parts[COLMAP.pdf],
-    report: parts[COLMAP.report],
-    notes: COLMAP.notes != null ? (parts[COLMAP.notes] || '') : '',
-    raw: line,
-  };
+  return parseTrackerRow(line, COLMAP);
 }
 
 /**
@@ -509,7 +492,8 @@ function parseTsvContent(content, filename) {
       console.warn(`⚠️  Skipping malformed pipe-delimited ${filename}: ${parts.length} fields`);
       return null;
     }
-    // Format: num | date | company | role | score | status | pdf | report | notes [| location]
+    // Format: num | date | company | role | score | status | pdf | report |
+    // notes [| location | decision | rank | confidence | origin]
     addition = {
       num: parseInt(parts[0]),
       date: parts[1],
@@ -521,6 +505,10 @@ function parseTsvContent(content, filename) {
       report: parts[7],
       notes: parts[8] || '',
       location: (parts[9] || '').trim(),
+      decision: (parts[10] || '').trim(),
+      rank: parts.length >= 14 ? (parts[11] || '').trim() : '',
+      confidence: parts.length >= 14 ? (parts[12] || '').trim() : '',
+      origin: (parts[parts.length >= 14 ? 13 : 11] || '').trim(),
     };
   } else {
     // Tab-separated
@@ -566,6 +554,10 @@ function parseTsvContent(content, filename) {
       notes: parts[8] || '',
       // Optional trailing field: tab-separated TSVs may append a location.
       location: (parts[9] || '').trim(),
+      decision: (parts[10] || '').trim(),
+      rank: parts.length >= 14 ? (parts[11] || '').trim() : '',
+      confidence: parts.length >= 14 ? (parts[12] || '').trim() : '',
+      origin: (parts[parts.length >= 14 ? 13 : 11] || '').trim(),
     };
   }
 
@@ -573,6 +565,14 @@ function parseTsvContent(content, filename) {
     console.warn(`⚠️  Skipping ${filename}: invalid entry number`);
     return null;
   }
+
+  addition.hasExplicitDecision = Boolean(addition.decision?.trim());
+  addition.hasExplicitRank = Boolean(addition.rank?.trim());
+  addition.hasExplicitConfidence = Boolean(addition.confidence?.trim());
+  addition.decision = normalizeDecision(addition.decision, addition);
+  addition.rank = normalizeRank(addition.rank);
+  addition.confidence = normalizeConfidence(addition.confidence);
+  addition.origin = normalizeOrigin(addition.origin || 'current');
 
   return addition;
 }
@@ -702,25 +702,31 @@ for (const file of tsvFiles) {
   }
 
   if (duplicate) {
-    const newScore = parseScore(addition.score);
-    const oldScore = parseScore(duplicate.score);
+    const isoDate = /^\d{4}-\d{2}-\d{2}$/;
+    const incomingIsCurrent = isoDate.test(addition.date)
+      ? (!isoDate.test(duplicate.date) || addition.date >= duplicate.date)
+      : !isoDate.test(duplicate.date);
 
-    if (newScore > oldScore) {
-      console.log(`🔄 Update: #${duplicate.num} ${addition.company} — ${addition.role} (${oldScore}→${newScore})`);
+    if (incomingIsCurrent) {
+      console.log(`🔄 Update: #${duplicate.num} ${addition.company} — ${addition.role} (newer explicit review)`);
       const lineIdx = appLines.indexOf(duplicate.raw);
       if (lineIdx >= 0) {
         const updatedLine = buildRow({
           num: duplicate.num, date: addition.date, company: addition.company, role: addition.role,
           location: addition.location || duplicate.location || '—',
-          score: addition.score, status: duplicate.status, pdf: duplicate.pdf,
+          score: addition.score || duplicate.score, status: duplicate.status,
+          decision: addition.hasExplicitDecision ? addition.decision : duplicate.decision,
+          rank: addition.hasExplicitRank ? addition.rank : duplicate.rank,
+          confidence: addition.hasExplicitConfidence ? addition.confidence : duplicate.confidence,
+          origin: addition.origin, pdf: addition.pdf || duplicate.pdf,
           report: addition.report,
-          notes: `Re-eval ${addition.date} (${oldScore}→${newScore}). ${addition.notes}`,
+          notes: `Re-eval ${addition.date}. ${addition.notes}`.trim(),
         });
         appLines[lineIdx] = updatedLine;
         updated++;
       }
     } else {
-      console.log(`⏭️  Skip: ${addition.company} — ${addition.role} (existing #${duplicate.num} ${oldScore} >= new ${newScore})`);
+      console.log(`⏭️  Skip: ${addition.company} — ${addition.role} (existing #${duplicate.num} is newer)`);
       skipped++;
     }
   } else {
@@ -732,11 +738,12 @@ for (const file of tsvFiles) {
       num: entryNum, date: addition.date, company: addition.company, role: addition.role,
       location: addition.location || '—',
       score: addition.score, status: addition.status, pdf: addition.pdf,
+      decision: addition.decision, rank: addition.rank, confidence: addition.confidence, origin: addition.origin,
       report: addition.report, notes: addition.notes,
     });
     newLines.push(newLine);
     added++;
-    console.log(`➕ Add #${entryNum}: ${addition.company} — ${addition.role} (${addition.score})`);
+    console.log(`➕ Add #${entryNum}: ${addition.company} — ${addition.role} (${addition.decision}, confidence ${addition.confidence})`);
   }
 }
 

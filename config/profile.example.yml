@@ -23,7 +23,7 @@ target_roles:
   primary:
     - "Senior AI Engineer"
     - "Staff ML Engineer"
-  # Archetypes help the evaluation system score fit
+  # Archetypes help the agent understand role shape and framing
   archetypes:
     - name: "AI/ML Engineer"
       level: "Senior/Staff"
@@ -118,26 +118,14 @@ cover_letter:
       # Only trigger this entry when the JD location is in one of these countries.
       countries: [Spain, Mexico, Argentina, Colombia, Chile]
 
-# ── Auto-PDF threshold ──────────────────────────────────────────────────────
+# ── Application artifact policy ────────────────────────────────────────────
 #
-# Auto-PDF threshold during evaluation (used by `/applycue pipeline` and
-# `bash batch/batch-runner.sh`).
-#
-# An offer's tailored CV PDF is auto-generated only when its score is
-# >= this threshold. Generating a PDF costs ~30-60s per offer (Playwright
-# launch + HTML render), and most offers in a scan score 2.x/3.x and never
-# become an actual application — so the gate avoids wasted renders.
-#
-# Default (key absent OR commented out): 3.0 — the original gate of
-# `/applycue pipeline`. Both evaluation paths apply the same default, so
-# a batch run and an interactive run treat the same offer identically.
-#
-# Raise it (e.g. 4.0) to auto-generate PDFs only for stronger matches and
-# leave the rest report-only — those can still be produced on demand via
-# `/applycue pdf {company-slug}`. Fractional thresholds work (e.g. 3.5 —
-# half-point scores like 3.5/5 occur in evaluations). Set it to 0 to
-# generate a PDF for every offer.
-# auto_pdf_score_threshold: 4.0
+# ApplyCue prepares role-specific CV/application artifacts after the external
+# agent records an `apply` decision. `watch` and `skip` remain report-only unless
+# the user explicitly asks. There is no semantic fit-score threshold.
+# Reusable form answers are not duplicated here. The agent saves explicitly
+# approved answers through `application-preflight.mjs` into the private
+# append-only `data/application-answers.jsonl` ledger.
 
 # ── Re-apply Cooldown Windows ──────────────────────────────────────────────
 #

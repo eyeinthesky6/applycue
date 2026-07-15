@@ -21,7 +21,7 @@ This tool interfaces with AI models via third-party CLI tools. The maintainers d
 
 - **Hallucinations:** AI models may fabricate skills, job history, qualifications, or company information. You must manually verify all generated documents before submitting them to an employer.
 - **Safety guardrails:** The default prompts instruct the AI never to auto-submit applications and to stop before the final send/apply action. However, AI compliance is not guaranteed. If you use different models, modify the system prompts, or override the safety instructions, you accept full responsibility for the AI's actions.
-- **Evaluation accuracy:** Job offer scores and recommendations are AI-generated opinions based on pattern matching, not professional career advice. They should inform your judgment, not replace it.
+- **Evaluation accuracy:** Agent decisions, ranks, confidence, and recommendations are judgment calls based on the available profile and job evidence, not professional career advice. They should inform your judgment, not replace it.
 
 ## 4. Third-Party Platforms
 

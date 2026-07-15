@@ -17,6 +17,10 @@ If `pnpm` is already available, use `pnpm install`. Do not run `corepack enable`
 on Windows just for ApplyCue; it can require administrator access to the Node.js
 installation directory.
 
+The install downloads Node.js dependencies into the clone and a
+Playwright-managed Chromium build into Playwright's per-user browser cache. It
+does not install Docker, Go, Python, or an embedded AI model/runtime.
+
 Then start Codex/Claude in the repository and say: `Set up ApplyCue and start with my CV.`
 
 For headless Codex, run:

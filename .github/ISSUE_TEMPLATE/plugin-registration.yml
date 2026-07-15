@@ -7,7 +7,7 @@ body:
       value: |
         > ⚠️ **Privacy first.** Never paste your CV, scan results, or other personal data — issues are **public forever**.
 
-        This issue becomes your plugin's **home** (its changelog + compatibility/quarantine board). After it's filed, open a **registry PR** (the plugin template can do this for you on a release tag) to actually list it. See [docs/PLUGINS.md](https://github.com/eyeinthesky6/applycue/blob/main/docs/PLUGINS.md).
+        This issue becomes your plugin's **home** (its changelog + compatibility/quarantine board). After it is filed, open a **registry PR** to list it. See [plugins/README.md](https://github.com/eyeinthesky6/applycue/blob/main/plugins/README.md).
   - type: checkboxes
     id: coc
     attributes:
@@ -48,5 +48,5 @@ body:
           required: true
         - label: MIT-compatible license; no personal data in the repo
           required: true
-        - label: No commercial / hosted-service / monetization wording — ApplyCue is free and local-first
+        - label: Any paid or hosted dependency is disclosed clearly and never required silently
           required: true

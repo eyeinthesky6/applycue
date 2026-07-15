@@ -2,6 +2,8 @@
 
 Date: 2026-07-08
 
+Status: historical decision input. The external profile store, source-approval engine, and typed browser-plan runtime described below remain donor capabilities, not current launch behavior. Use the [current integration plan](2026-07-14_applycue-career-ops-integration_architectural_review.md) for implementation status and destination owners.
+
 ## Decision
 
 ApplyCue will build on the current working local job-search workflow instead of restarting from scratch.
