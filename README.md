@@ -1,6 +1,14 @@
 # ApplyCue
 
-ApplyCue is a local, agent-led job-search and application product. Give the repository link and your CV to Codex, Claude, or another capable coding agent; the agent sets it up, learns your profile, finds roles, reads full job descriptions, creates role-specific CVs, applies with permission, and tracks what happened.
+## Companies filter you. Now it is your turn.
+
+Give ApplyCue your CV and a capable agent such as Codex or Claude. It searches
+approved job sources and connected job-alert email sources, reads full job
+descriptions, shortlists the most relevant roles, creates truthful role-specific
+CVs, and applies only after you approve each named application.
+
+ApplyCue is local and agent-led. It is not an unattended mass-apply bot, and it
+cannot promise an interview, offer, or faster hire.
 
 The MVP uses the coding agent's existing intelligence and connectors. There is no required AI API key and no second embedded model runtime.
 
@@ -21,10 +29,12 @@ https://github.com/eyeinthesky6/applycue
 Suggested prompt:
 
 ```text
-Install ApplyCue from this repository on my machine. Read AGENTS.md and
-skills/applycue/SKILL.md, run the doctor check, then greet me and begin CV
-ingestion. Ask before accessing folders, accounts, connectors, or submitting
-anything. Do not ask for details already present in my CV.
+Install the latest stable ApplyCue release from this repository on my machine.
+Read AGENTS.md and skills/applycue/SKILL.md, run the doctor check, then greet me
+and start from my CV. Confirm my preferences and source access, search only
+approved job sources and email connections, read full job descriptions, create
+truthful role-specific CVs, and ask before each named application. Do not ask
+for details already present in my CV.
 ```
 
 The agent should perform the installation and explain only useful outcomes.

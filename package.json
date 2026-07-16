@@ -1,7 +1,7 @@
 {
   "name": "applycue",
   "version": "0.1.0",
-  "description": "ApplyCue: a local, agent-led job-search and CV-to-application workflow.",
+  "description": "Local, agent-led job search across approved sources: full-JD review, truthful role-specific CVs, named application approval, and outcome tracking.",
   "private": true,
   "engines": {
     "node": ">=22.5.0"
@@ -47,13 +47,16 @@
   },
   "keywords": [
     "applycue",
-    "ai",
+    "ai-agents",
     "job-search",
+    "job-application",
     "cv-to-application",
+    "career-tools",
+    "local-first",
+    "privacy",
+    "codex",
     "claude-code",
-    "opencode",
-    "career",
-    "automation"
+    "opencode"
   ],
   "author": "ApplyCue contributors",
   "homepage": "https://github.com/eyeinthesky6/applycue",

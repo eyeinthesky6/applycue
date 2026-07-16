@@ -22,15 +22,20 @@ import { createHash, randomUUID } from 'crypto';
 import { tmpdir } from 'os';
 import { normalizeReportLink as normalizeLink } from './tracker-links.mjs';
 import { LEGACY_COLMAP, detectColumns, normalizeConfidence, normalizeDecision, normalizeOrigin, normalizeRank, parseTrackerRow } from './tracker-parse.mjs';
+import { CANONICAL_TRACKER_SKELETON, initializeTrackerFile } from './tracker.mjs';
 
 const APPLYCUE = dirname(fileURLToPath(import.meta.url));
 // Support both layouts: data/applications.md (boilerplate) and applications.md (original).
 // APPLYCUE_TRACKER overrides the path (used by tests and non-standard layouts).
+const DATA_TRACKER = join(APPLYCUE, 'data/applications.md');
+const ROOT_TRACKER = join(APPLYCUE, 'applications.md');
 const APPS_FILE_RAW = process.env.APPLYCUE_TRACKER
   ? process.env.APPLYCUE_TRACKER
-  : existsSync(join(APPLYCUE, 'data/applications.md'))
-    ? join(APPLYCUE, 'data/applications.md')
-    : join(APPLYCUE, 'applications.md');
+  : existsSync(DATA_TRACKER)
+    ? DATA_TRACKER
+    : existsSync(ROOT_TRACKER)
+      ? ROOT_TRACKER
+      : DATA_TRACKER;
 const APPS_FILE = canonicalizeTrackerPath(APPS_FILE_RAW);
 const TRACKER_DIR = dirname(APPS_FILE);
 // APPLYCUE_ADDITIONS overrides the additions dir (used by tests, mirrors APPLYCUE_TRACKER).
@@ -579,12 +584,21 @@ function parseTsvContent(content, filename) {
 
 // ---- Main ----
 
-// Read applications.md
+// Read applications.md. A real merge initializes the canonical source of truth;
+// dry-run uses the same skeleton in memory and remains strictly non-mutating.
+let appContent;
 if (!existsSync(APPS_FILE)) {
-  console.log('No applications.md found. Nothing to merge into.');
-  process.exit(0);
+  if (DRY_RUN) {
+    console.log(`🔎 Dry-run: ${basename(APPS_FILE)} would be initialized with the canonical tracker schema.`);
+    appContent = CANONICAL_TRACKER_SKELETON;
+  } else {
+    const created = initializeTrackerFile(APPS_FILE);
+    if (created) console.log(`✅ Initialized canonical tracker at ${APPS_FILE}`);
+    appContent = readFileSync(APPS_FILE, 'utf-8');
+  }
+} else {
+  appContent = readFileSync(APPS_FILE, 'utf-8');
 }
-const appContent = readFileSync(APPS_FILE, 'utf-8');
 // Test-only synchronization hook: the concurrent merge test waits for the
 // first worker to read the tracker while still holding the lock, then starts a
 // second worker to prove the lock prevents the old lost-update race.

@@ -1,6 +1,6 @@
 ---
 name: ApplyCue
-description: Agent-led CV-to-application workflow that discovers roles, reviews full JDs, creates role-specific CVs, applies with permission, tracks outcomes, and learns from feedback.
+description: Agent-led CV-to-application workflow that searches approved sources, reviews full JDs, creates truthful role-specific CVs, applies with named permission, tracks outcomes, and learns from feedback.
 arguments: mode
 user_invocable: true
 user-invocable: true
@@ -11,6 +11,10 @@ license: MIT
 # ApplyCue
 
 Use ApplyCue through chat. The agent operates the repository, the user's approved browser, and available connectors. The user should not need to learn commands or edit configuration.
+
+ApplyCue serves job seekers across technical and non-technical role families. It
+is not an unattended mass-apply bot and cannot promise an interview, offer, fixed
+search volume, or faster hire.
 
 Codex users may start with `codex` or `codex exec "Read AGENTS.md, run doctor, and begin ApplyCue setup."` Claude and other hosts use the equivalent repository prompt. Plain-language prompts are canonical; `/applycue` is optional and may not exist in every host.
 
@@ -98,7 +102,7 @@ Only after the baseline should the agent propose base-CV improvements. Review th
 
 ## Discovery and review
 
-Use `portals.yml`, root providers, public job pages, user-added links, and approved native connectors. Prefer native email connectors for mailbox searches; if unavailable, tell the user what connection is needed. Most job boards do not expose agent connectors, so use public pages or the user's logged-in browser with permission.
+Use `portals.yml`, root providers, public job pages, user-added links, and approved native connectors. Prefer approved native email connectors for job-alert searches; if unavailable, tell the user what connection is needed. Never imply mailbox access before tool discovery and user approval. Most job boards do not expose agent connectors, so use public pages or the user's logged-in browser with permission.
 
 Short cards, emails, snippets, and collapsed descriptions are leads, not JDs. Open the source in the user's real browser, expand “read more”, and read the full description before a final decision. If the full JD cannot be obtained, keep it pending or ask the user—do not reject it on the preview.
 

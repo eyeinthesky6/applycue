@@ -37,8 +37,8 @@
  * so the index can never serve stale reads.
  */
 
-import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync, statSync, renameSync, rmSync } from 'fs';
-import { createHash } from 'crypto';
+import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync, statSync, renameSync, rmSync, linkSync } from 'fs';
+import { createHash, randomUUID } from 'crypto';
 import { dirname, resolve, join, basename } from 'path';
 import { pathToFileURL } from 'url';
 import yaml from 'js-yaml';
@@ -57,7 +57,37 @@ if (resolve(MD_PATH) === resolve(DB_PATH)) {
 const STATES_PATH = 'templates/states.yml';
 const HEADER = '| # | Date | Company | Role | Score | Status | Decision | Rank | Confidence | Origin | PDF | Report | Notes |';
 const SEPARATOR = '|---|------|---------|------|-------|--------|----------|------|------------|--------|-----|--------|-------|';
+export const CANONICAL_TRACKER_SKELETON = `# Applications Tracker\n\n${HEADER}\n${SEPARATOR}\n`;
 const CANONICAL_COLMAP = { num: 1, date: 2, company: 3, role: 4, score: 5, status: 6, decision: 7, rank: 8, confidence: 9, origin: 10, pdf: 11, report: 12, notes: 13 };
+
+/**
+ * Create the canonical Markdown source of truth only when it is absent.
+ *
+ * The complete skeleton is written to a same-directory temporary file first,
+ * then linked into place with create-if-absent semantics. Concurrent first
+ * syncs therefore cannot replace a tracker another process has just created,
+ * and readers never observe a partially written initial table.
+ *
+ * @param {string} [path=MD_PATH] Tracker path to initialize.
+ * @returns {boolean} True when this call created the tracker.
+ */
+export function initializeTrackerFile(path = MD_PATH) {
+  if (existsSync(path)) return false;
+  mkdirSync(dirname(path) || '.', { recursive: true });
+  const tmpPath = join(dirname(path), `.${basename(path)}.${process.pid}.${Date.now()}.${randomUUID()}.init.tmp`);
+  try {
+    writeFileSync(tmpPath, CANONICAL_TRACKER_SKELETON, { encoding: 'utf-8', flag: 'wx' });
+    try {
+      linkSync(tmpPath, path);
+      return true;
+    } catch (err) {
+      if (err?.code === 'EEXIST') return false;
+      throw err;
+    }
+  } finally {
+    rmSync(tmpPath, { force: true });
+  }
+}
 
 // ── node:sqlite loading ─────────────────────────────────────────────
 
@@ -376,8 +406,13 @@ function syncIndex(db, states) {
 
 async function sync(args) {
   if (!existsSync(MD_PATH)) {
-    console.error(`Error: ${MD_PATH} not found — nothing to index.`);
-    process.exit(1);
+    if (args.includes('--check')) {
+      console.error(`Error: ${MD_PATH} not found — sync would initialize the canonical tracker.`);
+      console.error('(--check — no tracker or index written)');
+      process.exit(1);
+    }
+    const created = initializeTrackerFile(MD_PATH);
+    if (created) console.error(`Initialized canonical tracker at ${MD_PATH}`);
   }
   const states = loadStates();
 

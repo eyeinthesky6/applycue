@@ -2,6 +2,14 @@
 
 Date: 2026-07-06
 
+Status: historical research input, not a current capability matrix. Some names and
+coverage notes below describe pre-consolidation designs. For current behavior use
+[`PRODUCT_DECISION.md`](PRODUCT_DECISION.md),
+[`product-roadmap.md`](product-roadmap.md), and the canonical
+[`ApplyCue skill`](../skills/applycue/SKILL.md). Do not use this document as
+evidence that a mode, connector, application volume, interview outcome, or hiring
+result is available in the launch runtime.
+
 ## Summary
 
 ApplyCue should not treat all job hunters as the same user.

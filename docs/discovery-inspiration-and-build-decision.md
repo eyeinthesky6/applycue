@@ -4,7 +4,13 @@ Date: 2026-07-06
 
 Updated: 2026-07-08
 
-Status: research and design input. The consolidated runtime currently uses agent-managed `portals.yml`, root providers, and browser/connectors; it does not generate or approve a typed source-plan artifact. Source-plan and source-quality work is tracked in the [current integration plan](2026-07-14_applycue-career-ops-integration_architectural_review.md).
+Status: historical research and design input, not a current capability or launch-proof
+document. The consolidated runtime uses agent-managed `portals.yml`, root providers,
+and approved browser/connectors; it does not generate or approve a typed source-plan
+artifact. Current behavior is defined by the
+[`PRODUCT_DECISION.md`](PRODUCT_DECISION.md), canonical
+[`ApplyCue skill`](../skills/applycue/SKILL.md), and
+[`launch-readiness gate`](launch-readiness.md).
 
 ## Decision
 
@@ -113,11 +119,15 @@ It is generated output. To change it, update the user's profile/preferences or s
 
 ## Local Run Evidence
 
-Recent local run evidence:
+Historical pre-consolidation local-run evidence:
 
 ```text
 1177 discovered jobs -> 17 source-quality kept -> 3 CVs -> 3 application drafts -> 3 browser plans
 ```
+
+This run demonstrates why broad discovery needs aggressive quality review. It is
+not evidence that the current launch runtime will find hundreds of suitable jobs,
+produce the same counts for another user, or satisfy the current public-MVP gate.
 
 The source-quality filter runs before shortlist preparation. Manual jobs are not filtered by the generated plan because manual imports are deliberate user/agent inputs and should remain reviewable.
 
