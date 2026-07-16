@@ -2,6 +2,18 @@ name: SBOM Generation
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing ApplyCue release tag to backfill
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      tag:
+        description: ApplyCue release tag created by the caller
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -10,8 +22,24 @@ jobs:
   sbom:
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve release tag
+        id: release
+        shell: bash
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          tag="${REQUESTED_TAG:-$EVENT_TAG}"
+          if [[ ! "$tag" =~ ^ApplyCue-v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid ApplyCue release tag: $tag" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ steps.release.outputs.tag }}
 
       - name: Generate SBOM (SPDX)
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
@@ -23,4 +51,16 @@ jobs:
       - name: Upload SBOM to release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload ${{ github.event.release.tag_name }} ApplyCue-sbom.spdx.json
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/existing-sbom"
+          if gh release download "$RELEASE_TAG" --pattern ApplyCue-sbom.spdx.json --dir "$RUNNER_TEMP/existing-sbom"; then
+            cmp ApplyCue-sbom.spdx.json "$RUNNER_TEMP/existing-sbom/ApplyCue-sbom.spdx.json" || {
+              echo "Published SBOM differs from the generated SBOM; refusing to overwrite it." >&2
+              exit 1
+            }
+            echo "The published SBOM is already present and byte-identical."
+          else
+            gh release upload "$RELEASE_TAG" ApplyCue-sbom.spdx.json
+          fi
