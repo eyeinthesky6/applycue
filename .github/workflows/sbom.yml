@@ -1,7 +1,5 @@
 name: SBOM Generation
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       tag:
@@ -41,26 +39,97 @@ jobs:
         with:
           ref: ${{ steps.release.outputs.tag }}
 
+      - name: Resolve release identity and existing assets
+        id: assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          commit="$(git rev-parse HEAD)"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+          mkdir -p "$RUNNER_TEMP/existing-release-assets"
+          sbom_exists=false
+          receipt_exists=false
+
+          if gh release download "$RELEASE_TAG" \
+            --pattern ApplyCue-sbom.spdx.json \
+            --dir "$RUNNER_TEMP/existing-release-assets"; then
+            sbom_exists=true
+          fi
+          if gh release download "$RELEASE_TAG" \
+            --pattern ApplyCue-release-evidence.txt \
+            --dir "$RUNNER_TEMP/existing-release-assets"; then
+            receipt_exists=true
+          fi
+
+          if [[ "$receipt_exists" == true && "$sbom_exists" != true ]]; then
+            echo "Release evidence exists without its referenced SBOM; refusing to continue." >&2
+            exit 1
+          fi
+
+          echo "sbom_exists=$sbom_exists" >> "$GITHUB_OUTPUT"
+          echo "receipt_exists=$receipt_exists" >> "$GITHUB_OUTPUT"
+
       - name: Generate SBOM (SPDX)
+        if: steps.assets.outputs.sbom_exists != 'true'
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        env:
+          SYFT_SOURCE_NAME: ApplyCue
+          SYFT_SOURCE_VERSION: ${{ steps.release.outputs.tag }}
+          SYFT_SOURCE_SOURCE: https://github.com/${{ github.repository }}/tree/${{ steps.assets.outputs.commit }}
         with:
           artifact-name: ApplyCue-sbom.spdx.json
           format: spdx-json
           output-file: ApplyCue-sbom.spdx.json
+          upload-release-assets: false
 
-      - name: Upload SBOM to release
+      - name: Build and verify release evidence
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_COMMIT: ${{ steps.assets.outputs.commit }}
+          SBOM_EXISTS: ${{ steps.assets.outputs.sbom_exists }}
+          RECEIPT_EXISTS: ${{ steps.assets.outputs.receipt_exists }}
+        run: |
+          if [[ "$SBOM_EXISTS" == true ]]; then
+            cp "$RUNNER_TEMP/existing-release-assets/ApplyCue-sbom.spdx.json" .
+          fi
+
+          sbom_sha256="$(sha256sum ApplyCue-sbom.spdx.json | awk '{print $1}')"
+          cat > ApplyCue-release-evidence.txt <<EOF
+          evidence_format=applycue-release-evidence-v1
+          repository=https://github.com/${GITHUB_REPOSITORY}
+          release_tag=${RELEASE_TAG}
+          source_commit=${RELEASE_COMMIT}
+          source_url=https://github.com/${GITHUB_REPOSITORY}/tree/${RELEASE_COMMIT}
+          sbom_file=ApplyCue-sbom.spdx.json
+          sbom_sha256=${sbom_sha256}
+          EOF
+
+          if [[ "$RECEIPT_EXISTS" == true ]]; then
+            cmp ApplyCue-release-evidence.txt \
+              "$RUNNER_TEMP/existing-release-assets/ApplyCue-release-evidence.txt" || {
+              echo "Published release evidence does not match the tag, commit, and SBOM; refusing to overwrite it." >&2
+              exit 1
+            }
+          fi
+
+      - name: Upload missing release evidence
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          SBOM_EXISTS: ${{ steps.assets.outputs.sbom_exists }}
+          RECEIPT_EXISTS: ${{ steps.assets.outputs.receipt_exists }}
         shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/existing-sbom"
-          if gh release download "$RELEASE_TAG" --pattern ApplyCue-sbom.spdx.json --dir "$RUNNER_TEMP/existing-sbom"; then
-            cmp ApplyCue-sbom.spdx.json "$RUNNER_TEMP/existing-sbom/ApplyCue-sbom.spdx.json" || {
-              echo "Published SBOM differs from the generated SBOM; refusing to overwrite it." >&2
-              exit 1
-            }
-            echo "The published SBOM is already present and byte-identical."
+          if [[ "$SBOM_EXISTS" != true ]]; then
+            gh release upload "$RELEASE_TAG" \
+              ApplyCue-sbom.spdx.json \
+              ApplyCue-release-evidence.txt
+          elif [[ "$RECEIPT_EXISTS" != true ]]; then
+            gh release upload "$RELEASE_TAG" ApplyCue-release-evidence.txt
           else
-            gh release upload "$RELEASE_TAG" ApplyCue-sbom.spdx.json
+            echo "The published SBOM and release evidence are already present and consistent."
           fi

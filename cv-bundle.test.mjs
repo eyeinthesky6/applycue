@@ -90,6 +90,25 @@ Product strategy | Customer discovery | Team leadership
     jobId: '1', md: 'output/acme/cv.md', html: 'output/acme/cv.html', pdf: 'output/acme/cv.pdf',
     docx: 'output/acme/cv.docx', actorName: 'codex',
   };
+
+  const scriptOnlyHtml = html.replace(
+    /<h1>[\s\S]*?<\/body>/,
+    '<p>Unrelated visible content.</p><script>Jane Doe Product and operations leader who turns customer problems into measurable product outcomes and repeatable delivery systems.</script ></body>',
+  );
+  write('output/acme/cv.html', scriptOnlyHtml);
+  await assert.rejects(() => recordCvBundle(root, options), /HTML content/i);
+  write('output/acme/cv.html', html);
+
+  const angleMarkdown = markdown.replace('Product and operations leader', 'Product < operations leader');
+  const doubleEncodedHtml = html.replace('Product and operations leader', 'Product &amp;lt; operations leader');
+  write('output/acme/cv.md', angleMarkdown);
+  write('output/acme/cv.html', doubleEncodedHtml);
+  write('output/acme/cv.docx', await renderAtsDocx(angleMarkdown));
+  await assert.rejects(() => recordCvBundle(root, options), /HTML content/i);
+  write('output/acme/cv.md', markdown);
+  write('output/acme/cv.html', html);
+  write('output/acme/cv.docx', await renderAtsDocx(markdown));
+
   const bundle = await recordCvBundle(root, options);
   assert.equal(bundle.unchanged, false);
   assert.equal(bundle.artifacts.pdf.sha256.length, 64);

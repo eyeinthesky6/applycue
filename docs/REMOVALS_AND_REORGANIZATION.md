@@ -60,10 +60,10 @@ The separate `%USERPROFILE%\.applycue\profiles\...` typed store is not part of t
 
 ## Git and attribution
 
-The independent branch/worktree is retained as private donor/reference history, not merged wholesale. The public launch branch keeps ApplyCue naming and MIT attribution for its Career-Ops-derived foundation. Public branch/tag cleanup is a release operation, not a runtime requirement.
+The independent donor/control-plane history is publicly reachable through shared Git history and archived/donor branches. It is retained as unsupported reference and recovery evidence, not merged wholesale or offered as a runtime. The public launch branch keeps ApplyCue naming and MIT attribution for its Career-Ops-derived foundation. Deleting or hiding a branch would not erase shared Git history; branch/tag cleanup is a release operation, not a runtime requirement.
 
 ## Rollback
 
-Every removed component remains recoverable from Git history and the donor worktree. Restoration must be feature-specific and attach to an existing root owner; restoring the complete second control plane is explicitly rejected.
+Every removed component remains recoverable from Git history and, where retained, donor branches/worktrees. That recovery evidence does not make the historical code supported. Restoration must be feature-specific and attach to an existing root owner; restoring the complete second control plane is explicitly rejected.
 
 The authoritative retain/port/replace/defer/reject matrix and its acceptance gates are in [`2026-07-14_applycue-career-ops-integration_architectural_review.md`](2026-07-14_applycue-career-ops-integration_architectural_review.md).

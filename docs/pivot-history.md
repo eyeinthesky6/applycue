@@ -24,8 +24,8 @@ The result is not “Career-Ops plus ApplyCue running side by side.” It is one
 
 ## Branch meaning
 
-- launch path: recovered/consolidated ApplyCue root runtime;
-- independent branch/worktree: private donor and historical evidence, not user choice;
+- launch path: the current `main` branch's recovered/consolidated ApplyCue root runtime; the typed and Go control planes are absent;
+- independent archived/donor branches and shared Git history: publicly reachable historical evidence, not a supported runtime or user choice; local donor worktrees are separate recovery evidence and are not public;
 - original Career-Ops checkout: upstream/reference and personalized historical operator, not the public ApplyCue product.
 
-Before open-source launch, preserve the unrelated typed baseline under a dated archive branch, then promote the exact tested consolidated commit to the one obvious `main` branch. Do not combine the histories with an unrelated-history merge. ApplyCue release tags, Git history, `LICENSE`, and `NOTICE` retain attribution; archive branches are not presented as user choices.
+The unrelated typed baseline remains preserved in archived/donor refs and shared Git history while the exact tested consolidated commit is the one obvious `main` branch. Deleting or hiding a branch would not erase shared history. Do not combine the histories with an unrelated-history merge. ApplyCue release tags, Git history, `LICENSE`, and `NOTICE` retain attribution; archive branches are historical evidence, not supported product choices.

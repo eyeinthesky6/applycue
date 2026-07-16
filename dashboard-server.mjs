@@ -574,8 +574,10 @@ export function createDashboardServer({ root = ROOT } = {}) {
       response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
       response.end('Not found');
     } catch (error) {
+      const diagnostic = error instanceof Error ? (error.stack || error.message) : String(error);
+      console.error('Dashboard request failed:', diagnostic);
       response.writeHead(400, { 'content-type': 'application/json; charset=utf-8' });
-      response.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+      response.end(JSON.stringify({ error: 'Could not process this dashboard request.' }));
     }
   });
 }

@@ -130,6 +130,19 @@ try {
   const base = `http://127.0.0.1:${port}`;
   try {
     assert.equal((await fetch(`${base}/api/state`)).status, 200);
+    const diagnostics = [];
+    const originalConsoleError = console.error;
+    console.error = (...args) => diagnostics.push(args.map(String).join(' '));
+    try {
+      const malformedResponse = await fetch(`${base}/api/job-action`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"jobId":',
+      });
+      assert.equal(malformedResponse.status, 400);
+      assert.deepEqual(await malformedResponse.json(), { error: 'Could not process this dashboard request.' });
+      assert.ok(diagnostics.some((line) => /dashboard request failed/i.test(line)));
+    } finally {
+      console.error = originalConsoleError;
+    }
     const feedbackResponse = await fetch(`${base}/api/job-action`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ jobId: '7', action: 'request_cv_change', note: 'Emphasize logistics products.' })
