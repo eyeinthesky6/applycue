@@ -20,6 +20,12 @@ ApplyCue is early and local-first. The fastest support path is to keep the issue
 
 Do not include private CVs, personal contact details, credentials, or generated application artifacts in public issues.
 
-Support is currently best effort. ApplyCue 0.1 supports the current `main`
-release on Node.js 22.5 or newer; older branches and donor worktrees are not
-supported user install paths.
+Support is currently best effort. ApplyCue 0.1 supports named `ApplyCue-v*`
+release tags on Node.js 22.5 or newer. The `main` branch is a moving development
+channel, not a stable release. GitHub source ZIPs can be inspected, but they do
+not contain the Git history needed for the documented update and rollback flow.
+Older untagged branches and donor worktrees are not supported user install paths.
+
+When reporting an install or update problem, include `git rev-parse HEAD` and
+`git describe --tags --exact-match` output when available. If the second command
+fails, say whether you intentionally installed rolling `main` or used a ZIP.

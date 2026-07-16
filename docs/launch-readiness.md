@@ -59,6 +59,35 @@ ApplyCue's first public release is `0.1.0`. There is no earlier ApplyCue GitHub 
 
 `CHANGELOG.md` is generated release metadata and belongs to the system layer. After the first release PR is merged, the bootstrap setting is ignored by Release Please and may be removed in the next normal maintenance change. Do not merge a generated release PR if it reintroduces inherited product names, unrelated issue links, or pre-consolidation claims.
 
+### Release integrity and recovery
+
+`release.yml` is the only automatic release path. When Release Please creates a
+release, it calls `sbom.yml` once with the exact release tag. `sbom.yml` also
+supports an explicit manual backfill for an existing `ApplyCue-v*` release, but
+does not subscribe independently to release-published events.
+
+The release carries `ApplyCue-sbom.spdx.json` plus
+`ApplyCue-release-evidence.txt`. The receipt identifies the repository, release
+tag, source commit and source URL and records the SBOM SHA-256. A manual rerun
+reuses the published SBOM, verifies any existing receipt, and uploads only a
+missing asset. It never overwrites inconsistent release evidence. The checksum
+receipt supports integrity checking; it is not a cryptographic attestation and,
+while releases remain mutable, does not by itself prevent asset replacement.
+
+GitHub release immutability and artifact attestations are not enabled or claimed
+by this workflow. Before enabling immutable releases, redesign the pipeline to
+create a draft, attach and verify every intended asset, and publish only after
+that staging succeeds. The current post-publication SBOM attachment is not
+compatible with an immutable-release claim.
+
+The supported user install is a Git clone at a named `ApplyCue-v*` tag. `main` is
+a moving development channel, and a generated source ZIP lacks the Git history
+needed for the documented update and rollback flow. Release readiness requires a
+clean install and checks from the exact proposed tag, plus a tested return to the
+previous known-good tag. For a bad release, retain the record, name the safe
+replacement, and issue a verified patch tag; never move or reuse the published
+tag. See `docs/SETUP.md` for the user commands.
+
 ## UAT evidence to retain locally
 
 - doctor JSON;

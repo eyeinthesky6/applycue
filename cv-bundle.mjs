@@ -138,18 +138,48 @@ function htmlMeta(html) {
   return values;
 }
 
+function decodeMarkupEntities(value) {
+  const entities = {
+    nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", '#39': "'",
+  };
+  return String(value || '').replace(/&(nbsp|amp|lt|gt|quot|apos|#39);/gi, (entity, name) => entities[name.toLowerCase()] ?? entity);
+}
+
+function visibleHtmlText(value) {
+  const html = String(value || '');
+  let result = '';
+  let cursor = 0;
+  let hiddenElement = '';
+  while (cursor < html.length) {
+    const tagStart = html.indexOf('<', cursor);
+    if (tagStart < 0) {
+      if (!hiddenElement) result += html.slice(cursor);
+      break;
+    }
+    if (!hiddenElement) result += html.slice(cursor, tagStart);
+    const tagEnd = html.indexOf('>', tagStart + 1);
+    if (tagEnd < 0) {
+      if (!hiddenElement) result += html.slice(tagStart);
+      break;
+    }
+    const tag = html.slice(tagStart + 1, tagEnd);
+    const parsed = tag.match(/^\s*(\/?)\s*([\w:-]+)/);
+    if (!parsed) {
+      if (!hiddenElement) result += '<';
+      cursor = tagStart + 1;
+      continue;
+    }
+    const closing = Boolean(parsed[1]);
+    const name = parsed[2].toLowerCase();
+    if (!closing && !hiddenElement && (name === 'script' || name === 'style')) hiddenElement = name;
+    else if (closing && hiddenElement === name) hiddenElement = '';
+    cursor = tagEnd + 1;
+  }
+  return result;
+}
+
 function stripHtml(value) {
-  return normalizedText(String(value || '')
-    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/\s+/g, ' '));
+  return normalizedText(decodeMarkupEntities(visibleHtmlText(value)).replace(/\s+/g, ' '));
 }
 
 function xmlText(value) {
@@ -159,8 +189,8 @@ function xmlText(value) {
 }
 
 function xmlElement(value, localName) {
-  return normalizedText(String(value || '').match(new RegExp(`<(?:[\\w-]+:)?${localName}\\b[^>]*>([\\s\\S]*?)<\\/(?:[\\w-]+:)?${localName}>`, 'i'))?.[1] || '')
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+  return decodeMarkupEntities(normalizedText(String(value || '')
+    .match(new RegExp(`<(?:[\\w-]+:)?${localName}\\b[^>]*>([\\s\\S]*?)<\\/(?:[\\w-]+:)?${localName}>`, 'i'))?.[1] || ''));
 }
 
 function sourceAnchors(markdown) {

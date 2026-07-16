@@ -29,16 +29,32 @@ anything. Do not ask for details already present in my CV.
 
 The agent should perform the installation and explain only useful outcomes.
 
-## Manual installation
+## Manual installation and release channel
 
 Requirements: Git, Node.js 22.5 or newer, and a supported agent such as Codex or Claude.
+
+For normal use, install a named stable tag from the
+[GitHub Releases page](https://github.com/eyeinthesky6/applycue/releases). A tag
+keeps the source version fixed until you deliberately update it. Replace
+`<stable-tag>` below with a tag such as `ApplyCue-v0.1.0`:
 
 ```powershell
 git clone https://github.com/eyeinthesky6/applycue.git
 cd applycue
-corepack pnpm install
+git checkout --detach <stable-tag>
+corepack pnpm install --frozen-lockfile
 node doctor.mjs --json
 ```
+
+`main` is the rolling development channel. Clone it only when you want the
+newest unreleased changes and accept that its behavior can move between pulls.
+Contributors can stay on `main`; normal users should prefer a stable tag.
+
+Use Git rather than GitHub's generated source ZIP. A ZIP is a fixed source
+snapshot without `.git` history, so the documented update and rollback commands
+cannot verify or switch its release tag. If a ZIP is unavoidable, download it
+from a named release, keep the archive name, tag, and release URL together, and
+replace the whole extracted directory when changing versions.
 
 If `pnpm` is already installed, `pnpm install` is equivalent. Direct `corepack pnpm`
 avoids the administrator permission that `corepack enable` can require on Windows.
@@ -128,7 +144,9 @@ The launch MVP ends at a confirmed application, tracking, and feedback. Intervie
 
 ## Current maturity and limits
 
-ApplyCue 0.1 is an early local-first release candidate. It needs a capable external
+ApplyCue 0.1 is an early local-first release. It is suitable for careful local
+evaluation, but public-MVP readiness still depends on the real-use evidence in
+the [launch-readiness gate](docs/launch-readiness.md). It needs a capable external
 agent such as Codex or Claude, public job sources or a user-approved browser, and
 explicit user approval before any application is submitted. Source coverage varies
 by country and job board. ApplyCue can improve discovery and application quality,
