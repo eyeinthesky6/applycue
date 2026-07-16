@@ -1,5 +1,12 @@
 # FAQ
 
+## Who is ApplyCue for?
+
+ApplyCue is for job seekers across technical, product, sales/GTM, operations,
+programme and public-impact, strategy, consulting, founder/operator, and hybrid
+roles. It needs a capable local agent such as Codex or Claude; the user should not
+need to be a developer or operate package commands themselves.
+
 ## Is ApplyCue a job board?
 
 No. It is an agent-led CV-to-application workflow that uses several sources and the user's approved browser/connectors.
@@ -19,6 +26,18 @@ No. MVP uses the model and tools already available in Codex, Claude, or another 
 ## Can it submit automatically?
 
 The agent can fill and submit after explicit approval for the named role. Every attempt gets a receipt. Sensitive/unknown answers, mismatches, closed pages, and uncertain prior attempts pause the flow.
+
+ApplyCue is not an unattended mass-apply service. It does not silently widen the
+search, use a new logged-in account, or submit another role under an earlier
+approval.
+
+## Does ApplyCue find hundreds of jobs or get me hired faster?
+
+ApplyCue can search many approved job sources and connected job-alert email leads,
+but coverage varies by country, role, and source. Version 0.1 does not claim a
+fixed number of jobs for every search and cannot promise an interview, offer, or
+shorter time to hire. Its current promise is a more controlled path from discovery
+to truthful, role-specific, explicitly approved applications.
 
 ## Are fit scores decisions?
 

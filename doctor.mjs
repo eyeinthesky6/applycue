@@ -6,10 +6,11 @@
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, isAbsolute, relative, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import yaml from 'js-yaml';
 import { discoverPlugins, pluginRoots, pluginStatus } from './plugins/_engine.mjs';
+import { resolveTrackerPath } from './tracker-utils.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -267,6 +268,30 @@ function checkPipelineFile() {
   }
 }
 
+function trackerState(root) {
+  const rootPath = resolve(root);
+  const path = resolveTrackerPath({ root: rootPath, override: process.env.APPLYCUE_TRACKER });
+  const relativePath = relative(rootPath, path);
+  const displayPath = relativePath && !relativePath.startsWith('..') && !isAbsolute(relativePath)
+    ? relativePath.replaceAll('\\', '/')
+    : path;
+  return {
+    path: displayPath,
+    exists: existsSync(path),
+    autoInitializable: true,
+    supportedInitializers: ['merge-tracker.mjs', 'tracker.mjs sync'],
+  };
+}
+
+function checkTrackerFile() {
+  const tracker = trackerState(projectRoot);
+  if (tracker.exists) return { pass: true, label: `${tracker.path} ready` };
+  return {
+    pass: true,
+    label: `${tracker.path} ready for automatic initialization on first merge/sync`,
+  };
+}
+
 // Discover plugins + their non-secret config block, synchronously. Used by both
 // the human check and the --json onboarding state.
 function readPluginConfigSync(root) {
@@ -306,6 +331,7 @@ async function main() {
     checkFonts(),
     checkAutoDir('data'),
     checkPipelineFile(),
+    checkTrackerFile(),
     checkAutoDir('output'),
     checkAutoDir('reports'),
     checkPlugins(projectRoot),
@@ -368,7 +394,7 @@ function onboardingState(root) {
       return { id: m.id, hooks: m.hooks, enabled: s.enabled, missingEnv: s.missingEnv };
     });
   } catch { plugins = []; }
-  return { onboardingNeeded: missing.length > 0, missing, warnings, plugins };
+  return { onboardingNeeded: missing.length > 0, missing, warnings, tracker: trackerState(root), plugins };
 }
 
 if (JSON_OUT) {

@@ -11,12 +11,16 @@ https://github.com/eyeinthesky6/applycue
 The agent should:
 
 1. Check Git and Node.js 22.5+.
-2. Clone the repository into a user-approved location.
-3. Run `pnpm install` when pnpm is available; otherwise run `corepack pnpm install`.
-4. Read `AGENTS.md` and `skills/applycue/SKILL.md`.
-5. Run `node doctor.mjs --json`.
-6. Greet the user and enter onboarding if needed.
-7. When ready for CV ingestion, begin it directly instead of returning a setup essay.
+2. Open the GitHub Releases page and identify the latest stable `ApplyCue-v*` tag.
+3. Clone the repository into a user-approved location and check out that exact tag
+   in detached mode. Do not install rolling `main` unless the user asks for the
+   development channel.
+4. Run `pnpm install --frozen-lockfile` when pnpm is available; otherwise run
+   `corepack pnpm install --frozen-lockfile`.
+5. Read `AGENTS.md` and `skills/applycue/SKILL.md`.
+6. Run `node doctor.mjs --json`.
+7. Greet the user and enter onboarding if needed.
+8. When ready for CV ingestion, begin it directly instead of returning a setup essay.
 
 Do not install Docker, Go, Python, JobSpy, or an AI SDK for the default MVP. Optional providers/tools are added only for a demonstrated source gap and with permission.
 Do not run `corepack enable` merely for ApplyCue: on Windows it may require
@@ -35,7 +39,11 @@ package-manager version directly.
 
 ## Connectors
 
-The agent inspects its own available tools. If Gmail/Outlook or browser connectors are useful but unavailable, explain the benefit and ask the user to connect them. Never claim a connector exists before discovery. Job sites are usually public pages or logged-in browser flows rather than exposed agent connectors.
+The agent inspects its own available tools. If Gmail/Outlook or browser connectors
+are useful but unavailable, explain the benefit and ask the user to connect them.
+Never claim a connector exists before discovery or read email without approval.
+Job sites are usually public pages or user-approved logged-in browser flows rather
+than exposed agent connectors.
 
 ## Normal operation
 

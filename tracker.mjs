@@ -43,8 +43,9 @@ import { dirname, resolve, join, basename } from 'path';
 import { pathToFileURL } from 'url';
 import yaml from 'js-yaml';
 import { detectColumns, normalizeConfidence, normalizeDecision, normalizeOrigin, normalizeRank, parseTrackerRow, resolveColumns } from './tracker-parse.mjs';
+import { CANONICAL_TRACKER_HEADER, CANONICAL_TRACKER_SEPARATOR, initializeTrackerFile, resolveTrackerPath } from './tracker-utils.mjs';
 
-const MD_PATH = process.env.APPLYCUE_TRACKER || 'data/applications.md';
+const MD_PATH = resolveTrackerPath({ root: process.cwd(), override: process.env.APPLYCUE_TRACKER });
 const DB_PATH = process.env.APPLYCUE_TRACKER_DB
   || (MD_PATH.endsWith('.md') ? MD_PATH.slice(0, -3) + '.db' : MD_PATH + '.db');
 
@@ -55,8 +56,8 @@ if (resolve(MD_PATH) === resolve(DB_PATH)) {
   process.exit(1);
 }
 const STATES_PATH = 'templates/states.yml';
-const HEADER = '| # | Date | Company | Role | Score | Status | Decision | Rank | Confidence | Origin | PDF | Report | Notes |';
-const SEPARATOR = '|---|------|---------|------|-------|--------|----------|------|------------|--------|-----|--------|-------|';
+const HEADER = CANONICAL_TRACKER_HEADER;
+const SEPARATOR = CANONICAL_TRACKER_SEPARATOR;
 const CANONICAL_COLMAP = { num: 1, date: 2, company: 3, role: 4, score: 5, status: 6, decision: 7, rank: 8, confidence: 9, origin: 10, pdf: 11, report: 12, notes: 13 };
 
 // ── node:sqlite loading ─────────────────────────────────────────────
@@ -376,8 +377,13 @@ function syncIndex(db, states) {
 
 async function sync(args) {
   if (!existsSync(MD_PATH)) {
-    console.error(`Error: ${MD_PATH} not found — nothing to index.`);
-    process.exit(1);
+    if (args.includes('--check')) {
+      console.error(`Error: ${MD_PATH} not found — sync would initialize the canonical tracker.`);
+      console.error('(--check — no tracker or index written)');
+      process.exit(1);
+    }
+    const created = initializeTrackerFile(MD_PATH);
+    if (created) console.error(`Initialized canonical tracker at ${MD_PATH}`);
   }
   const states = loadStates();
 
