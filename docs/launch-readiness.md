@@ -49,16 +49,15 @@ All local gates plus:
 
 ### Public main promotion
 
-The old public `main` and this consolidated runtime do not share product history. Do not merge them with `--allow-unrelated-histories` and do not rename the product branch in a way that leaves GitHub's default branch stale.
+Promotion completed on 2026-07-16. The previous public `main` is preserved at `archive/pre-merged-main-20260716`, and public `main` now owns the consolidated runtime. The promotion used an exact-SHA `--force-with-lease`; it did not join unrelated histories.
 
-After all public-MVP gates pass:
+The promoted source commit was `02827dc0ec6a08db2bfe34a55c0998685bf33b33`. A clean public clone passed all 900 tests, and the main-push Tests, Secret scan, CodeQL, and dependency checks passed. Public-MVP readiness still requires the product UAT evidence listed above; source promotion alone does not satisfy those product-outcome gates.
 
-1. Create and push a dated archive branch at the old `origin/main` commit.
-2. With explicit maintainer approval, update `main` to the exact tested release commit using `--force-with-lease`.
-3. Verify the public README and clean-clone journey from `main`.
-4. Enable required checks/branch protection, then tag that exact commit.
+### First public release baseline
 
-Until those steps are complete, `codex/applycue-merged-mvp` is the release candidate and public `main` is not the product source of truth.
+ApplyCue's first public release is `0.1.0`. There is no earlier ApplyCue GitHub Release or matching tag. Release Please therefore uses an empty manifest, `initial-version: 0.1.0`, and bootstrap commit `2d27caf870416604576a67ed9434f2c8460486fa`, immediately before the consolidated ApplyCue runtime. This keeps inherited Career-Ops history out of ApplyCue's generated first-release changelog.
+
+`CHANGELOG.md` is generated release metadata and belongs to the system layer. After the first release PR is merged, the bootstrap setting is ignored by Release Please and may be removed in the next normal maintenance change. Do not merge a generated release PR if it reintroduces inherited product names, unrelated issue links, or pre-consolidation claims.
 
 ## UAT evidence to retain locally
 

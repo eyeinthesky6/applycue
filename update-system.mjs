@@ -163,6 +163,7 @@ const SYSTEM_PATHS = [
   'skills/applycue/references/high-stakes-campaign-pack-template.md',
   'docs/',
   'writing-samples/README.md',
+  'CHANGELOG.md',
   'VERSION',
   'DATA_CONTRACT.md',
   'ARCHITECTURE.md',
