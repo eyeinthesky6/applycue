@@ -30,9 +30,9 @@ Before running any evaluation, confirm the posting is still live. The Step 0 Pla
 
 Do not continue to Step 1 until this gate is resolved.
 
-## Step 1 — A-G Review and agent decision
+## Step 1 — Adaptive review and agent decision
 
-Execute the same as the `oferta` mode (read `modes/oferta.md` for all A-F blocks + Block G Posting Legitimacy).
+Read `modes/oferta.md` for the analysis lenses and `skills/applycue/references/role-analysis-template.md` for the output contract. Complete the relevant role, evidence, strategy and legitimacy analysis without forcing irrelevant sections or a fixed technical-role format.
 
 The evaluation inherits `oferta`'s bounded research budget. Company, compensation, and hiring-signal lookup must not invoke `deep-research`, must not spawn subagents, and must stop at the shared query cap instead of escalating into open-ended research.
 
@@ -40,7 +40,7 @@ Re-read `config/profile.yml`, `modes/_profile.md`, and confirmed feedback before
 
 ## Step 2 — Save Report .md
 
-Save the full evaluation in `reports/{###}-{company-slug}-{YYYY-MM-DD}.md` (see format in `modes/oferta.md`).
+Save the populated, job-specific evaluation in `reports/{###}-{company-slug}-{YYYY-MM-DD}.md`. Use the canonical role-analysis template as an adaptive scaffold; never edit the template itself for a job.
 Include Block G in the saved report. Add **URL:** {url} and **Legitimacy:** {tier} to the report header.
 
 Store the exact expanded JD through `review-evidence.mjs capture`; an email/card/snippet is not a valid full-JD capture.

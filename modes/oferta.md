@@ -1,6 +1,6 @@
-# Mode: job — Full A-G Evaluation
+# Mode: job — Adaptive Full-JD Evaluation
 
-When the candidate pastes a job (text or URL), ALWAYS deliver the 7 blocks (A-F evaluation + G legitimacy):
+When the candidate pastes a job (text or URL), read `skills/applycue/references/role-analysis-template.md` and create a decision-complete report. The analysis lenses below remain useful, but they are not mandatory output headings. Preserve the template's required report contract while adapting section names, order, format, depth, questions, CV strategy, and optional material to the role, available evidence, decision, stakes, and user input. Never edit the canonical template for one job and never emit irrelevant empty sections.
 
 ## Liveness gate (URL inputs)
 
@@ -37,7 +37,7 @@ Classify the job into one of the 6 archetypes (see `_shared.md`). If it is a hyb
 
 ## Block A — Role Summary
 
-Table with:
+Capture the following. Use a table only when it improves scanning:
 - Archetype detected
 - Domain (platform/agentic/LLMOps/ML/enterprise)
 - Function (build/consult/manage/deploy)
@@ -86,11 +86,11 @@ Table with data and cited sources. If there is no data, state it instead of inve
 | 1 | Summary | ... | ... | ... |
 | ... | ... | ... | ... | ... |
 
-Top 5 changes to CV + Top 5 changes to LinkedIn to maximize match.
+Recommend the smallest set of material CV changes, normally 1-5. Recommend LinkedIn, website, GitHub, portfolio, or public-bio changes only for a genuinely high-stakes role where the change could influence selection; never force five changes and never publish them without separate approval.
 
 ## Block F — Interview Plan
 
-6-10 STAR+R stories mapped to JD requirements (STAR + **Reflection**):
+For an `apply` decision, prepare the most useful 3-8 STAR+R stories when interview preparation adds value. Deepen this for high-stakes roles; keep it brief or defer it for ordinary roles when CV/application work is the immediate need.
 
 | # | JD Requirement | STAR+R Story | S | T | A | R | Reflection |
 |---|-----------------|-----------------|---|---|---|---|------------|
@@ -227,7 +227,7 @@ Apply all language rules from `_shared.md` Professional Writing section to the d
 
 ## Post-evaluation
 
-**ALWAYS** after generating blocks A-G:
+After completing the relevant analysis lenses:
 
 ### 1. Save report .md
 
@@ -237,58 +237,7 @@ Save full evaluation in `reports/{###}-{company-slug}-{YYYY-MM-DD}.md`.
 - `{company-slug}` = company name in lowercase, without spaces (use hyphens)
 - `{YYYY-MM-DD}` = current date
 
-**Report format:**
-
-```markdown
-# Evaluation: {Company} — {Role}
-
-**Date:** {YYYY-MM-DD}
-**URL:**
-**Archetype:** {detected}
-**Decision:** {apply | watch | skip}
-**Rank:** {positive integer within current apply queue, or — until compared}
-**Confidence:** {high | medium | low}
-**Legitimacy:** {High Confidence | Proceed with Caution | Suspicious}
-**PDF:** {path or pending}
-
----
-
-## A) Role Summary
-(full content of block A)
-
-## B) Match with CV
-(full content of block B)
-
-## C) Level and Strategy
-(full content of block C)
-
-## D) Comp and Demand
-(full content of block D)
-
-## E) Customization Plan
-(full content of block E)
-
-## F) Interview Plan
-(full content of block F)
-
-## G) Posting Legitimacy
-(full content of block G)
-
-## Review receipt
-- Strengths: {evidence-backed list}
-- Gaps: {material list}
-- Unknowns: {items that could change the decision}
-- Preference basis: {confirmed user preferences used}
-- Reason: {plain-language decision reason}
-
-## H) Draft Application Answers
-(only when Decision is `apply`; use confirmed facts and flag unresolved questions)
-
----
-
-## Keywords extracted
-(list of 15-20 keywords from the JD for ATS optimization)
-```
+**Report format:** use `skills/applycue/references/role-analysis-template.md`. Its header fields and review-receipt contract are required. Its other headings are optional and adaptive. Write the populated analysis only to the new `reports/` file; do not modify the canonical template.
 
 ### 2. Record in tracker
 

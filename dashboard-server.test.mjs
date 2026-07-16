@@ -83,6 +83,7 @@ try {
   assert.equal(data.jobs[0].attempt.outcome, 'unknown');
   assert.equal(data.jobs[0].attempt.attemptId, 'a1');
   assert.equal(data.jobs[0].preflight.status, 'ready');
+  assert.equal(data.jobs[0].highStakesPack.state, 'not_required');
   assert.equal(data.jobs[2].group, 'history');
   assert.equal(data.jobs[2].originLabel, 'Imported history');
   assert.ok(compareDashboardQueue(
@@ -145,9 +146,12 @@ try {
     assert.equal(highStakesResponse.status, 201);
     let liveState = await (await fetch(`${base}/api/state`)).json();
     assert.equal(liveState.jobs.find((job) => job.id === '8').feedback.highStakes, true);
+    assert.equal(liveState.jobs.find((job) => job.id === '8').highStakesPack.state, 'missing');
     const highStakesHtml = await (await fetch(base)).text();
     assert.match(highStakesHtml, /High stakes/);
     assert.match(highStakesHtml, /Return to standard/);
+    assert.match(highStakesHtml, /const campaignMeta=/);
+    assert.match(highStakesHtml, /"highStakesPack":\{"state":"missing"/);
     assert.equal((await fetch(`${base}/api/job-action`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ jobId: '8', action: 'mark_standard' }),

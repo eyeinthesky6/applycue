@@ -8,9 +8,9 @@ Status: canonical integration and update plan for the consolidated MVP. This doc
 
 Compare three real repository states:
 
-1. `C:\Projects\career-ops`: the personalized Career-Ops operator and upstream reference;
-2. `C:\Projects\applycue`: the independent typed ApplyCue donor;
-3. `C:\Projects\applycue-running`: the consolidated Career-Ops-derived ApplyCue runtime and only launch destination.
+1. the personalized Career-Ops operator and upstream reference;
+2. the independent typed ApplyCue donor worktree;
+3. the consolidated Career-Ops-derived ApplyCue runtime and only launch destination.
 
 The review answers four questions:
 
@@ -32,7 +32,7 @@ Career-Ops foundation
   = ApplyCue MVP
 ```
 
-The destination is `C:\Projects\applycue-running` on `codex/applycue-merged-mvp` until release. Do not restore the TypeScript control plane, run two trackers, or ask users to choose between branches.
+The destination is the consolidated runtime on `codex/applycue-merged-mvp` until release. Do not restore the TypeScript control plane, run two trackers, or ask users to choose between branches.
 
 Career-Ops is the operating foundation. The independent ApplyCue worktree is a donor of tested behavior, contracts, fixtures, and algorithms. A port copies one outcome-improving capability into an existing root owner; it never copies `apps/` or `packages/` wholesale.
 
@@ -40,9 +40,9 @@ Career-Ops is the operating foundation. The independent ApplyCue worktree is a d
 
 | Repository | Reviewed state | Role | Write policy | Current check evidence |
 | --- | --- | --- | --- | --- |
-| `C:\Projects\career-ops` | `main` at `95a665a`, ahead of upstream and dirty with local user files | upstream/reference and historical personalized operator | read-only | 852 root checks passed |
-| `C:\Projects\applycue` | `codex/applycue-mvp` at `3e6d539`, with a large uncommitted donor set | typed donor and historical evidence | read-only | 33 files / 385 typed tests passed |
-| `C:\Projects\applycue-running` | `codex/applycue-merged-mvp` at `413e10c`, clean before this document | sole product and integration destination | normal reviewed changes | 864 root checks passed before this document |
+| Career-Ops reference | `main` at `95a665a`, reviewed with its local user layer excluded from publication | upstream/reference and historical personalized operator | read-only | 852 root checks passed |
+| typed ApplyCue donor | `codex/applycue-mvp` at `3e6d539`, preserved as donor evidence | typed donor and historical evidence | read-only | 33 files / 385 typed tests passed |
+| consolidated ApplyCue runtime | `codex/applycue-merged-mvp` at `413e10c` when this review began | sole product and integration destination | normal reviewed changes | 864 root checks passed before this document |
 
 Test counts are not directly comparable because the suites cover different contracts. Green tests prove their code-level assertions, not a completed real application.
 

@@ -13,6 +13,8 @@ node test-all.mjs
 
 Also require clean `git diff --check`, no tracked candidate data, and successful dashboard/action-receipt/DOCX/application-receipt tests.
 
+Before publishing any branch, run `gitleaks git --redact --verbose`. Contributors can install the pinned local hook with `pre-commit install`; GitHub runs the same pinned MIT Gitleaks CLI against reachable history in `.github/workflows/secret-scan.yml`. Local hooks can be skipped, so public promotion also requires the CI job to pass on the exact commit.
+
 For every current final decision still awaiting application, require `node review-evidence.mjs check --job=N` to report `state=current`. A changed JD, preference, candidate evidence file, report, or review field must return the role to pending re-review and block application start. For every role claiming a prepared CV, also require `node cv-bundle.mjs check --job=N --cv=<selected.pdf-or-docx>` to report `state=current` and identify the selected artifact. Already confirmed historical applications retain their lifecycle outcome even when present-day preferences later change.
 
 ### Locally usable
@@ -29,8 +31,9 @@ In a clean user layer:
 8. The user judges the ranked shortlist, at least four of the first five are relevant or the agent records/corrects the miss, and the agent audits a sample of objective rejects and semantic skips for false elimination.
 9. At least one non-trivial role receives an employer success brief, a primary role-family lens, targeted recovery questions for material missing work, and a concise positioning/change summary.
 10. That role produces matching Markdown/HTML/PDF/DOCX artifacts, records their hashes against the current JD/decision, and verifies the exact PDF or DOCX selected for upload.
-11. `npm run dashboard` shows the same role and working links.
-12. A dashboard CV-change note blocks the old bundle; after regeneration and agent resolution the new bundle can proceed. Dashboard apply approval is accepted only for its exact CV and preflight.
+11. When that role is marked high stakes, `node high-stakes-pack.mjs check --job=N` reports `current` and binds the campaign pack to the same review/CV, or the UAT records an explicit urgent-use exception.
+12. `npm run dashboard` shows the same role, campaign freshness where applicable, and working links.
+13. A dashboard CV-change note blocks the old bundle; after regeneration and agent resolution the new bundle can proceed. Dashboard apply approval is accepted only for its exact CV and preflight.
 
 ### Ready for public MVP
 
@@ -67,6 +70,7 @@ Until those steps are complete, `codex/applycue-merged-mvp` is the release candi
 - confirmed recovered evidence location plus the CV positioning/change summary;
 - durable full-JD capture paths and fresh review-receipt state;
 - generated artifact paths, CV-bundle fingerprint, file hashes, and selected-upload check;
+- high-stakes campaign-pack receipt/fingerprint and dashboard link when the tested role is high stakes;
 - approved-answer fingerprint plus the no-fill live-form preflight receipt and evidence reference;
 - dashboard action id, any CV-change resolution/new-bundle binding, and the exact approval source;
 - application receipt outcome/evidence and matching tracker transition;

@@ -1,5 +1,6 @@
 # Personal data (user fills these)
 cv.md
+!examples/dual-track-engineer-instructor/cv.md
 data/applications.md
 data/applications.db
 data/pipeline.md
@@ -10,6 +11,7 @@ data/application-answers.jsonl
 data/application-preflights.jsonl
 data/application-preflight-input.json
 data/review-receipts.jsonl
+data/high-stakes-packs.jsonl
 data/pdf-index.tsv
 data/parser-output/**/*.json
 !data/parser-output/.gitkeep
@@ -42,6 +44,7 @@ portals.yml
 modes/_profile.md
 modes/_custom.md
 article-digest.md
+candidate-positioning.md
 .applycue/
 assets/
 .update-dismissed
@@ -85,3 +88,4 @@ package-lock.json
 
 # Planning (local scratchpad)
 plan/
+tmp/

@@ -31,6 +31,8 @@ Before writing any role CV, the agent creates a small internal brief from the fu
 
 Keep employer statements, sourced company context, agent inference, and unknowns separate. The agent may infer what success probably looks like, but it must not present an inference as a quoted employer requirement.
 
+Save the job-specific analysis using `skills/applycue/references/role-analysis-template.md`. The template's evidence and decision contract is stable; its optional headings, order, format, questions, and depth are deliberately adaptive. Agents write a new report for each job and never modify the canonical template to fit one candidate or role.
+
 ## Role-family positioning
 
 Do not use one technical-CV formula for every role. Choose a primary role family, and a secondary family only for a genuine hybrid:
@@ -45,6 +47,8 @@ Do not use one technical-CV formula for every role. Choose a primary role family
 | Founder / operator | ambiguity, resource allocation, products launched, commercial learning, and team leadership |
 
 The summary, first-page proof, bullet order, vocabulary, and selected projects should express the chosen family. They may change substantially between applications while the underlying facts remain stable.
+
+When the same durable story will be reused, the agent may propose `candidate-positioning.md` from `skills/applycue/references/candidate-positioning-template.md`. Save it only after user confirmation. It holds the career spine, role-family projections, careful wording, recurring perception risks, and public-asset consistency; it is not another CV or profile database. Once present, it is part of the evidence fingerprint for unsubmitted decisions.
 
 ## Claim signals
 
@@ -62,13 +66,15 @@ Never invent employer, role, date, degree, credential, metric, legal status, aut
 
 Every application receives the employer success brief, role-family positioning, recruiter-risk review, and targeted fact recovery needed to produce a credible CV.
 
-The user may mark a role **high stakes** in chat or on the dashboard. A job link supplied directly by the user defaults to high stakes unless they say it is standard; agent/scanner discoveries default to standard. The selected priority is durable in the existing dashboard-feedback ledger. V1 will add a repeatable saved campaign record. A high-stakes role adds:
+The user may mark a role **high stakes** in chat or on the dashboard. A job link supplied directly by the user defaults to high stakes unless they say it is standard; agent/scanner discoveries default to standard. The selected priority is durable in the existing dashboard-feedback ledger. A high-stakes role adds:
 
 - deeper research into the company, team, strategy, culture, current priorities, and selection context;
 - a pattern review of public profiles or biographies of comparable successful people at the same or adjacent level, when lawfully available, focusing on experience signals rather than personal or protected traits;
 - a positioning brief covering the three promises to lead with, material gaps, honest bridge language, and evidence still worth recovering from the user;
 - a role-specific CV, cover letter or form narrative, and relevant portfolio/case-study recommendations;
 - optional draft changes to LinkedIn, website, GitHub, portfolio, or public bio when those surfaces materially affect this application.
+
+After the role CV is verified, the agent writes an adaptive `campaign-pack.md` using `skills/applycue/references/high-stakes-campaign-pack-template.md` and records it with `high-stakes-pack.mjs`. The pack keeps the campaign thesis, perception risks, approved evidence, narrative choices, verification needs, and consistency impact together; optional application narrative and public-profile draft files may sit beside it. The receipt only detects stale inputs or files. It does not score fit, replace the role report/CV bundle, or block the existing application path.
 
 Social or portfolio recommendations are drafts. ApplyCue never publishes or changes a public profile without the user's separate approval. Most applications should not trigger profile changes; reserve them for genuinely coveted roles where the upside justifies the effort.
 

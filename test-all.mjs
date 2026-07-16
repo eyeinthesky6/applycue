@@ -458,7 +458,7 @@ try {
 // ── 4. MERGED PRODUCT MODULES ───────────────────────────────────
 
 console.log('\n4. Merged product modules');
-for (const script of ['dashboard-server.test.mjs', 'job-feedback.test.mjs', 'generate-docx.test.mjs', 'application-attempt.test.mjs', 'application-preflight.test.mjs', 'review-evidence.test.mjs', 'cv-bundle.test.mjs']) {
+for (const script of ['dashboard-server.test.mjs', 'job-feedback.test.mjs', 'generate-docx.test.mjs', 'application-attempt.test.mjs', 'application-preflight.test.mjs', 'review-evidence.test.mjs', 'cv-bundle.test.mjs', 'high-stakes-pack.test.mjs']) {
   if (run(NODE, [script]) !== null) pass(`${script} passes`);
   else fail(`${script} failed`);
 }
@@ -483,7 +483,7 @@ const systemFiles = [
   'modes/oferta.md', 'modes/pdf.md', 'modes/scan.md',
   'modes/heuristics/recruiter-side.md',
   'templates/states.yml', 'templates/cv-template.html',
-  'dashboard-server.mjs', 'job-feedback.mjs', 'generate-docx.mjs', 'application-attempt.mjs', 'application-preflight.mjs', 'review-evidence.mjs', 'cv-bundle.mjs',
+  'dashboard-server.mjs', 'job-feedback.mjs', 'generate-docx.mjs', 'application-attempt.mjs', 'application-preflight.mjs', 'review-evidence.mjs', 'cv-bundle.mjs', 'high-stakes-pack.mjs',
   '.claude/skills/applycue/SKILL.md',
   '.opencode/skills/applycue/SKILL.md',
   '.qwen/skills/applycue/SKILL.md',
@@ -503,9 +503,9 @@ for (const f of systemFiles) {
 // `git ls-files` alone misses the dangerous case where a private generated file
 // is currently untracked but can be staged by the next broad `git add`.
 const userFiles = [
-  'cv.md', 'config/profile.yml', 'modes/_profile.md', 'modes/_custom.md',
+  'cv.md', 'candidate-positioning.md', 'config/profile.yml', 'modes/_profile.md', 'modes/_custom.md',
   'article-digest.md', 'portals.yml', 'data/applications.md',
-  'data/application-attempts.jsonl', 'data/review-receipts.jsonl', 'data/job-feedback.jsonl',
+  'data/application-attempts.jsonl', 'data/review-receipts.jsonl', 'data/job-feedback.jsonl', 'data/high-stakes-packs.jsonl',
   'data/application-answers.jsonl', 'data/application-preflights.jsonl', 'data/application-preflight-input.json',
   'data/pdf-index.tsv', 'config/plugins.yml', 'plugins.local/example.mjs',
   'plugins.lock',
@@ -683,8 +683,8 @@ try {
 console.log('\n7c. Updater merged product files');
 
 const updateSystemScript = readFile('update-system.mjs');
-if (['dashboard-server.mjs', 'job-feedback.mjs', 'generate-docx.mjs', 'application-attempt.mjs', 'application-preflight.mjs', 'review-evidence.mjs', 'cv-bundle.mjs'].every(path => updateSystemScript.includes(`'${path}'`))) {
-  pass('update-system preserves merged dashboard-action, DOCX, review-evidence, CV-bundle, preflight, and application receipt owners');
+if (['dashboard-server.mjs', 'job-feedback.mjs', 'generate-docx.mjs', 'application-attempt.mjs', 'application-preflight.mjs', 'review-evidence.mjs', 'cv-bundle.mjs', 'high-stakes-pack.mjs'].every(path => updateSystemScript.includes(`'${path}'`))) {
+  pass('update-system preserves merged dashboard-action, DOCX, review-evidence, CV-bundle, campaign-pack, preflight, and application receipt owners');
 } else {
   fail('update-system is missing a merged product owner');
 }
@@ -762,6 +762,38 @@ if (
 
 const ofertaMode = readFile('modes/oferta.md');
 const autoPipelineMode = readFile('modes/auto-pipeline.md');
+const roleAnalysisTemplatePath = 'skills/applycue/references/role-analysis-template.md';
+const roleAnalysisTemplate = fileExists(roleAnalysisTemplatePath) ? readFile(roleAnalysisTemplatePath) : '';
+const candidatePositioningTemplate = fileExists('skills/applycue/references/candidate-positioning-template.md')
+  ? readFile('skills/applycue/references/candidate-positioning-template.md') : '';
+const campaignPackTemplate = fileExists('skills/applycue/references/high-stakes-campaign-pack-template.md')
+  ? readFile('skills/applycue/references/high-stakes-campaign-pack-template.md') : '';
+if (
+  roleAnalysisTemplate.includes('## Required report contract') &&
+  roleAnalysisTemplate.includes('## Agent freedom') &&
+  roleAnalysisTemplate.includes('Never edit this template for an individual job') &&
+  readFile(canonicalApplyCueSkill).includes('references/role-analysis-template.md') &&
+  ofertaMode.includes('skills/applycue/references/role-analysis-template.md') &&
+  autoPipelineMode.includes('skills/applycue/references/role-analysis-template.md')
+) {
+  pass('role reviews use one canonical adaptive template without editing it per job');
+} else {
+  fail('role review template is missing, rigid, or not wired into the canonical agent flow');
+}
+if (
+  candidatePositioningTemplate.includes('candidate-positioning.md') &&
+  candidatePositioningTemplate.includes('## Career spine') &&
+  campaignPackTemplate.includes('**Tracker job:**') &&
+  campaignPackTemplate.includes('## Perception risks and objections') &&
+  readFile(canonicalApplyCueSkill).includes('references/candidate-positioning-template.md') &&
+  readFile(canonicalApplyCueSkill).includes('references/high-stakes-campaign-pack-template.md') &&
+  updateSystemScript.includes("'skills/applycue/references/candidate-positioning-template.md'") &&
+  updateSystemScript.includes("'skills/applycue/references/high-stakes-campaign-pack-template.md'")
+) {
+  pass('candidate positioning and high-stakes campaign packs use canonical adaptive templates');
+} else {
+  fail('candidate positioning or high-stakes campaign-pack template is missing or not wired into the agent/updater flow');
+}
 if (
   ofertaMode.includes('## Liveness gate (URL inputs)') &&
   ofertaMode.includes('closed posting evidence') &&

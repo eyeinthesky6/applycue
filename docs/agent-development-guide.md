@@ -28,6 +28,7 @@ Bad code gates: fuzzy title fit, company/title cooldown guesses, semantic CV-to-
 | history | `data/applications.md`, `tracker.mjs`, merge/reconcile tools |
 | dashboard rendering and HTTP boundary | `dashboard-server.mjs` |
 | dashboard action/approval receipts | `job-feedback.mjs` |
+| high-stakes campaign-pack freshness | `high-stakes-pack.mjs` |
 | user workflow | `skills/applycue/SKILL.md` |
 
 ## Change method

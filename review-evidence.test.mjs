@@ -59,6 +59,12 @@ try {
   assert.equal(recordReviewReceipt(root, { jobId: '1', jdPath: capture.path, actorName: 'codex' }).unchanged, true);
   assert.equal(reviewFreshnessForJob(root, '1').state, 'current');
   assert.equal(assertCurrentReview(root, '1').effectiveDecision, 'apply');
+  write('candidate-positioning.md', '# Confirmed positioning\n\nProduct leader connecting customer discovery to disciplined execution.\n');
+  const stalePositioning = reviewFreshnessForJob(root, '1');
+  assert.equal(stalePositioning.state, 'stale');
+  assert.match(stalePositioning.issues.join(' '), /candidate evidence changed/i);
+  rmSync(join(root, 'candidate-positioning.md'));
+  assert.equal(reviewFreshnessForJob(root, '1').state, 'current');
   const bundleVerifier = async (_root, _jobId, { selectedPath }) => ({
     selectedArtifact: { kind: 'pdf', path: selectedPath, sha256: 'a'.repeat(64) },
     manifest: { bundleFingerprint: 'b'.repeat(64), reviewReceiptId: receipt.id, jdContentFingerprint: receipt.jobContentFingerprint },

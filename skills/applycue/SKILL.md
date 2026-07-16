@@ -78,6 +78,8 @@ Build one coherent candidate story from the approved sources:
 
 Show material additions and conflicts to the user. Correct them together. Only confirmed facts enter the working profile/base CV.
 
+When the durable story is clearer than the supplied CV, read `references/candidate-positioning-template.md`, propose a concise career spine and the genuinely useful role-family projections, and save them to user-owned `candidate-positioning.md` only after confirmation. This file captures reusable positioning and wording boundaries; it does not replace the exact CV baseline or become a second profile store. Reuse it in later role analysis and CV writing. If it changes, unsubmitted role decisions need review again because the evidence context changed.
+
 Do not assume the supplied CV is exhaustive. People routinely omit or forget useful work. When a later JD exposes a potentially relevant area, ask a focused question and save the user's confirmed recollection in the approved evidence layer before using it. Do not require documentary proof or an exact metric; confirmed qualitative scope and outcomes are valid. Never manufacture precision.
 
 ### 4. Capture search intent
@@ -104,7 +106,9 @@ Code may reject only objective cases: unsafe/invalid URL, confirmed dead posting
 
 The agent reviews the viable queue and records `apply`, `watch`, or `skip`, confidence, strengths, gaps, unknowns, preference basis, and a plain-language reason. It then explicitly ranks the current `apply` queue. Before the decision becomes effective, store the expanded full JD with `review-evidence.mjs capture` and record the fingerprint-bound receipt after the report/tracker are final. Do not calculate a new semantic fit score; historical scores remain legacy diagnostics only. Audit false positives and false eliminations on the first run. Propose reusable configuration changes and get approval before saving them.
 
-The receipt binds the decision to `config/profile.yml`, `modes/_profile.md`, `modes/_custom.md`, `cv.md`, `article-digest.md`, the captured JD, report, and tracker review fields. If any of them changes, the dashboard and verifier treat the old decision as pending re-review. This is a deterministic stale-input check, not a code opinion about whether the change matters.
+Before writing a role report, read `references/role-analysis-template.md`. Treat it as an adaptive output scaffold: write each job's analysis to a new file under `reports/`, never modify the reference for one job, retain its required evidence/decision contract, and adjust optional sections, depth, order, format, questions, and CV strategy to the role and user context. Do not fill irrelevant headings with boilerplate.
+
+The receipt binds the decision to `config/profile.yml`, `modes/_profile.md`, `modes/_custom.md`, `cv.md`, `article-digest.md`, optional confirmed `candidate-positioning.md`, the captured JD, report, and tracker review fields. The optional file joins the fingerprint only when it exists, so installations that do not use it keep the existing flow. If a bound input changes, the dashboard and verifier treat the old decision as pending re-review. This is a deterministic stale-input check, not a code opinion about whether the change matters.
 
 If the queue is starved, show which counts fell at each stage. Offer one change at a time in this order:
 
@@ -126,7 +130,7 @@ Every role being prepared receives a light employer success brief before CV writ
 
 Use the role-family guidance in `modes/heuristics/recruiter-side.md` and the contract in `docs/cv-tailoring-policy.md`. Do not apply a technical-CV formula to product, sales/GTM, programme/public-impact, strategy/consulting, or founder/operator roles.
 
-The user may mark a role **high stakes** in chat or on the dashboard. Any job link supplied directly by the user starts high stakes by default unless they say it is standard. Persist that state in the existing dashboard-feedback ledger; do not create a second tracker. Most discovered roles remain standard applications. A repeatable saved campaign pack remains V1 work.
+The user may mark a role **high stakes** in chat or on the dashboard. Any job link supplied directly by the user starts high stakes by default unless they say it is standard. Persist that state in the existing dashboard-feedback ledger; do not create a second tracker. Most discovered roles remain standard applications. High-stakes preparation adds a repeatable campaign pack to the role's existing output folder; it does not add another tracker, CV engine, dashboard, or application path.
 
 Immediately hydrate and review a high-stakes role before standard queued roles. If the decision is `apply`, put it at the front of application preparation and assign the top available apply rank, normally Rank 1; re-rank existing apply roles coherently. When several roles are high stakes, compare them and use the top consecutive ranks. If the decision is `watch` or `skip`, record that honestly—priority does not force an apply decision.
 
@@ -145,7 +149,17 @@ For a high-stakes role:
 3. Build a positioning brief with the three promises to lead with, material gaps, bridge language, and evidence worth recovering from the user.
 4. Ask only targeted questions that could materially improve this application. A missing line in the old CV is not proof the work never happened.
 5. Produce the role CV and useful application narrative. Recommend a portfolio/case study, LinkedIn, website, GitHub, or public-bio change only when it could materially help this coveted role.
-6. Draft any public-profile change separately. Never publish or modify a social/profile surface without separate user approval.
+6. After the verified CV bundle exists, read `references/high-stakes-campaign-pack-template.md` and write `campaign-pack.md` under the same role output folder. Keep its identity fields and five evidence sections, while adapting optional content and depth to the role. Put a longer form narrative or public-profile recommendations in separate Markdown files only when useful.
+7. Record and check the pack against the current review, CV, candidate positioning, and files:
+
+```powershell
+node high-stakes-pack.mjs record --job=N --pack="output/.../campaign-pack.md" --application-narrative="output/.../application-narrative.md" --actor=codex
+node high-stakes-pack.mjs check --job=N
+```
+
+8. Draft any public-profile change separately. Never publish or modify a social/profile surface without separate user approval.
+
+The campaign receipt is a freshness and handoff record, not a semantic judge or a second submit gate. Do not abandon an otherwise approved urgent application solely because the optional pack ledger is unavailable; tell the user, continue through the existing review/CV/preflight/approval gates, and repair the pack record afterward.
 
 The goal is to earn a conversation, not maximize a keyword score. ApplyCue can improve the application but cannot promise an interview.
 
@@ -164,6 +178,7 @@ For every role:
 7. Mark claims internally as sourced, reframed, or new/unconfirmed. Ask once for material confirmation; do not hard-reject useful marketing language merely because wording is new, and do not put provenance labels in the finished CV.
 8. Save durable Markdown and HTML with the current job, JD, decision, and review-receipt metadata, then generate PDF and DOCX.
 9. Record the four-file bundle with `cv-bundle.mjs record`, then run `cv-bundle.mjs check` against the exact PDF or DOCX proposed for upload. A changed file or review input makes the old bundle stale.
+   For a high-stakes role, create and record the campaign pack now using the workflow above so the dashboard can show whether it is current.
 10. Inspect the live application form without filling. Ask for missing answers; save a reusable answer with `application-preflight.mjs approve-answer` only after explicit approval, and never save passwords, OTPs, payment data, tokens, or identity-document numbers.
 11. Record every currently visible field with `application-preflight.mjs record`. It must return `ready` against the current job, review, exact CV, and approved-answer fingerprint.
 12. Show company, role, URL, exact verified CV filename, and any unresolved form answers.

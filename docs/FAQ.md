@@ -30,6 +30,10 @@ The separate provider trust score remains because it checks narrow reproducible 
 
 The agent captures and confirms them before the first search, rereads them before every final role decision/rank, and rereads them again before role-specific CV or form drafting. The final decision receipt fingerprints the confirmed preference files. If they change, an unsubmitted role becomes pending re-review; dashboard feedback can suggest a change but cannot save it without approval.
 
+## What changes for a high-stakes role?
+
+The agent does deeper bounded employer/context research, asks only material evidence questions, and creates an adaptive campaign pack beside the verified CV. ApplyCue records whether that pack still matches the current JD, review, candidate positioning, CV, and narrative files, then shows its status and links on the dashboard. The pack is not another score or submit engine, and any public-profile recommendations remain drafts until separately approved.
+
 ## Why keep similar titles?
 
 One company can use the same title across teams, cities, and countries. Only exact source/record identity or confirmed history is safe for automatic dedupe.

@@ -10,7 +10,7 @@ Included:
 
 - one-link clone/install instructions for agents and humans;
 - exact CV baseline plus approved portfolio/public-source enrichment;
-- profile/story confirmation and search intent;
+- profile/story confirmation and search intent, with optional user-confirmed reusable `candidate-positioning.md`;
 - configured provider scans, user links, public pages, and approved inbox leads;
 - full-JD hydration before semantic decisions;
 - durable full-JD captures and fingerprint-bound review receipts that invalidate stale decisions;
@@ -23,6 +23,7 @@ Included:
 - role-specific Markdown/HTML/PDF/DOCX CVs bound to the current JD/decision, with file hashes and an exact selected-upload check;
 - a durable `standard|high_stakes` role marker in the existing dashboard-feedback state, with user-supplied job links defaulting to high stakes, viable high-stakes work moving ahead of the standard queue, and discovered links defaulting to standard;
 - high-stakes treatment with deeper bounded company context, positioning questions, and optional draft social/portfolio recommendations without publishing them;
+- repeatable high-stakes campaign packs bound to the current review, CV bundle, optional candidate positioning, and output hashes, with dashboard freshness and file links;
 - reusable user-approved form-answer receipts without credentials/payment/identity-document values;
 - named approval, browser preflight, application attempt receipt, and confirmed tracking;
 - browser dashboard with counts, original-JD/CV links, filters, high-stakes/standard priority, prepare/ignore/CV-change/form actions, and exact named apply approval;
@@ -34,7 +35,7 @@ Exit criteria:
 2. Real CV imported without material loss.
 3. Viable source batch with visible stage counts.
 4. Agent review shows acceptable precision and catches false eliminations.
-5. At least one non-trivial role gets an employer success brief, role-family positioning, any material evidence questions, and a current verified Markdown/HTML/PDF/DOCX bundle with exact selected-upload check.
+5. At least one non-trivial role gets an employer success brief, role-family positioning, any material evidence questions, and a current verified Markdown/HTML/PDF/DOCX bundle with exact selected-upload check. A marked high-stakes role also gets a current campaign pack or an explicit urgent-use exception.
 6. One controlled real or approved test application reaches a reliable receipt.
 7. Dashboard shows the same outcome.
 
@@ -50,13 +51,12 @@ Not required for MVP: embedded AI API, automatic email classification, calendar 
 - scheduled scans/alerts with user-controlled frequency;
 - post-application follow-up and basic interview/company/role preparation;
 - source quality scorecards and India/international coverage trials.
-- saved high-stakes employer/positioning briefs that distinguish employer statements, public evidence, agent inference, and unknowns;
 - bounded pattern research across public biographies/profiles of comparable successful people at the same or adjacent level, focused on recurring scope and proof signals rather than personal or protected traits;
 - targeted evidence-recovery questions generated from the employer brief, with confirmed additions saved once and reusable across later applications;
-- repeatable high-stakes application packs: role CV, application narrative, optional cover letter, relevant case-study/portfolio recommendation, and draft LinkedIn/website/GitHub/public-bio changes;
+- richer cross-session campaign comparison and outcome learning across role CV, narrative, optional cover letter, portfolio recommendation, and draft public-profile changes;
 - outcome learning that compares standard and high-stakes preparation time, user effort, application completion, shortlist quality, and interview conversion.
 
-V1 exit: multiple users can run repeat sessions without state mixing, blind retries, or manual file surgery, and a marked high-stakes role can produce a coherent campaign pack without changing any public profile until the user separately approves it.
+V1 exit: multiple users can run repeat sessions without state mixing, blind retries, or manual file surgery, and campaign/outcome comparisons improve later applications without changing any public profile until the user separately approves it.
 
 ## V2 — hosted or SaaS-like product
 

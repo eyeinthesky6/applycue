@@ -1,77 +1,53 @@
-# Evaluation: Acme AI -- Senior AI Engineer
+# Evaluation: Acme AI - Senior AI Platform Engineer
 
 **Date:** 2026-04-01
-**Archetype:** AI Platform / LLMOps Engineer
+**URL:** https://jobs.example.com/acme-ai-senior-engineer
+**Archetype / role family:** Technical - AI platform / LLMOps
 **Decision:** apply
 **Rank:** 1
 **Confidence:** medium
-**URL:** https://jobs.example.com/acme-ai-senior-engineer
-**PDF:** output/cv-candidate-acme-ai-2026-04-01.pdf
+**Legitimacy:** High Confidence
+**CV / PDF:** pending
 
----
+## Employer success brief
 
-## A) Role Summary
+- **Explicit need:** build reliable LLM infrastructure and evaluation systems for enterprise customers.
+- **Likely outcomes (agent inference):** shorten deployment time, improve observability, and establish repeatable production controls.
+- **People to influence:** platform engineers, application teams, customer technical leads, and product leadership.
+- **First-page signals:** production AI delivery, platform reliability, and cross-team technical leadership.
+- **Hiring doubts:** direct LLM depth is newer than the candidate's broader production-ML experience.
 
-| Field | Value |
-|-------|-------|
-| **Archetype** | AI Platform / LLMOps Engineer |
-| **Domain** | Platform / Infrastructure |
-| **Function** | Build |
-| **Seniority** | Senior (IC4-IC5) |
-| **Remote** | Full remote (US timezone overlap) |
-| **Team size** | ~8 engineers |
-| **TL;DR** | Senior AI eng to build and scale LLM infrastructure for enterprise customers |
+## Evidence match and gaps
 
-## B) CV Match
+| Employer need | Approved candidate evidence | Assessment / gap |
+| --- | --- | --- |
+| Production AI systems | Built a real-time fraud platform and an LLM evaluation toolkit | Strong adjacent fit |
+| Monitoring and observability | Implemented drift detection, dashboards, and retraining triggers | Strong |
+| Distributed Python systems | Python, Kafka, Kubernetes, and Redis in approved CV evidence | Strong |
+| Deep LLM deployment history | Evaluation toolkit is direct evidence; earlier work is broader ML | Material but bridgeable gap |
 
-| JD Requirement | CV Match | Source |
-|----------------|----------|--------|
-| "Production LLM systems" | Built real-time fraud detection + LLM eval toolkit | cv.md: TechFin Corp |
-| "Model monitoring and observability" | Drift detection, Grafana dashboards, retraining triggers | cv.md: ML Platform Lead |
-| "Python + distributed systems" | Python, Kafka, Kubernetes, Redis | cv.md: Skills |
-| "CI/CD for ML" | Reduced deploy from 2 weeks to 4 hours | cv.md: TechFin Corp |
+## Decision and CV strategy
 
-### Gaps
+Apply because the candidate has strong production-platform evidence and a credible path into LLM infrastructure. Lead with reliability, evaluation, deployment speed, and cross-team ownership. Do not imply that all earlier ML systems were LLM systems.
 
-| Gap | Severity | Mitigation |
-|-----|----------|------------|
-| "LLM-specific experience" | Medium | LLM Eval Toolkit is direct proof. Frame fraud detection as "production ML → production LLM" progression |
-| "Prompt engineering" | Low | Mention eval toolkit's prompt testing capabilities |
+Prioritize the LLM evaluation toolkit, the reduction in deployment time, and platform ownership. Ask one focused question about current model-serving work before adding it to the CV.
 
-## C) Level and Strategy
+## Posting legitimacy
 
-**Detected level:** Senior (IC4)
-**Candidate's natural level:** Senior-Staff boundary
+The public posting is live, names the team and technologies, and has an active application route. No contradictory level signals were found in this example.
 
-**"Sell senior" plan:** Lead with platform ownership at TechFin ("led 3-person team, built MLOps for 4 teams"). Frame as ready for Staff scope.
+## Review receipt
 
-## D) Comp and Demand
+- **Strengths:** production AI platform work; observability; distributed systems; measurable deployment improvement.
+- **Gaps:** depth and duration of direct LLM serving experience.
+- **Unknowns:** current model-serving ownership and compensation expectations.
+- **Preference basis:** confirmed interest in senior platform roles and acceptable work arrangement.
+- **Reason:** credible production-platform match with one material LLM-depth question to resolve during CV preparation.
 
-| Data Point | Value | Source |
-|------------|-------|--------|
-| Base salary range | $180-220K | Levels.fyi, similar AI infra roles |
-| Total comp (with equity) | $250-320K | Glassdoor estimates |
-| Demand trend | High -- LLM infra is top-5 most in-demand | LinkedIn job trends |
+## Keywords and employer language
 
-## E) Personalization Plan
+LLM infrastructure; model serving; observability; evaluation; distributed systems; Python; Kubernetes; production reliability.
 
-| # | Section | Current | Proposed Change | Why |
-|---|---------|---------|-----------------|-----|
-| 1 | Summary | "Full-stack AI engineer" | "AI platform engineer focused on LLM infrastructure and observability" | Match JD language |
-| 2 | TechFin bullets | Generic ML platform | Add "LLM serving" context | JD specifically mentions LLMs |
-| 3 | Projects | Both listed equally | Lead with LLM Eval Toolkit | Direct LLM experience proof |
+## Sources
 
-## F) Interview Plan
-
-| # | JD Requirement | STAR Story | S | T | A | R |
-|---|---------------|------------|---|---|---|---|
-| 1 | Production LLM systems | FraudShield scaling | 10K TPS requirement | Built streaming pipeline | Kafka + ensemble + feature store | 99.7% precision, $2M saved |
-| 2 | Team leadership | ML Platform team | 4 teams needed MLOps | Led 3-eng team, built platform | Registry + A/B + feature store | Deploy time 2 weeks → 4 hours |
-
-**Recommended case study:** LLM Eval Toolkit -- shows LLM-specific expertise + open source impact
-
----
-
-## Keywords Extracted
-
-LLM infrastructure, model serving, observability, ML platform, distributed systems, Python, Kubernetes, model monitoring, CI/CD, prompt engineering, evaluation, production ML, enterprise AI, scalability, reliability
+- [Fictional example posting](https://jobs.example.com/acme-ai-senior-engineer)

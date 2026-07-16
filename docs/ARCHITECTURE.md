@@ -15,6 +15,7 @@ ApplyCue root operator
    |-- reports/ + output/            review and CV artifacts
    |-- review-evidence.mjs           full-JD + decision-input receipts
    |-- cv-bundle.mjs                 role/CV identity + artifact hashes
+   |-- high-stakes-pack.mjs          campaign-pack freshness receipts
    |-- application-attempt.mjs       attempt certainty
    |-- data/applications.md          canonical application history
    |-- tracker.mjs                   derived query index
@@ -43,10 +44,10 @@ New semantic reviews use structured agent judgment: decision, rank, confidence, 
 ## Main data flow
 
 1. `doctor.mjs` identifies missing user setup.
-2. The agent ingests the exact CV, reads approved sources, captures material preferences, and confirms a coherent profile before the baseline search.
+2. The agent ingests the exact CV, reads approved sources, captures material preferences, and confirms a coherent profile before the baseline search. When useful, it saves the user-confirmed reusable career spine and role-family projections in optional `candidate-positioning.md`.
 3. `scan.mjs` invokes configured provider modules and writes leads/history.
 4. The agent re-reads confirmed preferences, opens viable links, hydrates and stores the full JD, records structured review results, and ranks the apply queue. `review-evidence.mjs` binds that final decision to the captured JD, current preference/evidence files, report, and tracker metadata.
-5. For `apply`, CV mode writes metadata-bound Markdown/HTML, renders PDF/DOCX, and records a current four-file bundle with hashes; `watch` and `skip` remain report-only unless requested.
+5. For `apply`, CV mode writes metadata-bound Markdown/HTML, renders PDF/DOCX, and records a current four-file bundle with hashes; `watch` and `skip` remain report-only unless requested. For a high-stakes `apply`, the agent also writes an adaptive campaign pack beside the CV and `high-stakes-pack.mjs` binds it to the same current evidence without becoming another application gate.
 6. Apply mode verifies the exact selected PDF/DOCX, performs browser preflight, gets named approval, starts a receipt bound to that upload hash, fills/uploads/submits, and records the outcome.
 7. `data/applications.md` remains canonical history; SQLite is a replaceable query index.
 8. The browser dashboard reads that history and captures stage-aware user actions without changing preferences or directly mutating the tracker.
@@ -69,9 +70,11 @@ Automatic duplicate suppression requires exact identity: same normalized URL, sa
 
 ## CV artifacts
 
-The exact supplied CV is a baseline, not a complete inventory of everything the user has done. Profile enrichment and role-specific recovered evidence are confirmed separately and saved in the approved user layer. Before writing, the external agent builds an employer success brief, chooses a role-family lens, and asks focused questions when material experience may be missing. A high-stakes role deepens that same agent workflow; it does not create another profile store, CV engine, or tracker. User-supplied job links default to high stakes, discovered links default to standard, and `job-feedback.mjs` durably records either state.
+The exact supplied CV is a baseline, not a complete inventory of everything the user has done. Profile enrichment and role-specific recovered evidence are confirmed separately and saved in the approved user layer. Optional `candidate-positioning.md` holds the user-confirmed reusable career spine and role-family projections; when absent, review fingerprints remain backward compatible. Before writing, the external agent builds an employer success brief, chooses a role-family lens, and asks focused questions when material experience may be missing. A high-stakes role deepens that same agent workflow; it does not create another profile store, CV engine, or tracker. User-supplied job links default to high stakes, discovered links default to standard, and `job-feedback.mjs` durably records either state.
 
 Each applied role has durable Markdown/HTML source and PDF/DOCX output. `cv-bundle.mjs` verifies that all four name the same company/role, reference the current JD and review receipt, open/parse correctly, and still match their recorded SHA-256 hashes. `data/pdf-index.tsv` keeps its legacy report/PDF columns and stores the versioned bundle record in an optional sixth field.
+
+For high-stakes roles, `high-stakes-pack.mjs` records the agent-authored `campaign-pack.md` and optional application-narrative/profile-change drafts under the same role `output/` folder. `data/high-stakes-packs.jsonl` binds their hashes to the current apply review, JD, verified CV bundle, and optional candidate positioning. The dashboard shows `missing|current|stale`; this is workflow visibility, not a second semantic decision or submit gate.
 
 Claim states are advisory: sourced, reframed, or new/unconfirmed. Confirmed user claims are allowed. Hard technical failure is reserved for broken/missing files, wrong-role artifacts, or unresolved required/legal fields—not unfamiliar marketing wording.
 
@@ -83,7 +86,7 @@ Claim states are advisory: sourced, reframed, or new/unconfirmed. Confirmed user
 
 ## Browser dashboard
 
-`dashboard-server.mjs` binds only to `127.0.0.1`. It reads the tracker, report headers, CV manifest, saved JD, scan history, preflight, attempts, and feedback. It serves only files under `reports/`, `output/`, and `jds/`. `job-feedback.mjs` appends stage-aware user actions, durable high-stakes/standard priority, and agent resolutions to `data/job-feedback.jsonl`; its pending-action reader returns high-stakes jobs first. The dashboard's default order puts viable high-stakes jobs before standard rank order. Resolving the latest priority action acknowledges it without erasing the selected state. The dashboard never changes the tracker or preferences and never submits by itself; the agent consumes each receipt through the existing product owners.
+`dashboard-server.mjs` binds only to `127.0.0.1`. It reads the tracker, report headers, CV manifest, saved JD, scan history, preflight, attempts, feedback, and high-stakes campaign-pack freshness. It serves only files under `reports/`, `output/`, and `jds/`. `job-feedback.mjs` appends stage-aware user actions, durable high-stakes/standard priority, and agent resolutions to `data/job-feedback.jsonl`; its pending-action reader returns high-stakes jobs first. The dashboard's default order puts viable high-stakes jobs before standard rank order. Resolving the latest priority action acknowledges it without erasing the selected state. The dashboard never changes the tracker or preferences and never submits by itself; the agent consumes each receipt through the existing product owners.
 
 ## Extension rule
 

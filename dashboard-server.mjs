@@ -18,6 +18,7 @@ import { parseTrackerRow, resolveColumns } from './tracker-parse.mjs';
 import { reviewFreshnessForRow } from './review-evidence.mjs';
 import { latestCvBundleManifest } from './cv-bundle.mjs';
 import { appendJobAction, readJobFeedbackStates } from './job-feedback.mjs';
+import { highStakesPackStatusForJob } from './high-stakes-pack.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PORT = 4173;
@@ -282,6 +283,8 @@ export function readDashboardData(root = ROOT) {
         reason: feedback.legacyFit.reason || '',
       } : null,
     } : null;
+    const campaign = highStakesPackStatusForJob(root, job.id, { highStakes: feedback?.highStakes || false });
+    job.highStakesPack = { state: campaign.state, issues: campaign.issues, paths: campaign.paths };
   }
 
   const currentJobs = jobs.filter((job) => job.origin === 'current');
@@ -444,14 +447,15 @@ function render(){
   else if(sort==='newest')jobs.sort((a,b)=>String(b.date).localeCompare(String(a.date))||Number(b.id)-Number(a.id));
   document.querySelector('#count').textContent=jobs.length+' role'+(jobs.length===1?'':'s')+' shown';
   document.querySelector('#jobs').innerHTML=jobs.length?jobs.map(j=>{
-    const links=[j.jobUrl&&'<a href="'+esc(j.jobUrl)+'" target="_blank" rel="noreferrer">Original posting ↗</a>',j.jdPath&&'<a href="'+fileUrl(j.jdPath)+'" target="_blank">Saved full JD</a>',j.reportPath&&'<a href="'+fileUrl(j.reportPath)+'" target="_blank">Agent review</a>',j.pdfPath&&'<a href="'+fileUrl(j.pdfPath)+'" target="_blank">Tailored PDF</a>',j.docxPath&&'<a href="'+fileUrl(j.docxPath)+'" target="_blank">Tailored DOCX</a>'].filter(Boolean).join('');
+    const links=[j.jobUrl&&'<a href="'+esc(j.jobUrl)+'" target="_blank" rel="noreferrer">Original posting ↗</a>',j.jdPath&&'<a href="'+fileUrl(j.jdPath)+'" target="_blank">Saved full JD</a>',j.reportPath&&'<a href="'+fileUrl(j.reportPath)+'" target="_blank">Agent review</a>',j.pdfPath&&'<a href="'+fileUrl(j.pdfPath)+'" target="_blank">Tailored PDF</a>',j.docxPath&&'<a href="'+fileUrl(j.docxPath)+'" target="_blank">Tailored DOCX</a>',j.highStakesPack?.paths?.pack&&'<a href="'+fileUrl(j.highStakesPack.paths.pack)+'" target="_blank">Campaign pack</a>',j.highStakesPack?.paths?.applicationNarrative&&'<a href="'+fileUrl(j.highStakesPack.paths.applicationNarrative)+'" target="_blank">Application narrative</a>',j.highStakesPack?.paths?.profileChangePlan&&'<a href="'+fileUrl(j.highStakesPack.paths.profileChangePlan)+'" target="_blank">Profile change draft</a>'].filter(Boolean).join('');
     const reviewWarning=['missing','stale'].includes(j.reviewState)?'<div class="feedback">Re-review required: '+esc((j.reviewIssues||[]).join('; '))+'</div>':'';
     const reviewMeta=(/^\\d+$/.test(String(j.rank||''))?'<span class="pill">Rank '+esc(j.rank)+'</span>':'')+(j.confidence&&j.confidence!=='unknown'?'<span class="pill">'+esc(j.confidence)+' confidence</span>':'');
     const attemptMeta=j.attempt?.outcome?'<span class="pill">Attempt '+esc(j.attempt.outcome)+'</span>':'';
     const preflightMeta=j.preflight?.status?'<span class="pill">Form '+esc(j.preflight.status)+'</span>':'';
     const legacyScore=/^\\*?\\*?\\d+(?:\\.\\d+)?\\/5\\*?\\*?$/.test(String(j.score||'').trim())?'<span class="pill">Legacy score '+esc(j.score)+'</span>':'';
     const priorityMeta=j.feedback?.highStakes?'<span class="pill high-stakes">High stakes</span>':'';
-    return '<article class="job"><div><h2><span class="company">'+esc(j.company)+'</span> · '+esc(j.title)+'</h2><div class="meta"><span class="pill decision">'+esc(j.decisionLabel)+'</span>'+priorityMeta+reviewMeta+'<span class="pill">'+esc(j.status)+'</span>'+preflightMeta+attemptMeta+legacyScore+(j.originLabel?'<span class="pill history">'+esc(j.originLabel)+'</span>':'')+(j.location?'<span class="pill">'+esc(j.location)+'</span>':'')+'<span>'+esc(j.date)+'</span></div>'+(j.notes?'<div class="notes">'+esc(j.notes)+'</div>':'')+'<div class="links">'+links+'</div>'+reviewWarning+'</div>'+actionPanel(j)+'</article>';
+    const campaignMeta=j.feedback?.highStakes&&j.highStakesPack?.state?'<span class="pill" title="'+esc((j.highStakesPack.issues||[]).join('; '))+'">Campaign pack '+esc(j.highStakesPack.state)+'</span>':'';
+    return '<article class="job"><div><h2><span class="company">'+esc(j.company)+'</span> · '+esc(j.title)+'</h2><div class="meta"><span class="pill decision">'+esc(j.decisionLabel)+'</span>'+priorityMeta+campaignMeta+reviewMeta+'<span class="pill">'+esc(j.status)+'</span>'+preflightMeta+attemptMeta+legacyScore+(j.originLabel?'<span class="pill history">'+esc(j.originLabel)+'</span>':'')+(j.location?'<span class="pill">'+esc(j.location)+'</span>':'')+'<span>'+esc(j.date)+'</span></div>'+(j.notes?'<div class="notes">'+esc(j.notes)+'</div>':'')+'<div class="links">'+links+'</div>'+reviewWarning+'</div>'+actionPanel(j)+'</article>';
   }).join(''):'<div class="empty">'+(state.jobs.length?'No roles match these filters.':'No roles yet. The agent will add them after the first search.')+'</div>';
 }
 async function submitAction(id,action){

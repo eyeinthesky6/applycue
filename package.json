@@ -39,6 +39,7 @@
     "feedback": "node job-feedback.mjs",
     "review:evidence": "node review-evidence.mjs",
     "cv:bundle": "node cv-bundle.mjs",
+    "campaign:pack": "node high-stakes-pack.mjs",
     "build:dashboard": "node build-dashboard.mjs",
     "dashboard": "node dashboard-server.mjs",
     "serve:dashboard": "node dashboard-server.mjs",

@@ -32,6 +32,9 @@ const EVIDENCE_SOURCES = Object.freeze([
   ['cv.md', 'text'],
   ['article-digest.md', 'text'],
 ]);
+const OPTIONAL_EVIDENCE_SOURCES = Object.freeze([
+  ['candidate-positioning.md', 'text'],
+]);
 const LIVE_STATES = new Set(['live', 'closed', 'unknown']);
 const CAPTURE_METHODS = new Set(['agent_browser', 'static_fetch', 'provider_api', 'user_supplied']);
 
@@ -136,7 +139,12 @@ function readInputBundle(root, definitions, kind) {
 
 export function currentDecisionInputs(root = ROOT) {
   const preferences = readInputBundle(root, PREFERENCE_SOURCES, 'confirmed-preferences');
-  const evidence = readInputBundle(root, EVIDENCE_SOURCES, 'candidate-evidence');
+  // Optional evidence joins the fingerprint only after the user creates it.
+  // This preserves old receipts for installations that do not use candidate
+  // positioning, while correctly invalidating unsubmitted decisions when a
+  // confirmed positioning layer is later added or changed.
+  const optionalEvidence = OPTIONAL_EVIDENCE_SOURCES.filter(([path]) => existsSync(join(root, path)));
+  const evidence = readInputBundle(root, [...EVIDENCE_SOURCES, ...optionalEvidence], 'candidate-evidence');
   return { preferences, evidence };
 }
 

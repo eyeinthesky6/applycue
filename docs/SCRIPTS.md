@@ -16,6 +16,8 @@ Normal users talk to the agent. These commands are implementation details.
 | `npm run build:dashboard` | Build a read-only HTML dashboard snapshot. |
 | `node job-feedback.mjs pending [--job=N]` | List unprocessed dashboard prepare/ignore/form/CV-change/apply receipts for the agent. |
 | `node job-feedback.mjs resolve --id=ID --actor=codex [--bundle-fingerprint=NEW_HASH]` | Resolve a processed dashboard action. A CV-change request needs the new verified bundle fingerprint. |
+| `node high-stakes-pack.mjs record --job=N --pack=output/.../campaign-pack.md --actor=codex` | Bind an agent-authored high-stakes campaign pack and optional narrative/profile draft to the current review, CV bundle, candidate positioning, and file hashes. |
+| `node high-stakes-pack.mjs check --job=N` | Show whether the recorded high-stakes campaign pack is current, missing, stale, or not required. |
 | `npm run pdf -- <in.html> <out.pdf>` | Render an ATS PDF. |
 | `npm run docx -- <in.md> <out.docx>` | Render an ATS DOCX. |
 | `node cv-bundle.mjs record --job=N --md=<md> --html=<html> --pdf=<pdf> --docx=<docx> --actor=codex --format=a4` | Verify and record a role's four-file CV bundle against the current JD and decision. |

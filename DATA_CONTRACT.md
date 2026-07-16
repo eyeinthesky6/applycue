@@ -5,6 +5,7 @@
 | Path | Purpose |
 | --- | --- |
 | `cv.md` | exact supplied/base CV |
+| `candidate-positioning.md` | optional user-confirmed career spine, reusable role-family projections, wording boundaries, and public-asset consistency notes |
 | `config/profile.yml` | confirmed candidate/search settings |
 | `modes/_profile.md`, `modes/_custom.md` | candidate-specific guidance |
 | `portals.yml` | approved source/search configuration |
@@ -19,6 +20,7 @@
 | `data/application-preflight-input.json` | optional short-lived agent-authored structural snapshot of currently visible fields; contains no answer values |
 | `data/review-receipts.jsonl` | append-only final-decision receipts bound to full-JD and confirmed user inputs |
 | `data/job-feedback.jsonl` | append-only dashboard job actions, durable high-stakes/standard priority, CV-change notes, exact apply approvals, and agent resolutions |
+| `data/high-stakes-packs.jsonl` | append-only receipts binding an agent-authored high-stakes campaign pack to the current review, CV bundle, candidate positioning, and output hashes |
 | `data/pdf-index.tsv` | generated report/PDF links plus versioned CV-bundle records and file hashes |
 | `reports/` | full-JD review reports |
 | `output/` | generated CVs, letters, dashboard snapshots |
@@ -47,6 +49,8 @@ User preferences never belong in system files. Shared product fixes never belong
 - Dashboard actions are user input, not a second tracker or application engine. `mark_high_stakes` and `mark_standard` select preparation depth; the latest one remains effective even after the agent resolves its receipt. Viable high-stakes work is returned and displayed before the standard ranked queue, but priority does not create an `apply` decision or bypass a gate. `prepare`, `inspect_form`, and `ignore` wait for the agent to use the existing owners. A pending `ignore` is a user stop and blocks application. `approve_apply` is valid only for its exact CV bundle/file and live-form preflight. An unresolved `request_cv_change` blocks application start until a different verified bundle is recorded and the request is resolved against it. No dashboard action changes preferences automatically.
 - Preferences are confirmed during setup, read before each role decision/rank and role-specific draft, and changed only with user approval.
 - A current final decision is effective only while its latest review receipt matches the stored full JD, confirmed preferences, candidate evidence, report, and tracker decision/rank/confidence. A mismatch produces an effective `pending` decision without deleting history.
+- `candidate-positioning.md` is optional. When absent, existing review behavior is unchanged. Once the user confirms and creates it, it joins the candidate-evidence fingerprint so later edits make unsubmitted decisions stale. It is not a second CV or profile database.
+- A high-stakes campaign pack is agent-authored under the role's existing `output/` folder and recorded by `high-stakes-pack.mjs`. Its receipt proves freshness; it does not decide fit, replace the verified CV bundle, mutate the tracker, or create a new application gate. Missing/stale pack status is visible on the dashboard for high-stakes roles.
 - The separate typed `%USERPROFILE%\.applycue\profiles\...` store is not part of this runtime.
 
 ## Updates

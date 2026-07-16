@@ -12,6 +12,10 @@ The proven fork already had the useful operating loop: source providers, rendere
 
 Running both made ownership unclear and created more failure modes without improving the user's odds of getting a good application out. The launch branch therefore keeps the mature root owners and ports only improvements that change a user outcome.
 
+## Narrative Builder integration
+
+Narrative Builder's useful ideas are absorbed as an additive agent workflow, not imported as another application. Optional user-owned `candidate-positioning.md` preserves a confirmed career spine, role-family projections, wording boundaries, and public-asset consistency across jobs. A high-stakes role gets an adaptive campaign pack under its existing `output/` folder; `high-stakes-pack.mjs` only binds that agent-authored work to the current review, JD, CV bundle, positioning, and file hashes. The existing tracker, dashboard, CV renderer, preflight, approval, and application attempt remain the only product owners.
+
 ## Final owner map
 
 | Need | Owner |
@@ -23,6 +27,7 @@ Running both made ownership unclear and created more failure modes without impro
 | reports and CV content | relevant `modes/` instructions plus external agent |
 | PDF and DOCX rendering | `generate-pdf.mjs`, `generate-docx.mjs` |
 | CV identity, freshness, and selected-upload hash | `cv-bundle.mjs`, `data/pdf-index.tsv` |
+| optional reusable candidate positioning and high-stakes campaign freshness | external agent, `candidate-positioning.md`, `high-stakes-pack.mjs` |
 | applications | `modes/apply.md`, `application-preflight.mjs`, `application-attempt.mjs`, plus the agent's approved browser/tool access |
 | attempt certainty and confirmed lifecycle reconciliation | `application-attempt.mjs`, `tracker.mjs status` |
 | canonical history | `data/applications.md` with separate agent `Decision`, explicit `Rank`/`Confidence`, lifecycle `Status`, internal `Origin`, and the derived `tracker.mjs` index |
@@ -47,6 +52,7 @@ Current final decisions are fingerprint-bound to the durable full JD, confirmed 
 - application-attempt receipts with an `unknown` state that blocks blind retries;
 - one-command confirmed outcome reconciliation with the exact tracker row and dashboard attempt state;
 - agent-first profile discovery across approved CV, projects, and public sources;
+- reusable candidate positioning plus fingerprint-bound high-stakes campaign packs without a second profile or application engine;
 - exact-identity duplicate policy for ambiguous same-company titles.
 
 ## Features removed from this branch
