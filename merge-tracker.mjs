@@ -22,21 +22,12 @@ import { createHash, randomUUID } from 'crypto';
 import { tmpdir } from 'os';
 import { normalizeReportLink as normalizeLink } from './tracker-links.mjs';
 import { LEGACY_COLMAP, detectColumns, normalizeConfidence, normalizeDecision, normalizeOrigin, normalizeRank, parseTrackerRow } from './tracker-parse.mjs';
-import { CANONICAL_TRACKER_SKELETON, initializeTrackerFile } from './tracker.mjs';
+import { CANONICAL_TRACKER_SKELETON, initializeTrackerFile, resolveTrackerPath } from './tracker-utils.mjs';
 
 const APPLYCUE = dirname(fileURLToPath(import.meta.url));
 // Support both layouts: data/applications.md (boilerplate) and applications.md (original).
 // APPLYCUE_TRACKER overrides the path (used by tests and non-standard layouts).
-const DATA_TRACKER = join(APPLYCUE, 'data/applications.md');
-const ROOT_TRACKER = join(APPLYCUE, 'applications.md');
-const APPS_FILE_RAW = process.env.APPLYCUE_TRACKER
-  ? process.env.APPLYCUE_TRACKER
-  : existsSync(DATA_TRACKER)
-    ? DATA_TRACKER
-    : existsSync(ROOT_TRACKER)
-      ? ROOT_TRACKER
-      : DATA_TRACKER;
-const APPS_FILE = canonicalizeTrackerPath(APPS_FILE_RAW);
+const APPS_FILE = resolveTrackerPath({ root: APPLYCUE, override: process.env.APPLYCUE_TRACKER });
 const TRACKER_DIR = dirname(APPS_FILE);
 // APPLYCUE_ADDITIONS overrides the additions dir (used by tests, mirrors APPLYCUE_TRACKER).
 const ADDITIONS_DIR = process.env.APPLYCUE_ADDITIONS
@@ -72,26 +63,6 @@ const normalizeReportLink = (reportField) => normalizeLink(reportField, TRACKER_
 // Ensure required directories exist (fresh setup)
 mkdirSync(join(APPLYCUE, 'data'), { recursive: true });
 mkdirSync(ADDITIONS_DIR, { recursive: true });
-
-/**
- * Convert the tracker path into one stable absolute spelling before hashing it.
- *
- * Equivalent tracker paths can be written in multiple ways, such as a relative
- * path from the current shell, an absolute path, or a path that travels through
- * a symlink. The lock key must be based on one canonical spelling so all merge
- * processes that target the same tracker also target the same lock directory.
- *
- * @param {string} path - Raw tracker path from config, env, or the default.
- * @returns {string} Absolute canonical path when the file exists, else resolved path.
- */
-function canonicalizeTrackerPath(path) {
-  const absolutePath = resolve(path);
-  try {
-    return realpathSync(absolutePath);
-  } catch {
-    return absolutePath;
-  }
-}
 
 /**
  * Check whether one absolute path stays inside another directory.

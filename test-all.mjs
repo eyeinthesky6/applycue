@@ -3405,6 +3405,77 @@ try {
     } else {
       fail('Virgin sync --check mutated tracker state or did not report the missing source');
     }
+
+    // Legacy compatibility: when only applications.md exists at the root, all
+    // owners must select it. Sync must not create a competing data tracker.
+    const rootOnly = mkdtempSync(join(tmpdir(), 'co-root-tracker-'));
+    try {
+      mkdirSync(join(rootOnly, 'templates'), { recursive: true });
+      mkdirSync(join(rootOnly, 'config'), { recursive: true });
+      mkdirSync(join(rootOnly, 'modes'), { recursive: true });
+      writeFileSync(join(rootOnly, 'templates', 'states.yml'), readFileSync(join(ROOT, 'templates', 'states.yml')));
+      for (const f of ['cv.md', 'config/profile.yml', 'modes/_profile.md', 'portals.yml']) {
+        writeFileSync(join(rootOnly, f), 'x');
+      }
+      const legacyTracker =
+        '# Applications Tracker\n\n' +
+        '| # | Date | Company | Role | Score | Status | Decision | Rank | Confidence | Origin | PDF | Report | Notes |\n' +
+        '|---|------|---------|------|-------|--------|----------|------|------------|--------|-----|--------|-------|\n' +
+        '| 7 | 2026-07-16 | Legacy Co | Product Lead | 4.5/5 | Applied | apply | 1 | high | legacy_import | OK | — | retained |\n';
+      writeFileSync(join(rootOnly, 'applications.md'), legacyTracker);
+      const rootEnv = { ...process.env };
+      delete rootEnv.APPLYCUE_TRACKER;
+      delete rootEnv.APPLYCUE_TRACKER_DB;
+      delete rootEnv.APPLYCUE_ADDITIONS;
+      const legacySync = run(NODE, [join(ROOT, 'tracker.mjs'), 'sync'], {
+        cwd: rootOnly,
+        env: rootEnv,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      const legacyRows = JSON.parse(run(NODE, [join(ROOT, 'tracker.mjs'), 'query', '--id', '7', '--json'], {
+        cwd: rootOnly,
+        env: rootEnv,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }) || '[]');
+      const legacyDoctor = JSON.parse(run(NODE, [join(ROOT, 'doctor.mjs'), '--json', '--target', rootOnly], {
+        env: rootEnv,
+      }) || '{}');
+      if (
+        legacySync !== null && legacyRows[0]?.company === 'Legacy Co' &&
+        legacyDoctor.tracker?.path === 'applications.md' && legacyDoctor.tracker?.exists === true &&
+        !existsSync(join(rootOnly, 'data', 'applications.md'))
+      ) {
+        pass('Root-only tracker stays the single source for sync and doctor');
+      } else {
+        fail(`Root-only tracker split source: ${JSON.stringify({ legacySync, legacyRows, tracker: legacyDoctor.tracker })}`);
+      }
+    } finally {
+      rmSync(rootOnly, { recursive: true, force: true });
+    }
+
+    // Merge uses only pure tracker helpers. A DB override that tracker.mjs would
+    // reject must be irrelevant to a non-SQLite merge dry-run.
+    const importBoundaryTracker = join(firstUse, 'import-boundary.md');
+    const importBoundaryAdditions = join(firstUse, 'import-boundary-additions');
+    mkdirSync(importBoundaryAdditions, { recursive: true });
+    writeFileSync(importBoundaryTracker,
+      '# Applications Tracker\n\n' +
+      '| # | Date | Company | Role | Score | Status | Decision | Rank | Confidence | Origin | PDF | Report | Notes |\n' +
+      '|---|------|---------|------|-------|--------|----------|------|------------|--------|-----|--------|-------|\n');
+    const importBoundaryBefore = readFileSync(importBoundaryTracker, 'utf-8');
+    const importBoundaryResult = run(NODE, ['merge-tracker.mjs', '--dry-run'], {
+      env: {
+        ...process.env,
+        APPLYCUE_TRACKER: importBoundaryTracker,
+        APPLYCUE_TRACKER_DB: importBoundaryTracker,
+        APPLYCUE_ADDITIONS: importBoundaryAdditions,
+      },
+    });
+    if (importBoundaryResult !== null && readFileSync(importBoundaryTracker, 'utf-8') === importBoundaryBefore) {
+      pass('Merge dry-run imports pure tracker helpers without executing tracker DB guards');
+    } else {
+      fail('Merge dry-run executed tracker CLI side effects or mutated its tracker');
+    }
   } finally {
     rmSync(firstUse, { recursive: true, force: true });
   }

@@ -6,10 +6,11 @@
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, isAbsolute, relative, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import yaml from 'js-yaml';
 import { discoverPlugins, pluginRoots, pluginStatus } from './plugins/_engine.mjs';
+import { resolveTrackerPath } from './tracker-utils.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -268,9 +269,14 @@ function checkPipelineFile() {
 }
 
 function trackerState(root) {
-  const path = join(root, 'data', 'applications.md');
+  const rootPath = resolve(root);
+  const path = resolveTrackerPath({ root: rootPath, override: process.env.APPLYCUE_TRACKER });
+  const relativePath = relative(rootPath, path);
+  const displayPath = relativePath && !relativePath.startsWith('..') && !isAbsolute(relativePath)
+    ? relativePath.replaceAll('\\', '/')
+    : path;
   return {
-    path: 'data/applications.md',
+    path: displayPath,
     exists: existsSync(path),
     autoInitializable: true,
     supportedInitializers: ['merge-tracker.mjs', 'tracker.mjs sync'],
