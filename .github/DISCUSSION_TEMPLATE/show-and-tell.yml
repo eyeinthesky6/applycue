@@ -1,0 +1,36 @@
+title: "[Show and Tell] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share a sanitized ApplyCue workflow, integration, or outcome that could help the community. Do not include candidate data, private account data, employer correspondence, or generated application files.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What are you sharing?
+      options:
+        - Workflow
+        - Integration
+        - Outcome or lesson
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: What worked or what did you learn?
+      description: Explain the setup, useful result, and any limitation using fictional or sanitized details.
+    validations:
+      required: true
+  - type: input
+    id: public_link
+    attributes:
+      label: Optional public link
+      description: Link only to material you are allowed to share publicly.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed CVs, names, contact details, credentials, application history, browser receipts, private employer messages, and generated candidate files.
+          required: true

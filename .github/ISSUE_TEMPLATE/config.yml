@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Ask a setup or usage question
+    url: https://github.com/eyeinthesky6/applycue/discussions/categories/q-a
+    about: Use Q&A Discussions for setup, usage, and troubleshooting help with sanitized evidence.
   - name: "📤 Sharing scan results or automation output?"
     url: https://github.com/eyeinthesky6/applycue/blob/main/DATA_CONTRACT.md
     about: Your scans and reports stay local (data/ + reports/). Please don't file them here — they'd be public, and they're not needed upstream. Point any scheduled run at your own fork.

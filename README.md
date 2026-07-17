@@ -173,9 +173,20 @@ automation, proactive alerts, and the post-interview workflow are not part of 0.
 - [Live usage runbook](docs/live-usage-runbook.md)
 - [Pivot history](docs/pivot-history.md)
 
-ApplyCue is MIT licensed. The codebase retains the required attribution for the Career-Ops-derived foundation in [LICENSE](LICENSE).
+## Acknowledgements
 
-Contributions are welcome through [CONTRIBUTING.md](CONTRIBUTING.md). Use
-[SUPPORT.md](SUPPORT.md) for help and [SECURITY.md](SECURITY.md) for private
-security reporting. Please never put a real CV, contact details, application
-history, or generated candidate artifacts in a public issue or pull request.
+ApplyCue is derived from and inspired by
+[Career-Ops](https://github.com/santifer/career-ops), created by
+[Santiago Fernández de Valderrama](https://github.com/santifer). Career-Ops
+supplied the MIT-licensed foundation for much of ApplyCue's job discovery,
+reports, CV generation, tracking, dashboard, plugins, follow-up workflow, and
+regression suite. See [NOTICE](NOTICE) and [LICENSE](LICENSE) for attribution
+and license terms.
+
+Contributions are welcome through [CONTRIBUTING.md](CONTRIBUTING.md). Ask setup
+and usage questions in [GitHub Discussions](https://github.com/eyeinthesky6/applycue/discussions),
+use [GitHub Issues](https://github.com/eyeinthesky6/applycue/issues) for
+reproducible bugs and scoped feature work, and follow [SECURITY.md](SECURITY.md)
+for private security reporting. See [SUPPORT.md](SUPPORT.md) for the complete
+route map. Never put a real CV, contact details, credentials, application
+history, browser receipt, or generated candidate artifact in a public post.

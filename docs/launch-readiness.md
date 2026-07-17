@@ -110,3 +110,24 @@ Do not commit the candidate's evidence.
 ## Current boundary
 
 The merged code can be called code-healthy only after the final suite passes. Public-MVP-ready requires the clean-link install, useful batch and shortlist proof, false-elimination review, role-aware CV proof, and one end-to-end application UAT. Tests or one manually supplied application alone cannot make that claim.
+
+Status on 2026-07-17: the private controlled-application chain has passed through a current full JD, agent decision, verified CV, live-form preflight, named approval, confirmed attempt outcome, exact tracker transition, and dashboard state. The remaining product-proof gap is the fresh-user journey: clean installation, faithful CV intake, useful multi-source discovery, shortlist quality, sampled false-elimination review, and first-batch preparation. Personal receipts stay outside Git.
+
+## Community governance decision
+
+Status: accepted by the repository owner on 2026-07-17.
+
+ApplyCue needs a low-friction place for setup questions and sanitized community
+examples without turning implementation work or security reports into untracked
+conversation. The alternatives were to keep Issues as the only public route or
+to maintain a deliberately small Discussions surface. The owner chose the small
+surface: maintainer-only Announcements, Q&A, and Show and Tell. Reproducible bugs
+and scoped feature work remain in Issues; contributions follow `CONTRIBUTING.md`;
+vulnerabilities use the private route in `SECURITY.md`.
+
+Discussion support is best effort with no response-time promise. Posts must not
+contain candidate data, credentials, application history, browser receipts, or
+generated candidate files. Review this decision after 30 days, or sooner if the
+maintainer cannot moderate the queue or repeated privacy violations make the
+surface unsafe. In that case, archive useful routing guidance and disable new
+Discussions without deleting the public record.

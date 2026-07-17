@@ -4,6 +4,8 @@ Date: 2026-07-14
 
 Status: canonical integration and update plan for the consolidated MVP. This document records what is inherited, what has already been integrated, what still needs a focused port, where each change belongs, and how it will be accepted. It does not replace the product rules in `PRODUCT_DECISION.md`, `ARCHITECTURE.md`, the canonical skill, or the roadmap.
 
+Status update, 2026-07-17: public `main` is the sole supported ApplyCue runtime. The separate Career-Ops checkout is upstream/reference and a personalized historical operator; the typed branch is donor-only. A private, user-authorized controlled application has now completed the full JD -> decision -> verified CV bundle -> live-form preflight -> named approval -> attempt -> confirmed outcome -> exact tracker/dashboard chain. Personal application data remains outside the repository. This closes the controlled-application proof gap, but it does not replace the still-open fresh-user install, useful discovery batch, shortlist-quality, and false-elimination UAT gates.
+
 ## Scope
 
 Compare three real repository states:
@@ -117,7 +119,7 @@ The provider network, report format, PDF/LaTeX engine, tracker, Gmail plugin, fo
 7. ✅ **Application receipt/tracker reconciliation resolved 2026-07-14.** Confirmed finish uses the existing tracker owner to validate identity, update the exact lifecycle row, rebuild the derived index, and record the transition on the receipt. The verifier rejects receipt/tracker disagreement and the dashboard shows the latest outcome on its job.
 8. ✅ **Application answer and live-form handoff resolved 2026-07-14.** One root helper stores explicitly approved reusable answers, refuses credential/payment/identity-document values, records a no-fill structural form receipt, and makes attempt start require its current review/CV/answer fingerprints.
 9. **Parallel state mutation is unsafe.** Some modes encourage parallel work over shared pipeline files without one coordinator owning persistence.
-10. **No current end-to-end application proof exists.** A current role now has a current full-JD receipt and verified CV bundle, but there is no named attempt, reliable outcome, and reconciled dashboard row.
+10. ✅ **Controlled application evidence chain completed 2026-07-16.** Private local receipts bind a current full JD, final agent decision, exact verified CV, live-form preflight, named user approval, attempt, confirmed portal outcome, exact tracker transition, and dashboard state. This proves the application chain, not the complete fresh-user discovery promise.
 
 ### P1 findings
 
@@ -144,10 +146,10 @@ Every row below must ship as a small feature slice in the consolidated runtime. 
 | Reconcile current pipeline | root `reconcile-pipeline.mjs`, tracker and reports | `reconcile-pipeline.mjs` | extend existing reconciliation to detect tracker/report rows still pending and resolve them without deleting unrelated leads | no current reviewed role remains simultaneously unresolved in the pending queue |
 | ✅ CV bundle identity and validation — implemented 2026-07-14 | donor CV reconciliation/artifact manifest; current renderers | `cv-bundle.mjs`, `modes/pdf.md`, `generate-pdf.mjs`, `generate-docx.mjs`, `data/pdf-index.tsv`, `application-attempt.mjs` | metadata-bound Markdown/HTML plus verified PDF/DOCX hashes are recorded against the current review; selected upload must be the exact verified PDF or DOCX; claims remain confirmation signals rather than hard language rejection | passed: selected MD/HTML/PDF/DOCX open/parse, name the same company/role, reference the current JD/decision, become stale on changed input, and application start binds the selected hash |
 | ✅ Reusable approved application answers — implemented 2026-07-14 | donor `application-answer-approval.ts` and `master-form-data.ts` | `application-preflight.mjs`, `data/application-answers.jsonl`, `modes/apply.md` | aliases, explicit replace/revoke, sensitive-storage refusal, user approval and stable answer-set fingerprint are adapted into one append-only user ledger; profile YAML is not rewritten or duplicated | passed: the user is asked once, approved aliases reuse the answer, changes need explicit replace, and credentials/payment/identity values are refused |
-| ✅ Code-backed application preflight — implemented 2026-07-14 | donor `live-preflight.ts` and `native-browser.ts` | `application-preflight.mjs`, `application-attempt.mjs`, host-native browser boundary | host agent supplies a value-free structural field snapshot; code binds active form stage, visible-field coverage, answer sources, tracker job/URL, current JD/review, chosen CV, answer hash and 30-minute evidence; host browser remains the executor | passed in fixtures: a job page, unresolved/sensitive inferred field, stale answer/review/CV, expired receipt, or reused receipt cannot start; real controlled UAT remains |
+| ✅ Code-backed application preflight — implemented 2026-07-14 | donor `live-preflight.ts` and `native-browser.ts` | `application-preflight.mjs`, `application-attempt.mjs`, host-native browser boundary | host agent supplies a value-free structural field snapshot; code binds active form stage, visible-field coverage, answer sources, tracker job/URL, current JD/review, chosen CV, answer hash and 30-minute evidence; host browser remains the executor | passed in fixtures and one private controlled application: a job page, unresolved/sensitive inferred field, stale answer/review/CV, expired receipt, or reused receipt cannot start |
 | ✅ Dashboard action and CV-correction handoff — implemented 2026-07-14 | donor feedback receipts and current browser dashboard | `dashboard-server.mjs`, `job-feedback.mjs`, `application-attempt.mjs` | replace thumbs with stage-aware prepare/ignore/form/CV-change/apply actions; bind apply approval to the exact CV and preflight; keep tracker/application mutation with existing owners | passed in fixtures: direct full-JD/PDF/DOCX review works, CV-change notes block the old bundle, only a newly resolved bundle proceeds, and a dashboard approval cannot move to another CV/form |
 | ✅ Atomic outcome reconciliation — implemented 2026-07-14 | donor tracker outcomes; root attempt ledger | `application-attempt.mjs`, `tracker.mjs`, dashboard, verifier | confirmed finish validates exact tracker identity, applies one guarded status mutation, rebuilds the derived index, and stores the transition on the receipt; unknown/failed/abandoned remain job-level attempt evidence without becoming Applied | passed: confirmed status is visible on the correct role, unresolved outcomes remain non-Applied, identity drift is rejected, and tracker/receipt mismatch fails verification |
-| Current full-flow UAT | donor UAT contract plus root launch readiness | current test suite and `docs/launch-readiness.md` | add a non-submit fixture flow, then run one named approved real/test attempt through all current owners | captured JD -> decision -> CV bundle -> approval -> attempt -> reliable outcome -> matching dashboard row |
+| ✅ Controlled application-chain UAT — completed 2026-07-16 | donor UAT contract plus root launch readiness | current test suite and `docs/launch-readiness.md` | one private named, approved real attempt ran through all current owners; retain receipts outside Git | passed: captured JD -> decision -> CV bundle -> preflight -> approval -> attempt -> reliable outcome -> matching tracker/dashboard row. Fresh-user discovery/install UAT remains separate and open |
 
 ### P1 — improve coverage and repeatability after the first controlled application
 
@@ -211,10 +213,10 @@ Stop gate: dashboard counts must distinguish scanned, pending review, agent deci
 
 1. ✅ Store the full JD and decision receipt. Completed 2026-07-14.
 2. ✅ Bind and verify the CV bundle. Completed 2026-07-14.
-3. ✅ Add reusable-answer confirmation and code-backed preflight. Completed 2026-07-14; real controlled UAT remains.
-4. ✅ Reconcile one attempt outcome atomically. Code path completed 2026-07-14; one real approved outcome remains part of full-flow UAT.
+3. ✅ Add reusable-answer confirmation and code-backed preflight. Code completed 2026-07-14; private controlled use completed 2026-07-16.
+4. ✅ Reconcile one attempt outcome atomically. Code completed 2026-07-14; one real approved outcome completed the receipt/tracker/dashboard chain on 2026-07-16.
 
-Stop gate: one current role completes the full launch-readiness evidence chain. Until then the product is code-healthy/prepare-to-apply, not public-MVP-ready.
+Stop gate result: the controlled application chain is complete. Public-MVP readiness still depends on the broader gates in `docs/launch-readiness.md`, especially a clean fresh-user install, useful discovery volume, shortlist relevance, and false-elimination review. One manually supplied role cannot prove those outcomes.
 
 ### Phase 2 — coverage and repeatability
 
@@ -225,13 +227,13 @@ Stop gate: one current role completes the full launch-readiness evidence chain. 
 
 Stop gate: a new user/agent can install and run a second session without manual source-code edits or mixed historical state.
 
-### Phase 3 — release
+### Phase 3 — public-main promotion and release baseline
 
-1. Preserve the unrelated typed baseline currently on public `main` under a dated archive branch.
-2. After Phase 1 and clean-install gates pass, promote the exact tested consolidated commit to public `main` with `--force-with-lease`; do not create an unrelated-history merge commit.
-3. Protect `main` and tag that same commit as the ApplyCue MVP release.
-4. Keep attribution in `LICENSE`, `NOTICE`, Git history, and release notes.
-5. Archive donor/history branches from normal user instructions; do not delete evidence required for attribution or rollback.
+1. ✅ The earlier unrelated typed baseline is preserved under `archive/pre-merged-main-20260716`.
+2. ✅ The exact tested consolidated runtime was promoted to public `main` with `--force-with-lease` on 2026-07-16; unrelated histories were not merged.
+3. ✅ The first source release baseline exists as `ApplyCue-v0.1.0`; current protection, release-integrity, and follow-up release gates are owned by `docs/launch-readiness.md`.
+4. ✅ Attribution remains in `LICENSE`, `NOTICE`, Git history, and release metadata.
+5. ✅ Donor/history branches are absent from normal public-main operation instructions and remain available as historical evidence and rollback reference.
 
 ## Data Migration Policy
 
@@ -248,12 +250,12 @@ Stop gate: a new user/agent can install and run a second session without manual 
 2. The typed ApplyCue donor contains real value in profile/CV preservation, full-JD receipts, review fingerprints, reusable answers, browser preflight, workflow locking, outcomes, and source evidence.
 3. The current consolidated runtime correctly removed duplicate control planes, but it removed several useful guarantees before installing equivalents.
 4. The current browser dashboard has correct decision/origin/current-history semantics, agent rank/confidence, per-role attempt/preflight evidence, original-JD/CV links, stage-aware user actions, and CV-change/application-approval receipts.
-5. The current prepared role proves the product can reach “ready to apply”; it does not prove application completion.
+5. One private controlled role proves the current owners can complete an approved application and reconcile its outcome. It does not prove the complete fresh-user discovery, shortlist-quality, or scale promise.
 6. Email, source expansion, interview preparation, and hosted operation must remain separate capability phases rather than being advertised as current MVP behavior.
 
 ## Recommended Fixes
 
-Execute Phase 0 and Phase 1 in order. Do not resume general feature development until the first complete application evidence chain passes. Use failures from that chain to choose the next donor port.
+The Phase 1 application evidence chain is complete. Keep Phase 0 reconciliation honest and move to the broader fresh-user product UAT before selecting another donor port. Use a demonstrated failure from that UAT—not donor feature availability—to choose the next change.
 
 The first implementation packet, **decision/review metadata plus historical dashboard separation**, is complete.
 
@@ -261,7 +263,7 @@ The second packet, **full-JD capture plus fingerprint-bound decision receipt**, 
 
 The third packet is **CV bundle identity and selected-upload verification** and is complete.
 
-The next packet is **current full-flow non-submit UAT**, followed by the first named controlled application when the user approves it. Use that evidence to choose between scan-handoff evidence and intake/source-quality work; do not add another application owner.
+The next packet is the **fresh-user install and discovery-to-shortlist UAT** required by `docs/launch-readiness.md`: exact CV intake, useful multi-source batch, full-JD hydration, shortlist relevance, sampled false-elimination review, and verified CV preparation. The controlled application step does not need to be repeated merely to prove it exists. Use the first real failure from this broader flow to choose between scan-handoff evidence, CV intake, source-quality, email ingest, or feedback tuning; do not add another runtime owner.
 
 ## Verification
 
@@ -276,9 +278,11 @@ This review:
 - did not access accounts, send messages, fill forms, or submit applications;
 - records implementation status only where the destination code, focused tests, current user-artifact migration, and acceptance check have landed.
 
+The 2026-07-17 status refresh verified the clean pre-edit `origin/main` baseline, a 905-test repository check, a private pipeline with no verification or CV-sync errors, and controlled-application receipts that agree with the tracker lifecycle. No personal receipt or candidate artifact was added to Git.
+
 ## Follow-Up
 
 1. Keep this document as the integration disposition ledger.
 2. Update row status only when the corresponding code, migration, tests, and acceptance gate land.
 3. Record each completed port in the relevant canonical owner doc and release notes.
-4. Run the launch-readiness flow after every Phase 1 packet; stop at the first real blocker.
+4. Run the remaining fresh-user launch-readiness flow and stop at the first real blocker; do not count the completed controlled application as proof of discovery quality.

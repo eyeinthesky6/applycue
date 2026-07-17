@@ -4,21 +4,27 @@ ApplyCue is early and local-first. The fastest support path is to keep the issue
 
 ## Where To Ask
 
-| Question type | Where |
+| Need | Where |
 |---|---|
-| Bug | GitHub Issues for this repository |
-| Feature idea | GitHub feature-request template |
-| Setup help | Start with `README.md`, `docs/SETUP.md`, then run `node doctor.mjs --json` |
-| Security vulnerability | See `SECURITY.md` |
+| Setup, usage, or troubleshooting question | [GitHub Discussions: Q&A](https://github.com/eyeinthesky6/applycue/discussions/categories/q-a) after checking `README.md`, `docs/SETUP.md`, and `node doctor.mjs --json` |
+| Sanitized workflow, integration, or outcome | [GitHub Discussions: Show and Tell](https://github.com/eyeinthesky6/applycue/discussions/categories/show-and-tell) |
+| Release or maintainer update | [GitHub Discussions: Announcements](https://github.com/eyeinthesky6/applycue/discussions/categories/announcements) |
+| Reproducible bug | [GitHub Issues](https://github.com/eyeinthesky6/applycue/issues/new/choose) |
+| Scoped feature work | [GitHub feature-request form](https://github.com/eyeinthesky6/applycue/issues/new/choose) |
+| Contribution | Read `CONTRIBUTING.md`; open an issue before broad work |
+| Security vulnerability | Follow the private route in `SECURITY.md` |
 
-## Before Opening An Issue
+## Before Posting
 
-1. Search existing issues.
+1. Search existing Discussions and Issues.
 2. Run `node doctor.mjs --json`.
 3. Run `npm run check` for a product code change.
-4. Include your OS, Node.js version, agent CLI, command run, and the first blocker string.
+4. For help or a bug, include your OS, Node.js version, agent CLI, command run,
+   and the first blocker string.
 
-Do not include private CVs, personal contact details, credentials, or generated application artifacts in public issues.
+Do not include CVs, names, personal contact details, credentials, application
+history, browser receipts, scan output, or generated candidate files in any
+public Discussion, Issue, or pull request. Use fictional or sanitized evidence.
 
 Support is currently best effort. ApplyCue 0.1 supports named `ApplyCue-v*`
 release tags on Node.js 22.5 or newer. The `main` branch is a moving development

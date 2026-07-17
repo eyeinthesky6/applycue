@@ -6,8 +6,10 @@ as much as feature breadth.
 
 ## Before You Start
 
+- Use [GitHub Discussions](https://github.com/eyeinthesky6/applycue/discussions)
+  for setup questions and early ideas that are not yet scoped work.
 - Open an issue before a new feature, workflow, architecture change, or external
-  dependency.
+  dependency once the work is specific enough to implement.
 - A direct pull request is welcome for a focused bug fix, documentation fix,
   translation, test, or provider that uses a lawful public source.
 - Read `AGENTS.md`, `DATA_CONTRACT.md`, `docs/ARCHITECTURE.md`, and
@@ -46,7 +48,8 @@ opening a pull request.
 Never commit or attach real CVs, names, email addresses, phone numbers, job-search
 history, browser receipts, scan results, credentials, or generated application
 artifacts. User-layer paths are listed in `DATA_CONTRACT.md`; use fictional data
-under `examples/` for tests and demonstrations.
+under `examples/` for tests and demonstrations. The same rule applies to public
+Discussions and Issues.
 
 ## Pull Requests
 
