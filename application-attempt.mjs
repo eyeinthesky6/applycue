@@ -24,6 +24,14 @@ import { assertDashboardApplyApproval, assertNoBlockingJobActions } from './job-
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const OUTCOMES = new Set(['confirmed', 'unknown', 'failed', 'abandoned']);
+const REVIEW_PROMPT_INTERVAL = 5;
+const REVIEW_URL = 'https://github.com/eyeinthesky6/applycue/discussions/new?category=show-and-tell';
+const REVIEW_PROMPT_OPENERS = [
+  (count) => `You have reached ${count} confirmed applications with ApplyCue. Would you like to share an honest review about what helped and what should improve?`,
+  (count) => `${count} applications are now confirmed and tracked. If you have a moment, a candid ApplyCue review would help shape what gets improved next.`,
+  (count) => `Milestone: ${count} confirmed applications. Would you be open to sharing what ApplyCue got right, missed, or made harder than expected?`,
+  (count) => `You have completed ${count} confirmed applications. A short, honest review could help other job seekers and guide the next ApplyCue improvements.`,
+];
 
 function ledgerPath(root) {
   return process.env.APPLYCUE_ATTEMPTS || resolve(root, 'data', 'application-attempts.jsonl');
@@ -42,6 +50,44 @@ function appendEvent(root, event) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(event)}\n`, { flag: 'a', encoding: 'utf8' });
   return event;
+}
+
+export function reviewPromptState(events, outcome = '') {
+  const priorConfirmedCount = events.filter((event) => event.outcome === 'confirmed').length;
+  const confirmedApplicationCount = priorConfirmedCount + (outcome === 'confirmed' ? 1 : 0);
+  const reviewGiven = events.some((event) => event.eventType === 'product_review' && event.reviewStatus === 'given');
+  const reviewPromptDue = outcome === 'confirmed'
+    && !reviewGiven
+    && confirmedApplicationCount > 0
+    && confirmedApplicationCount % REVIEW_PROMPT_INTERVAL === 0;
+
+  if (!reviewPromptDue) {
+    return { confirmedApplicationCount, reviewGiven, reviewPromptDue: false };
+  }
+
+  const reviewPromptNumber = confirmedApplicationCount / REVIEW_PROMPT_INTERVAL;
+  const opener = REVIEW_PROMPT_OPENERS[(reviewPromptNumber - 1) % REVIEW_PROMPT_OPENERS.length];
+  return {
+    confirmedApplicationCount,
+    reviewGiven,
+    reviewPromptDue: true,
+    reviewPromptNumber,
+    reviewPromptUrl: REVIEW_URL,
+    reviewPromptMessage: `${opener(confirmedApplicationCount)} ${REVIEW_URL}`,
+  };
+}
+
+export function recordProductReviewGiven(root = ROOT) {
+  const events = readAttemptEvents(root);
+  const existing = events.find((event) => event.eventType === 'product_review' && event.reviewStatus === 'given');
+  if (existing) return { ...existing, alreadyRecorded: true };
+  return appendEvent(root, {
+    id: randomUUID(),
+    eventType: 'product_review',
+    reviewStatus: 'given',
+    source: 'user-confirmed',
+    createdAt: new Date().toISOString(),
+  });
 }
 
 export function latestAttemptForJob(root, jobId) {
@@ -163,6 +209,7 @@ export async function finishApplicationAttempt(root, { attemptId, outcome, evide
   // and abandoned attempts remain visible through the attempt ledger without
   // pretending the application was accepted or changing the agent's decision.
   let tracker = null;
+  const reviewPrompt = reviewPromptState(events, outcome);
   const firstConfirmedApplication = outcome === 'confirmed'
     && !events.some((event) => event.outcome === 'confirmed');
   if (outcome === 'confirmed') {
@@ -174,7 +221,7 @@ export async function finishApplicationAttempt(root, { attemptId, outcome, evide
   try {
     return appendEvent(root, {
       id: randomUUID(), attemptId, jobId: start.jobId, company: start.company, title: start.title,
-      url: start.url, outcome, firstConfirmedApplication,
+      url: start.url, outcome, firstConfirmedApplication, ...reviewPrompt,
       ...(evidence ? { evidence: String(evidence).slice(0, 2000) } : {}),
       ...(tracker ? {
         trackerStatus: tracker.status,
@@ -228,7 +275,11 @@ async function main() {
     print(option('url') ? latestAttemptForUrl(ROOT, option('url')) : latestAttemptForJob(ROOT, option('job')));
     return;
   }
-  console.error('Usage:\n  node application-attempt.mjs start --job=N --company=... --title=... --url=https://... --cv=output/verified.pdf (--approved-by-user | --approval-receipt=ID)\n  node application-attempt.mjs finish --attempt=ID --outcome=confirmed|unknown|failed|abandoned [--evidence=...]\n  node application-attempt.mjs check --job=N|--url=https://...');
+  if (command === 'review-given') {
+    print(recordProductReviewGiven(ROOT));
+    return;
+  }
+  console.error('Usage:\n  node application-attempt.mjs start --job=N --company=... --title=... --url=https://... --cv=output/verified.pdf (--approved-by-user | --approval-receipt=ID)\n  node application-attempt.mjs finish --attempt=ID --outcome=confirmed|unknown|failed|abandoned [--evidence=...]\n  node application-attempt.mjs check --job=N|--url=https://...\n  node application-attempt.mjs review-given');
   process.exit(1);
 }
 

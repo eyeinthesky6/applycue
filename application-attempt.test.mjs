@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { finishApplicationAttempt, latestAttemptForJob, latestAttemptForUrl, startApplicationAttempt } from './application-attempt.mjs';
+import {
+  finishApplicationAttempt, latestAttemptForJob, latestAttemptForUrl, readAttemptEvents,
+  recordProductReviewGiven, reviewPromptState, startApplicationAttempt,
+} from './application-attempt.mjs';
 import { appendJobAction, resolveJobAction } from './job-feedback.mjs';
 
 const root = mkdtempSync(join(tmpdir(), 'applycue-attempt-'));
@@ -37,6 +40,8 @@ try {
   const unknown = await finishApplicationAttempt(root, { attemptId: started.attemptId, outcome: 'unknown', evidence: 'Browser closed after submit click' });
   assert.equal(unknown.outcome, 'unknown');
   assert.equal(unknown.firstConfirmedApplication, false);
+  assert.equal(unknown.confirmedApplicationCount, 0);
+  assert.equal(unknown.reviewPromptDue, false);
   await assert.rejects(() => startApplicationAttempt(root, {
     jobId: '1', company: 'Acme', title: 'PM', url: 'https://jobs.example/1', cvPath: 'output/acme.pdf', approvedByUser: true,
   }, verified), /reconcile/i);
@@ -60,6 +65,8 @@ try {
   assert.equal(confirmed.trackerPreviousStatus, 'Evaluated');
   assert.equal(confirmed.trackerChanged, true);
   assert.equal(confirmed.firstConfirmedApplication, true);
+  assert.equal(confirmed.confirmedApplicationCount, 1);
+  assert.equal(confirmed.reviewPromptDue, false);
   assert.deepEqual(trackerCalls, [{ jobId: '3', status: 'Applied', company: 'Acme', title: 'PM' }]);
   const secondPosting = await startApplicationAttempt(root, {
     jobId: '8', company: 'Acme', title: 'PM', url: 'https://jobs.example/8', cvPath: 'output/acme-8.pdf', approvedByUser: true,
@@ -70,6 +77,29 @@ try {
     trackerUpdater: async () => ({ jobId: '8', previousStatus: 'Evaluated', status: 'Applied', changed: true }),
   });
   assert.equal(secondConfirmed.firstConfirmedApplication, false);
+  assert.equal(secondConfirmed.confirmedApplicationCount, 2);
+  assert.equal(secondConfirmed.reviewPromptDue, false);
+
+  const fourConfirmed = Array.from({ length: 4 }, (_, index) => ({ outcome: 'confirmed', id: `confirmed-${index}` }));
+  const fifthMilestone = reviewPromptState(fourConfirmed, 'confirmed');
+  assert.equal(fifthMilestone.confirmedApplicationCount, 5);
+  assert.equal(fifthMilestone.reviewPromptDue, true);
+  assert.equal(fifthMilestone.reviewPromptNumber, 1);
+  assert.match(fifthMilestone.reviewPromptMessage, /5 confirmed applications/i);
+  assert.match(fifthMilestone.reviewPromptUrl, /github\.com\/eyeinthesky6\/applycue\/discussions\/new/);
+  const sixthApplication = reviewPromptState(Array.from({ length: 5 }, (_, index) => ({ outcome: 'confirmed', id: `confirmed-${index}` })), 'confirmed');
+  assert.equal(sixthApplication.confirmedApplicationCount, 6);
+  assert.equal(sixthApplication.reviewPromptDue, false);
+  const tenthMilestone = reviewPromptState(Array.from({ length: 9 }, (_, index) => ({ outcome: 'confirmed', id: `confirmed-${index}` })), 'confirmed');
+  assert.equal(tenthMilestone.reviewPromptDue, true);
+  assert.equal(tenthMilestone.reviewPromptNumber, 2);
+  assert.match(tenthMilestone.reviewPromptMessage, /10 applications/i);
+  assert.notEqual(tenthMilestone.reviewPromptMessage, fifthMilestone.reviewPromptMessage);
+  const mixedOutcomes = [...fourConfirmed, { outcome: 'unknown' }, { outcome: 'failed' }, { outcome: 'abandoned' }];
+  assert.equal(reviewPromptState(mixedOutcomes, 'unknown').confirmedApplicationCount, 4);
+  assert.equal(reviewPromptState(mixedOutcomes, 'unknown').reviewPromptDue, false);
+  assert.equal(reviewPromptState(mixedOutcomes, 'failed').confirmedApplicationCount, 4);
+  assert.equal(reviewPromptState(mixedOutcomes, 'abandoned').reviewPromptDue, false);
   const blockedPosting = await startApplicationAttempt(root, {
     jobId: '4', company: 'Acme', title: 'PM', url: 'https://jobs.example/4', cvPath: 'output/acme-4.pdf', approvedByUser: true,
   }, verified);
@@ -117,6 +147,18 @@ try {
   });
   assert.equal(revised.cvBundleFingerprint, 'e'.repeat(64));
   await assert.rejects(() => finishApplicationAttempt(root, { attemptId: started.attemptId, outcome: 'confirmed' }), /already unknown/i);
+  const reviewReceipt = recordProductReviewGiven(root);
+  assert.equal(reviewReceipt.eventType, 'product_review');
+  assert.equal(reviewReceipt.reviewStatus, 'given');
+  assert.equal(reviewReceipt.source, 'user-confirmed');
+  assert.equal(recordProductReviewGiven(root).alreadyRecorded, true);
+  const afterReview = reviewPromptState([
+    ...Array.from({ length: 14 }, (_, index) => ({ outcome: 'confirmed', id: `confirmed-${index}` })),
+    ...readAttemptEvents(root).filter((event) => event.eventType === 'product_review'),
+  ], 'confirmed');
+  assert.equal(afterReview.confirmedApplicationCount, 15);
+  assert.equal(afterReview.reviewGiven, true);
+  assert.equal(afterReview.reviewPromptDue, false);
   console.log('application-attempt tests passed');
 } finally {
   rmSync(root, { recursive: true, force: true });

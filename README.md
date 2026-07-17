@@ -128,7 +128,7 @@ npm run build:dashboard
 
 ## Share feedback
 
-After your first confirmed application, the agent offers this once as an optional step. You can also leave honest product feedback, a review, or a sanitized outcome at any time in [Show and Tell](https://github.com/eyeinthesky6/applycue/discussions/new?category=show-and-tell). Positive, mixed, and critical feedback are all useful.
+After every five confirmed applications, the agent offers this as an optional step with a fresh message. The reminders stop when you tell the agent that you posted a review. You can also leave honest product feedback, a review, or a sanitized outcome at any time in [Show and Tell](https://github.com/eyeinthesky6/applycue/discussions/new?category=show-and-tell). Positive, mixed, and critical feedback are all useful.
 
 Keep the post public-safe. Do not include CV content, names, contact details, application answers or history, employer correspondence, credentials, browser receipts, or generated candidate files.
 
