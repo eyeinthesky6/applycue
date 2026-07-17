@@ -86,7 +86,8 @@ try {
   assert.equal(fifthMilestone.reviewPromptDue, true);
   assert.equal(fifthMilestone.reviewPromptNumber, 1);
   assert.match(fifthMilestone.reviewPromptMessage, /5 confirmed applications/i);
-  assert.match(fifthMilestone.reviewPromptUrl, /github\.com\/eyeinthesky6\/applycue\/discussions\/new/);
+  assert.equal(fifthMilestone.reviewPromptUrl, 'https://t.me/applycue');
+  assert.match(fifthMilestone.reviewPromptMessage, /linked discussion group/i);
   const sixthApplication = reviewPromptState(Array.from({ length: 5 }, (_, index) => ({ outcome: 'confirmed', id: `confirmed-${index}` })), 'confirmed');
   assert.equal(sixthApplication.confirmedApplicationCount, 6);
   assert.equal(sixthApplication.reviewPromptDue, false);

@@ -117,17 +117,23 @@ Status on 2026-07-17: the private controlled-application chain has passed throug
 
 Status: accepted by the repository owner on 2026-07-17.
 
-ApplyCue needs a low-friction place for setup questions and sanitized community
-examples without turning implementation work or security reports into untracked
-conversation. The alternatives were to keep Issues as the only public route or
-to maintain a deliberately small Discussions surface. The owner chose the small
-surface: maintainer-only Announcements, Q&A, and Show and Tell. Reproducible bugs
-and scoped feature work remain in Issues; contributions follow `CONTRIBUTING.md`;
-vulnerabilities use the private route in `SECURITY.md`.
+ApplyCue needs a low-friction place for ordinary job seekers who should not need
+GitHub knowledge to ask a question or share product feedback. The owner therefore
+selected a paired Telegram surface: `https://t.me/applycue` is the official
+announcement/release/guide channel, and its linked discussion group is the
+ordinary-user help, feedback, ideas, and community space. The group is currently
+reached through the public channel while its own stable public username is not
+yet configured.
 
-Discussion support is best effort with no response-time promise. Posts must not
-contain candidate data, credentials, application history, browser receipts, or
-generated candidate files. Review this decision after 30 days, or sooner if the
-maintainer cannot moderate the queue or repeated privacy violations make the
-surface unsafe. In that case, archive useful routing guidance and disable new
-Discussions without deleting the public record.
+GitHub is the engineering surface. Discussions are for contributor design
+questions, extensions, integrations, and reusable technical examples. Reproducible
+bugs and scoped feature work remain in Issues; contributions follow
+`CONTRIBUTING.md`; vulnerabilities use the private route in `SECURITY.md`.
+
+All public surfaces are best effort with no response-time promise. Telegram and
+GitHub posts must not contain candidate data, credentials, application history,
+employer correspondence, browser receipts, or generated candidate files. Feedback
+about one candidate's CV, roles, answers, or preferences remains in the private
+agent chat or local dashboard. Review the community surfaces after 30 days, or
+sooner if the maintainer cannot moderate them or repeated privacy violations make
+them unsafe.

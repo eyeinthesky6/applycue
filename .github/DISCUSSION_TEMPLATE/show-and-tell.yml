@@ -1,18 +1,18 @@
-title: "[Show and Tell] "
+title: "[Contributor showcase] "
 body:
   - type: markdown
     attributes:
       value: |
-        Share honest, sanitized ApplyCue feedback, a review, a workflow, an integration, or an outcome that could help the community. Positive, mixed, and critical feedback are welcome. Do not include candidate data, private account data, employer correspondence, or generated application files.
+        Share a technical extension, integration, provider, development workflow, or reusable contributor lesson. Ordinary product feedback and user outcomes belong in the linked Telegram discussion group at https://t.me/applycue. Do not include candidate data, private account data, employer correspondence, or generated application files.
   - type: dropdown
     id: kind
     attributes:
       label: What are you sharing?
       options:
-        - Product feedback or review
-        - Workflow
+        - Provider or connector
         - Integration
-        - Outcome or lesson
+        - Development workflow
+        - Technical lesson
         - Other
     validations:
       required: true

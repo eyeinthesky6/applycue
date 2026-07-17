@@ -128,9 +128,11 @@ npm run build:dashboard
 
 ## Share feedback
 
-After every five confirmed applications, the agent offers this as an optional step with a fresh message. The reminders stop when you tell the agent that you posted a review. You can also leave honest product feedback, a review, or a sanitized outcome at any time in [Show and Tell](https://github.com/eyeinthesky6/applycue/discussions/new?category=show-and-tell). Positive, mixed, and critical feedback are all useful.
+After every five confirmed applications, the agent offers this as an optional step with a fresh message. The reminders stop when you tell the agent that you posted a review. You can also leave honest product feedback, a review, or a sanitized outcome at any time in the [ApplyCue Telegram community](https://t.me/applycue): open the public channel and choose its linked discussion group. Positive, mixed, and critical feedback are all useful.
 
 Keep the post public-safe. Do not include CV content, names, contact details, application answers or history, employer correspondence, credentials, browser receipts, or generated candidate files.
+
+Feedback about one of your own roles, CVs, application answers, or saved preferences belongs in your private ApplyCue chat or local dashboard instead. Those receipts stay on your machine and are not sent to Telegram.
 
 ## Useful commands
 
@@ -189,10 +191,14 @@ reports, CV generation, tracking, dashboard, plugins, follow-up workflow, and
 regression suite. See [NOTICE](NOTICE) and [LICENSE](LICENSE) for attribution
 and license terms.
 
-Contributions are welcome through [CONTRIBUTING.md](CONTRIBUTING.md). Ask setup
-and usage questions in [GitHub Discussions](https://github.com/eyeinthesky6/applycue/discussions),
-use [GitHub Issues](https://github.com/eyeinthesky6/applycue/issues) for
-reproducible bugs and scoped feature work, and follow [SECURITY.md](SECURITY.md)
-for private security reporting. See [SUPPORT.md](SUPPORT.md) for the complete
-route map. Never put a real CV, contact details, credentials, application
-history, browser receipt, or generated candidate artifact in a public post.
+For user help, feedback, and community conversation, join the [ApplyCue Telegram
+community](https://t.me/applycue); the channel carries official updates and its
+linked discussion group is the ordinary-user conversation space. Contributions
+are welcome through [CONTRIBUTING.md](CONTRIBUTING.md). Contributors can use
+[GitHub Discussions](https://github.com/eyeinthesky6/applycue/discussions) for
+technical design questions, while [GitHub Issues](https://github.com/eyeinthesky6/applycue/issues)
+remain for reproducible bugs and scoped engineering work. Follow
+[SECURITY.md](SECURITY.md) for private security reporting and [SUPPORT.md](SUPPORT.md)
+for the complete route map. Never put a real CV, contact details, credentials,
+application history, browser receipt, or generated candidate artifact in a
+public post.

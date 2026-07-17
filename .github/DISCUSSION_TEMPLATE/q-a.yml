@@ -1,18 +1,18 @@
-title: "[Question] "
+title: "[Contributor question] "
 body:
   - type: markdown
     attributes:
       value: |
-        Ask about ApplyCue setup, usage, or troubleshooting. Do not include a CV, name, contact details, credentials, application history, browser receipts, scan output, or generated candidate files. Use fictional or sanitized evidence only.
+        This space is for contributor-level technical questions about ApplyCue's architecture, extension points, tests, or development workflow. Ordinary user setup and product questions belong in the linked Telegram discussion group at https://t.me/applycue. Do not include candidate data; use fictional or sanitized evidence only.
   - type: dropdown
     id: area
     attributes:
       label: Area
       options:
-        - Installation and setup
-        - Job discovery
-        - Review and CV preparation
-        - Dashboard and application flow
+        - Architecture and ownership
+        - Development setup and tests
+        - Provider or integration extension
+        - Contribution workflow
         - Other
     validations:
       required: true

@@ -25,7 +25,7 @@ import { assertDashboardApplyApproval, assertNoBlockingJobActions } from './job-
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const OUTCOMES = new Set(['confirmed', 'unknown', 'failed', 'abandoned']);
 const REVIEW_PROMPT_INTERVAL = 5;
-const REVIEW_URL = 'https://github.com/eyeinthesky6/applycue/discussions/new?category=show-and-tell';
+const REVIEW_URL = 'https://t.me/applycue';
 const REVIEW_PROMPT_OPENERS = [
   (count) => `You have reached ${count} confirmed applications with ApplyCue. Would you like to share an honest review about what helped and what should improve?`,
   (count) => `${count} applications are now confirmed and tracked. If you have a moment, a candid ApplyCue review would help shape what gets improved next.`,
@@ -73,7 +73,7 @@ export function reviewPromptState(events, outcome = '') {
     reviewPromptDue: true,
     reviewPromptNumber,
     reviewPromptUrl: REVIEW_URL,
-    reviewPromptMessage: `${opener(confirmedApplicationCount)} ${REVIEW_URL}`,
+    reviewPromptMessage: `${opener(confirmedApplicationCount)} Open the ApplyCue Telegram channel and choose its linked discussion group: ${REVIEW_URL}`,
   };
 }
 
