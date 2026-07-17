@@ -190,6 +190,8 @@ For every role:
 14. Follow `modes/apply.md`, including the application-attempt receipt.
 15. Finish the attempt immediately. `confirmed` updates the matching tracker row to `Applied` and rebuilds its derived index; `unknown`, `failed`, and `abandoned` remain attempt evidence without pretending the application succeeded. An unknown outcome must not be retried automatically.
 
+When a confirmed finish returns `firstConfirmedApplication: true`, briefly confirm that the first application was submitted and tracked, then offer one optional public review link: `https://github.com/eyeinthesky6/applycue/discussions/new?category=show-and-tell`. Ask for honest feedback, not a positive review. Remind the user to remove CV details, names, contact data, application answers or history, employer correspondence, and browser receipts. The review is optional, must not block the workflow, and must not be prompted again. Do not offer it for `unknown`, `failed`, or `abandoned` attempts.
+
 ## Dashboard and learning loop
 
 Run:

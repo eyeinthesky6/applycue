@@ -36,6 +36,7 @@ try {
   assert.equal(latestAttemptForJob(root, '1').outcome, 'started');
   const unknown = await finishApplicationAttempt(root, { attemptId: started.attemptId, outcome: 'unknown', evidence: 'Browser closed after submit click' });
   assert.equal(unknown.outcome, 'unknown');
+  assert.equal(unknown.firstConfirmedApplication, false);
   await assert.rejects(() => startApplicationAttempt(root, {
     jobId: '1', company: 'Acme', title: 'PM', url: 'https://jobs.example/1', cvPath: 'output/acme.pdf', approvedByUser: true,
   }, verified), /reconcile/i);
@@ -58,7 +59,17 @@ try {
   assert.equal(confirmed.trackerStatus, 'Applied');
   assert.equal(confirmed.trackerPreviousStatus, 'Evaluated');
   assert.equal(confirmed.trackerChanged, true);
+  assert.equal(confirmed.firstConfirmedApplication, true);
   assert.deepEqual(trackerCalls, [{ jobId: '3', status: 'Applied', company: 'Acme', title: 'PM' }]);
+  const secondPosting = await startApplicationAttempt(root, {
+    jobId: '8', company: 'Acme', title: 'PM', url: 'https://jobs.example/8', cvPath: 'output/acme-8.pdf', approvedByUser: true,
+  }, verified);
+  const secondConfirmed = await finishApplicationAttempt(root, {
+    attemptId: secondPosting.attemptId, outcome: 'confirmed', evidence: 'Application received',
+  }, {
+    trackerUpdater: async () => ({ jobId: '8', previousStatus: 'Evaluated', status: 'Applied', changed: true }),
+  });
+  assert.equal(secondConfirmed.firstConfirmedApplication, false);
   const blockedPosting = await startApplicationAttempt(root, {
     jobId: '4', company: 'Acme', title: 'PM', url: 'https://jobs.example/4', cvPath: 'output/acme-4.pdf', approvedByUser: true,
   }, verified);

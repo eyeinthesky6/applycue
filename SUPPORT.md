@@ -7,7 +7,7 @@ ApplyCue is early and local-first. The fastest support path is to keep the issue
 | Need | Where |
 |---|---|
 | Setup, usage, or troubleshooting question | [GitHub Discussions: Q&A](https://github.com/eyeinthesky6/applycue/discussions/categories/q-a) after checking `README.md`, `docs/SETUP.md`, and `node doctor.mjs --json` |
-| Sanitized workflow, integration, or outcome | [GitHub Discussions: Show and Tell](https://github.com/eyeinthesky6/applycue/discussions/categories/show-and-tell) |
+| Sanitized product feedback, review, workflow, integration, or outcome | [GitHub Discussions: Show and Tell](https://github.com/eyeinthesky6/applycue/discussions/categories/show-and-tell) |
 | Release or maintainer update | [GitHub Discussions: Announcements](https://github.com/eyeinthesky6/applycue/discussions/categories/announcements) |
 | Reproducible bug | [GitHub Issues](https://github.com/eyeinthesky6/applycue/issues/new/choose) |
 | Scoped feature work | [GitHub feature-request form](https://github.com/eyeinthesky6/applycue/issues/new/choose) |

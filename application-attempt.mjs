@@ -163,6 +163,8 @@ export async function finishApplicationAttempt(root, { attemptId, outcome, evide
   // and abandoned attempts remain visible through the attempt ledger without
   // pretending the application was accepted or changing the agent's decision.
   let tracker = null;
+  const firstConfirmedApplication = outcome === 'confirmed'
+    && !events.some((event) => event.outcome === 'confirmed');
   if (outcome === 'confirmed') {
     tracker = await trackerUpdater(root, {
       jobId: start.jobId, status: 'Applied', company: start.company, title: start.title,
@@ -172,7 +174,8 @@ export async function finishApplicationAttempt(root, { attemptId, outcome, evide
   try {
     return appendEvent(root, {
       id: randomUUID(), attemptId, jobId: start.jobId, company: start.company, title: start.title,
-      url: start.url, outcome, ...(evidence ? { evidence: String(evidence).slice(0, 2000) } : {}),
+      url: start.url, outcome, firstConfirmedApplication,
+      ...(evidence ? { evidence: String(evidence).slice(0, 2000) } : {}),
       ...(tracker ? {
         trackerStatus: tracker.status,
         trackerPreviousStatus: tracker.previousStatus,

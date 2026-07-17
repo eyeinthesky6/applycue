@@ -3,12 +3,13 @@ body:
   - type: markdown
     attributes:
       value: |
-        Share a sanitized ApplyCue workflow, integration, or outcome that could help the community. Do not include candidate data, private account data, employer correspondence, or generated application files.
+        Share honest, sanitized ApplyCue feedback, a review, a workflow, an integration, or an outcome that could help the community. Positive, mixed, and critical feedback are welcome. Do not include candidate data, private account data, employer correspondence, or generated application files.
   - type: dropdown
     id: kind
     attributes:
       label: What are you sharing?
       options:
+        - Product feedback or review
         - Workflow
         - Integration
         - Outcome or lesson
@@ -18,8 +19,8 @@ body:
   - type: textarea
     id: summary
     attributes:
-      label: What worked or what did you learn?
-      description: Explain the setup, useful result, and any limitation using fictional or sanitized details.
+      label: What worked, and what should improve?
+      description: Explain the setup, useful result, limitation, or suggested improvement using fictional or sanitized details.
     validations:
       required: true
   - type: input
