@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.0](https://github.com/eyeinthesky6/applycue/compare/ApplyCue-v0.1.0...ApplyCue-v0.2.0) (2026-07-19)
+
+
+### Features
+
+* **feedback:** repeat review prompt every five applications ([264e245](https://github.com/eyeinthesky6/applycue/commit/264e245109d9a52d10bf228c075399f2bff8c461))
+* **feedback:** request an optional first-application review ([9482029](https://github.com/eyeinthesky6/applycue/commit/94820294760300d6a58565faecc60c975ab07e21))
+* **launch:** integrate community and release hardening ([3b5f922](https://github.com/eyeinthesky6/applycue/commit/3b5f9229b2d49979b316a96c44b4f8d3cbb1080c))
+
+
+### Bug Fixes
+
+* **community:** route users to Telegram ([8f966eb](https://github.com/eyeinthesky6/applycue/commit/8f966eb9fe79b4b75570067dbae73e9b597e07d6))
+* harden launch trust and release paths ([20519e8](https://github.com/eyeinthesky6/applycue/commit/20519e83f0b6b9d3f046fed38335028677c378f1))
+* **launch:** initialize tracker and align public promise ([bffd1cb](https://github.com/eyeinthesky6/applycue/commit/bffd1cbf58be54e5daf108c30ed82c1906e1ae6b))
+* **tracker:** preserve legacy source selection ([7c39971](https://github.com/eyeinthesky6/applycue/commit/7c39971d4850e650cbae70c2ccbb387b5e9d18bf))
+
 ## 0.1.0 (2026-07-16)
 
 
