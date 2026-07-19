@@ -6,28 +6,53 @@ on:
         description: Existing ApplyCue release tag to backfill
         required: true
         type: string
+      require_draft:
+        description: Refuse a published release (normally false for backfill)
+        required: false
+        default: false
+        type: boolean
   workflow_call:
     inputs:
       tag:
         description: ApplyCue release tag created by the caller
         required: true
         type: string
+      require_draft:
+        description: Require the release to remain a draft while evidence is attached
+        required: false
+        default: true
+        type: boolean
+    outputs:
+      release_id:
+        description: GitHub release database id verified by the SBOM job
+        value: ${{ jobs.sbom.outputs.release_id }}
+      source_commit:
+        description: Commit resolved from the exact release tag
+        value: ${{ jobs.sbom.outputs.source_commit }}
+      sbom_sha256:
+        description: SHA-256 of the verified staged SBOM
+        value: ${{ jobs.sbom.outputs.sbom_sha256 }}
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   sbom:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release_id: ${{ steps.assets.outputs.release_id }}
+      source_commit: ${{ steps.assets.outputs.commit }}
+      sbom_sha256: ${{ steps.verify.outputs.sbom_sha256 }}
     steps:
       - name: Resolve release tag
         id: release
         shell: bash
         env:
           REQUESTED_TAG: ${{ inputs.tag }}
-          EVENT_TAG: ${{ github.event.release.tag_name }}
         run: |
-          tag="${REQUESTED_TAG:-$EVENT_TAG}"
+          set -euo pipefail
+          tag="$REQUESTED_TAG"
           if [[ ! "$tag" =~ ^ApplyCue-v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
             echo "Invalid ApplyCue release tag: $tag" >&2
             exit 1
@@ -45,9 +70,36 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          REQUIRE_DRAFT: ${{ inputs.require_draft }}
         run: |
+          set -euo pipefail
           commit="$(git rev-parse HEAD)"
+          release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")"
+          release_id="$(jq -r '.id' <<<"$release_json")"
+          release_tag="$(jq -r '.tag_name' <<<"$release_json")"
+          release_target="$(jq -r '.target_commitish' <<<"$release_json")"
+          release_draft="$(jq -r '.draft' <<<"$release_json")"
+          remote_tag_commit="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq '.sha')"
+
+          [[ "$release_tag" == "$RELEASE_TAG" ]] || {
+            echo "Resolved release tag does not match the requested tag." >&2
+            exit 1
+          }
+          [[ "$release_target" == "$commit" ]] || {
+            echo "Release target does not match the checked-out source commit." >&2
+            exit 1
+          }
+          [[ "$remote_tag_commit" == "$commit" ]] || {
+            echo "Remote release tag does not match the checked-out source commit." >&2
+            exit 1
+          }
+          if [[ "$REQUIRE_DRAFT" == true && "$release_draft" != true ]]; then
+            echo "The automatic evidence path requires a draft release." >&2
+            exit 1
+          fi
+
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
 
           mkdir -p "$RUNNER_TEMP/existing-release-assets"
           sbom_exists=false
@@ -86,6 +138,7 @@ jobs:
           upload-release-assets: false
 
       - name: Build and verify release evidence
+        id: evidence
         shell: bash
         env:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
@@ -93,11 +146,13 @@ jobs:
           SBOM_EXISTS: ${{ steps.assets.outputs.sbom_exists }}
           RECEIPT_EXISTS: ${{ steps.assets.outputs.receipt_exists }}
         run: |
+          set -euo pipefail
           if [[ "$SBOM_EXISTS" == true ]]; then
             cp "$RUNNER_TEMP/existing-release-assets/ApplyCue-sbom.spdx.json" .
           fi
 
           sbom_sha256="$(sha256sum ApplyCue-sbom.spdx.json | awk '{print $1}')"
+          echo "sbom_sha256=$sbom_sha256" >> "$GITHUB_OUTPUT"
           cat > ApplyCue-release-evidence.txt <<EOF
           evidence_format=applycue-release-evidence-v1
           repository=https://github.com/${GITHUB_REPOSITORY}
@@ -122,8 +177,21 @@ jobs:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
           SBOM_EXISTS: ${{ steps.assets.outputs.sbom_exists }}
           RECEIPT_EXISTS: ${{ steps.assets.outputs.receipt_exists }}
+          RELEASE_ID: ${{ steps.assets.outputs.release_id }}
+          REQUIRE_DRAFT: ${{ inputs.require_draft }}
         shell: bash
         run: |
+          set -euo pipefail
+          release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")"
+          [[ "$(jq -r '.id' <<<"$release_json")" == "$RELEASE_ID" ]] || {
+            echo "Release identity changed before evidence upload." >&2
+            exit 1
+          }
+          if [[ "$REQUIRE_DRAFT" == true && "$(jq -r '.draft' <<<"$release_json")" != true ]]; then
+            echo "Release was published before its evidence was attached." >&2
+            exit 1
+          fi
+
           if [[ "$SBOM_EXISTS" != true ]]; then
             gh release upload "$RELEASE_TAG" \
               ApplyCue-sbom.spdx.json \
@@ -131,5 +199,41 @@ jobs:
           elif [[ "$RECEIPT_EXISTS" != true ]]; then
             gh release upload "$RELEASE_TAG" ApplyCue-release-evidence.txt
           else
-            echo "The published SBOM and release evidence are already present and consistent."
+            echo "The release SBOM and evidence are already present and consistent."
           fi
+
+      - name: Verify attached release evidence
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_ID: ${{ steps.assets.outputs.release_id }}
+          REQUIRE_DRAFT: ${{ inputs.require_draft }}
+          EXPECTED_SBOM_SHA256: ${{ steps.evidence.outputs.sbom_sha256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")"
+          [[ "$(jq -r '.id' <<<"$release_json")" == "$RELEASE_ID" ]] || {
+            echo "Release identity changed after evidence upload." >&2
+            exit 1
+          }
+          if [[ "$REQUIRE_DRAFT" == true && "$(jq -r '.draft' <<<"$release_json")" != true ]]; then
+            echo "Release was published before staged evidence verification completed." >&2
+            exit 1
+          fi
+
+          rm -rf "$RUNNER_TEMP/verified-release-assets"
+          mkdir -p "$RUNNER_TEMP/verified-release-assets"
+          gh release download "$RELEASE_TAG" \
+            --pattern ApplyCue-sbom.spdx.json \
+            --pattern ApplyCue-release-evidence.txt \
+            --dir "$RUNNER_TEMP/verified-release-assets"
+          cmp ApplyCue-sbom.spdx.json \
+            "$RUNNER_TEMP/verified-release-assets/ApplyCue-sbom.spdx.json"
+          cmp ApplyCue-release-evidence.txt \
+            "$RUNNER_TEMP/verified-release-assets/ApplyCue-release-evidence.txt"
+
+          actual_sbom_sha256="$(sha256sum "$RUNNER_TEMP/verified-release-assets/ApplyCue-sbom.spdx.json" | awk '{print $1}')"
+          [[ "$actual_sbom_sha256" == "$EXPECTED_SBOM_SHA256" ]]
+          echo "sbom_sha256=$actual_sbom_sha256" >> "$GITHUB_OUTPUT"

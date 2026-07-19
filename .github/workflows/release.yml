@@ -3,9 +3,11 @@ on:
   push:
     branches: [main]
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: {}
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
 
 jobs:
   verify:
@@ -23,6 +25,9 @@ jobs:
   release-please:
     needs: verify
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
@@ -41,3 +46,90 @@ jobs:
     uses: ./.github/workflows/sbom.yml
     with:
       tag: ${{ needs.release-please.outputs.tag_name }}
+      require_draft: true
+
+  publish:
+    needs: [release-please, sbom]
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Verify and publish the staged release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
+          RELEASE_ID: ${{ needs.sbom.outputs.release_id }}
+          RELEASE_COMMIT: ${{ needs.sbom.outputs.source_commit }}
+          SBOM_SHA256: ${{ needs.sbom.outputs.sbom_sha256 }}
+        run: |
+          set -euo pipefail
+
+          [[ "$RELEASE_TAG" =~ ^ApplyCue-v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]
+          [[ "$RELEASE_ID" =~ ^[0-9]+$ ]]
+          [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$SBOM_SHA256" =~ ^[0-9a-f]{64}$ ]]
+
+          release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")"
+          actual_id="$(jq -r '.id' <<<"$release_json")"
+          actual_tag="$(jq -r '.tag_name' <<<"$release_json")"
+          actual_target="$(jq -r '.target_commitish' <<<"$release_json")"
+          actual_draft="$(jq -r '.draft' <<<"$release_json")"
+          tag_commit="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq '.sha')"
+
+          [[ "$actual_id" == "$RELEASE_ID" ]] || {
+            echo "Release id changed after evidence staging; refusing to publish." >&2
+            exit 1
+          }
+          [[ "$actual_tag" == "$RELEASE_TAG" ]] || {
+            echo "Release tag does not match the staged release; refusing to publish." >&2
+            exit 1
+          }
+          [[ "$actual_target" == "$RELEASE_COMMIT" ]] || {
+            echo "Release target does not match the staged source commit; refusing to publish." >&2
+            exit 1
+          }
+          [[ "$tag_commit" == "$RELEASE_COMMIT" ]] || {
+            echo "Release tag moved after evidence staging; refusing to publish." >&2
+            exit 1
+          }
+          [[ "$actual_draft" == true ]] || {
+            echo "Release is not a draft; refusing to publish or republish it." >&2
+            exit 1
+          }
+
+          expected_assets="$(printf '%s\n' \
+            ApplyCue-release-evidence.txt \
+            ApplyCue-sbom.spdx.json | sort)"
+          actual_assets="$(jq -r '.assets[].name' <<<"$release_json" | sort)"
+          [[ "$actual_assets" == "$expected_assets" ]] || {
+            echo "Draft release assets do not match the intended artifact set." >&2
+            diff -u <(printf '%s\n' "$expected_assets") <(printf '%s\n' "$actual_assets") || true
+            exit 1
+          }
+
+          mkdir -p "$RUNNER_TEMP/staged-release-assets"
+          gh release download "$RELEASE_TAG" \
+            --pattern ApplyCue-sbom.spdx.json \
+            --pattern ApplyCue-release-evidence.txt \
+            --dir "$RUNNER_TEMP/staged-release-assets"
+          cd "$RUNNER_TEMP/staged-release-assets"
+          actual_sbom_sha256="$(sha256sum ApplyCue-sbom.spdx.json | awk '{print $1}')"
+          [[ "$actual_sbom_sha256" == "$SBOM_SHA256" ]] || {
+            echo "Downloaded SBOM does not match the staged SBOM digest." >&2
+            exit 1
+          }
+          grep -Fqx "repository=https://github.com/${GITHUB_REPOSITORY}" ApplyCue-release-evidence.txt
+          grep -Fqx "release_tag=${RELEASE_TAG}" ApplyCue-release-evidence.txt
+          grep -Fqx "source_commit=${RELEASE_COMMIT}" ApplyCue-release-evidence.txt
+          grep -Fqx "sbom_sha256=${SBOM_SHA256}" ApplyCue-release-evidence.txt
+
+          gh api --method PATCH \
+            "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+            -F draft=false >/dev/null
+
+          published_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}")"
+          [[ "$(jq -r '.draft' <<<"$published_json")" == false ]]
+          [[ "$(jq -r '.tag_name' <<<"$published_json")" == "$RELEASE_TAG" ]]
+          [[ "$(jq -r '.target_commitish' <<<"$published_json")" == "$RELEASE_COMMIT" ]]
