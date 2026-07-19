@@ -45,7 +45,7 @@ For each named role:
 10. Start `application-attempt.mjs` with that `--cv` path; the receipt binds its hash, current preflight, and approved-answer fingerprint.
 11. Fill/upload/submit through the approved agent browser.
 12. Record `confirmed`, `unknown`, `failed`, or `abandoned` immediately.
-13. For confirmed success, verify the finish result says `trackerStatus: Applied`; do not perform a second manual tracker edit. Other outcomes remain visible attempt evidence.
+13. For confirmed success, verify the finish result says `trackerStatus: Applied`; do not perform a second manual tracker edit. If it also says `reviewPromptDue: true`, offer the optional sanitized review link with fresh wording for that 5/10/15... milestone. Never make feedback a condition of continuing. Other outcomes remain visible attempt evidence, do not advance the milestone count, and do not trigger the review prompt. After the user explicitly confirms posting a review, run `node application-attempt.mjs review-given`; later milestones will stop prompting.
 
 Never retry unknown without reconciliation and new approval.
 

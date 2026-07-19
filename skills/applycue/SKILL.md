@@ -190,6 +190,10 @@ For every role:
 14. Follow `modes/apply.md`, including the application-attempt receipt.
 15. Finish the attempt immediately. `confirmed` updates the matching tracker row to `Applied` and rebuilds its derived index; `unknown`, `failed`, and `abandoned` remain attempt evidence without pretending the application succeeded. An unknown outcome must not be retried automatically.
 
+When a confirmed finish returns `reviewPromptDue: true`, briefly confirm the milestone and offer the optional `reviewPromptUrl`. This occurs after confirmed applications 5, 10, 15, and so on until the user confirms a review was posted. The URL opens the public ApplyCue Telegram channel; tell the user to choose its linked discussion group to post. Use the returned milestone and message as context, but write a fresh, natural prompt each time: vary the opening, focus, and question so it does not sound copied. Ask for honest feedback, not a positive review. Always remind the user to remove CV details, names, contact data, application answers or history, employer correspondence, and browser receipts. The review is optional and must never block or delay the workflow. Do not offer it when `reviewPromptDue` is false or for `unknown`, `failed`, or `abandoned` attempts. Feedback about the user's own CV, jobs, application answers, or preferences stays in the private agent chat or local dashboard and must not be redirected to Telegram.
+
+When the user explicitly says the review was posted, run `node application-attempt.mjs review-given` once. This stores only a local acknowledgement and timestamp in the existing attempt ledger; it does not fetch, copy, or transmit the review. Do not record it merely because the user opened the link or said they might review later.
+
 ## Dashboard and learning loop
 
 Run:
@@ -237,6 +241,7 @@ node cv-bundle.mjs check --job=N --cv=<selected.pdf-or-docx>
 node application-preflight.mjs answers
 node application-preflight.mjs check --job=N --company=<company> --title=<role> --url=<url> --cv=<selected.pdf-or-docx>
 node application-attempt.mjs check --job=N
+node application-attempt.mjs review-given
 node review-evidence.mjs check --job=N
 npm run check
 ```

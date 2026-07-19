@@ -61,24 +61,45 @@ ApplyCue's first public release is `0.1.0`. There is no earlier ApplyCue GitHub 
 
 ### Release integrity and recovery
 
-`release.yml` is the only automatic release path. When Release Please creates a
-release, it calls `sbom.yml` once with the exact release tag. `sbom.yml` also
-supports an explicit manual backfill for an existing `ApplyCue-v*` release, but
-does not subscribe independently to release-published events.
+`release.yml` is the only automatic release path. Merging a reviewed Release
+Please PR is the publication action and requires explicit maintainer approval;
+ordinary pushes do not create a release. Release Please creates the GitHub
+release as a draft and creates its exact tag immediately. The workflow then
+calls `sbom.yml` once with that tag, checks out and verifies the tag's source
+commit, attaches and downloads the evidence while the release is still a draft,
+and publishes only after that reusable job succeeds. The publish job refuses a
+non-draft release, a changed release id, tag or source commit, or an asset set
+other than the two verified files below.
+
+`sbom.yml` also supports an explicit manual backfill for an existing
+`ApplyCue-v*` release, but does not subscribe independently to
+release-published events and never publishes a draft. Backfill reuses the
+existing SBOM, verifies any existing receipt, uploads only a missing asset, and
+downloads the final assets to compare their bytes. It never overwrites
+inconsistent release evidence.
+
+Release runs are serialized and are not cancelled by a newer push. A failure
+before publication leaves the same draft and tag available for the original
+workflow's failed jobs to retry. Manual backfill with `require_draft` can repair
+or verify missing evidence but cannot publish it. If the publish API call may
+have succeeded before final readback failed, inspect the provider state first;
+the job deliberately refuses to republish a non-draft release. Do not delete,
+recreate or retag a partial release to make the workflow green.
 
 The release carries `ApplyCue-sbom.spdx.json` plus
 `ApplyCue-release-evidence.txt`. The receipt identifies the repository, release
-tag, source commit and source URL and records the SBOM SHA-256. A manual rerun
-reuses the published SBOM, verifies any existing receipt, and uploads only a
-missing asset. It never overwrites inconsistent release evidence. The checksum
-receipt supports integrity checking; it is not a cryptographic attestation and,
-while releases remain mutable, does not by itself prevent asset replacement.
+tag, source commit and source URL and records the SBOM SHA-256. The checksum
+receipt supports integrity checking; it is not a cryptographic attestation and
+does not by itself prevent asset replacement.
 
 GitHub release immutability and artifact attestations are not enabled or claimed
-by this workflow. Before enabling immutable releases, redesign the pipeline to
-create a draft, attach and verify every intended asset, and publish only after
-that staging succeeds. The current post-publication SBOM attachment is not
-compatible with an immutable-release claim.
+by the checked-in workflow. The draft-attach-verify-publish sequence is ready
+for future immutable releases, but immutability is true only after the provider
+setting is separately enabled and a published release is read back as
+immutable. GitHub applies that setting only to future releases, so the
+historical `ApplyCue-v0.1.0` tag and release remain unchanged. Never move that
+tag or replace its assets; issue a verified patch release when a correction is
+needed.
 
 The supported user install is a Git clone at a named `ApplyCue-v*` tag. `main` is
 a moving development channel, and a generated source ZIP lacks the Git history
@@ -110,3 +131,30 @@ Do not commit the candidate's evidence.
 ## Current boundary
 
 The merged code can be called code-healthy only after the final suite passes. Public-MVP-ready requires the clean-link install, useful batch and shortlist proof, false-elimination review, role-aware CV proof, and one end-to-end application UAT. Tests or one manually supplied application alone cannot make that claim.
+
+Status on 2026-07-17: the private controlled-application chain has passed through a current full JD, agent decision, verified CV, live-form preflight, named approval, confirmed attempt outcome, exact tracker transition, and dashboard state. The remaining product-proof gap is the fresh-user journey: clean installation, faithful CV intake, useful multi-source discovery, shortlist quality, sampled false-elimination review, and first-batch preparation. Personal receipts stay outside Git.
+
+## Community governance decision
+
+Status: accepted by the repository owner on 2026-07-17.
+
+ApplyCue needs a low-friction place for ordinary job seekers who should not need
+GitHub knowledge to ask a question or share product feedback. The owner therefore
+selected a paired Telegram surface: `https://t.me/applycue` is the official
+announcement/release/guide channel, and its linked discussion group is the
+ordinary-user help, feedback, ideas, and community space. The group is currently
+reached through the public channel while its own stable public username is not
+yet configured.
+
+GitHub is the engineering surface. Discussions are for contributor design
+questions, extensions, integrations, and reusable technical examples. Reproducible
+bugs and scoped feature work remain in Issues; contributions follow
+`CONTRIBUTING.md`; vulnerabilities use the private route in `SECURITY.md`.
+
+All public surfaces are best effort with no response-time promise. Telegram and
+GitHub posts must not contain candidate data, credentials, application history,
+employer correspondence, browser receipts, or generated candidate files. Feedback
+about one candidate's CV, roles, answers, or preferences remains in the private
+agent chat or local dashboard. Review the community surfaces after 30 days, or
+sooner if the maintainer cannot moderate them or repeated privacy violations make
+them unsafe.

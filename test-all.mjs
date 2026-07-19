@@ -1733,6 +1733,83 @@ if (fileExists('VERSION')) {
   fail('VERSION file missing');
 }
 
+// ── 15. RELEASE WORKFLOW INTEGRITY ──────────────────────────────
+
+console.log('\n15. Release workflow integrity');
+
+try {
+  const yaml = (await import('js-yaml')).default;
+  const releaseConfig = JSON.parse(readFile('release-please-config.json'));
+  const releaseWorkflow = yaml.load(readFile('.github/workflows/release.yml'));
+  const sbomWorkflow = yaml.load(readFile('.github/workflows/sbom.yml'));
+
+  if (releaseConfig.draft === true && releaseConfig['force-tag-creation'] === true) {
+    pass('Release Please creates a draft and materializes its exact tag for evidence staging');
+  } else {
+    fail('Release Please must enable draft and force-tag-creation together');
+  }
+
+  const publishJob = releaseWorkflow?.jobs?.publish;
+  const publishNeeds = Array.isArray(publishJob?.needs) ? publishJob.needs : [];
+  if (
+    publishNeeds.includes('release-please') &&
+    publishNeeds.includes('sbom') &&
+    publishJob?.permissions?.contents === 'write' &&
+    releaseWorkflow?.concurrency?.group === 'release-main' &&
+    releaseWorkflow?.concurrency?.['cancel-in-progress'] === false &&
+    releaseWorkflow?.permissions && Object.keys(releaseWorkflow.permissions).length === 0
+  ) {
+    pass('release publication is downstream of Release Please and SBOM with scoped permissions');
+  } else {
+    fail('release publication DAG or workflow permissions are broader than the release contract');
+  }
+
+  const publishScript = (publishJob?.steps ?? []).map(step => step.run ?? '').join('\n');
+  if (
+    publishScript.includes('[[ "$actual_draft" == true ]]') &&
+    publishScript.includes('[[ "$actual_target" == "$RELEASE_COMMIT" ]]') &&
+    publishScript.includes('[[ "$tag_commit" == "$RELEASE_COMMIT" ]]') &&
+    publishScript.includes('ApplyCue-release-evidence.txt') &&
+    publishScript.includes('ApplyCue-sbom.spdx.json') &&
+    publishScript.includes('-F draft=false')
+  ) {
+    pass('publish step refuses non-draft or mismatched identity/evidence before publication');
+  } else {
+    fail('publish step is missing a draft, source, asset, or publication guard');
+  }
+
+  const callContract = sbomWorkflow?.on?.workflow_call;
+  const sbomSteps = sbomWorkflow?.jobs?.sbom?.steps ?? [];
+  const sbomScript = sbomSteps.map(step => step.run ?? '').join('\n');
+  if (
+    callContract?.inputs?.require_draft?.default === true &&
+    callContract?.outputs?.release_id &&
+    callContract?.outputs?.source_commit &&
+    callContract?.outputs?.sbom_sha256 &&
+    sbomScript.includes('[[ "$release_target" == "$commit" ]]') &&
+    sbomScript.includes('[[ "$remote_tag_commit" == "$commit" ]]') &&
+    sbomScript.includes('Release was published before staged evidence verification completed.') &&
+    sbomScript.includes('cmp ApplyCue-release-evidence.txt')
+  ) {
+    pass('reusable SBOM job binds the draft, tag, commit, receipt, and downloaded asset bytes');
+  } else {
+    fail('reusable SBOM job is missing a draft, source, output, or byte-verification contract');
+  }
+
+  const externalUses = [releaseWorkflow, sbomWorkflow]
+    .flatMap(workflow => Object.values(workflow?.jobs ?? {}))
+    .flatMap(job => job?.steps ?? [])
+    .map(step => step?.uses)
+    .filter(uses => uses && !uses.startsWith('./'));
+  if (externalUses.length > 0 && externalUses.every(uses => /@[0-9a-f]{40}$/i.test(uses.split(/\s+#/)[0]))) {
+    pass('release workflow third-party Actions remain pinned to immutable SHAs');
+  } else {
+    fail('release workflow contains an unpinned third-party Action');
+  }
+} catch (error) {
+  fail(`release workflow integrity checks crashed: ${error.message}`);
+}
+
 // ── 12. ARCHIVE-POSTING ─────────────────────────────────────────
 
 console.log('\n12. archive-posting.mjs');
