@@ -1,5 +1,16 @@
 # ApplyCue Agent Instructions
 
+> **CURRENT STATUS — STANDALONE DEVELOPMENT PAUSED / PIVOTED INTO EASIER (28 Sep 2026)**  
+> This repository is donor/history for the Jobs Easier workflow under the Easier umbrella. Do **not** start new standalone ApplyQ/ApplyCue product development, architecture work, release work or feature expansion here unless the owner explicitly reopens it. Reuse the code, tests and failure lessons as donor evidence for Easier. The active Easier architecture lives in the Easier Google Drive docs and repo. Existing operating instructions below remain useful when running or inspecting the legacy local product, but they are not the forward product roadmap.
+
+## Current agent rule
+
+- Default action for product work: go to Easier / Jobs Easier, not this repo.
+- Allowed here without explicit revival: forensic review, bug reproduction, extracting reusable tests/invariants, preserving historical releases, or a narrowly requested fix to the legacy local product.
+- Do not create a second active Jobs runtime, tracker, dashboard, application engine or architecture here.
+- Future standalone packaging/name (ApplyQ/ApplyCue vs Jobs Easier) is intentionally undecided pending Easier validation.
+
+
 ApplyCue is an agent-led CV-to-application product. The user talks to Codex, Claude, or another capable agent; the agent operates the local code, browser, and approved connectors.
 
 ## Read order
