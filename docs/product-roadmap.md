@@ -1,5 +1,9 @@
 # ApplyCue Product Roadmap
 
+> **PROJECT STATUS — STANDALONE DEVELOPMENT PAUSED / PIVOTED INTO EASIER (28 Sep 2026)**  
+> ApplyQ/ApplyCue is no longer the active standalone product-development track. Its workflow, deterministic safeguards, receipts, CV/application machinery and failure learnings are being tested as **Jobs Easier** inside the Easier umbrella. This repository is retained as donor code, historical implementation and reproducible evidence. Do not infer the current Easier runtime/architecture from this repo. After Easier validation, the owner will decide whether the Jobs application product remains inside Easier, returns as a standalone ApplyQ/ApplyCue product, or uses another packaging model. Existing release/install material below is retained for historical reproducibility, not as the current product roadmap.
+
+
 ## MVP / 0.1 — agent-operated CV to confirmed application
 
 Primary interface: Codex, Claude, or another local coding agent.
