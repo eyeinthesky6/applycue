@@ -1,6 +1,6 @@
 {
   "name": "applycue",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Local, agent-led job search across approved sources: full-JD review, truthful role-specific CVs, named application approval, and outcome tracking.",
   "private": true,
   "engines": {
